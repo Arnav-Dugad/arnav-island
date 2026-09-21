@@ -1,0 +1,6 @@
+/build/
+/out/
+/tools/cache/
+*.log
+*.user
+.vs/
