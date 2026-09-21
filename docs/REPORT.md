@@ -73,7 +73,7 @@ the motion milestone is stable. See the complete [feature matrix](FEATURE_MATRIX
 5. Capture presented-frame timing on real 60/120/165 Hz hardware under load.
 6. Complete Milestone 1 acceptance before adding broader providers or File Shelf.
 
-Source and this report are prepared for the user's private `nexus-island` GitHub
-repository. Upload is awaiting exact-payload approval after automatic review blocked
-the push. Local settings, logs and initial desktop captures are excluded.
+Source and this report are published in the private
+[Nexus Island repository](https://github.com/Arnav-Dugad/nexus-island).
+Local settings, logs and initial desktop captures are excluded.
 

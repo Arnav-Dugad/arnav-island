@@ -111,6 +111,7 @@ LRESULT CALLBACK IslandWindow::procedure(HWND h,UINT m,WPARAM w,LPARAM l){
 LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
     switch(m){
     case WM_ERASEBKGND:return 1;
+    case WM_APP+50:if(w==1)openLab();else if(w==2)transition(IslandState::Expanded);return 0;
     case WM_PAINT:{PAINTSTRUCT ps;BeginPaint(window_,&ps);EndPaint(window_,&ps);return 0;}
     case WM_MOUSEACTIVATE:return MA_NOACTIVATE;
     case WM_NCHITTEST:{POINT p{GET_X_LPARAM(l),GET_Y_LPARAM(l)};ScreenToClient(window_,&p);double t=seconds(),s=dpi_/96;
@@ -185,6 +186,7 @@ void IslandWindow::showMenu(){
 void IslandWindow::openLab(bool settings){
     if(lab_){ShowWindow(lab_,SW_SHOW);SetForegroundWindow(lab_);return;}
     labMode_=!settings;
+    store_.log("Info",settings?"settings_opened":"animation_lab_opened");
     WNDCLASSW wc{};wc.hInstance=instance_;wc.lpfnWndProc=labProcedure;wc.lpszClassName=L"NexusIsland.Lab";wc.hCursor=LoadCursor(nullptr,IDC_ARROW);RegisterClassW(&wc);
     lab_=CreateWindowExW(WS_EX_CONTROLPARENT,wc.lpszClassName,settings?L"Nexus Island / Settings":L"Nexus Island / Animation Lab",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,180,220,730,650,nullptr,nullptr,instance_,this);
     BOOL dark=TRUE;DwmSetWindowAttribute(lab_,DWMWA_USE_IMMERSIVE_DARK_MODE,&dark,sizeof(dark));
