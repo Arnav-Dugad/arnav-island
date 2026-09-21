@@ -11,7 +11,7 @@ class AudioProvider {
     std::atomic<int> requested_{-1};
     void run();
 public:
-    std::atomic<int> value{0};std::atomic<bool> muted{false},available{false};
+    std::atomic<int> value{0};std::atomic<bool> muted{false},available{false},notificationPending{false};
     explicit AudioProvider(HWND);
     ~AudioProvider();
     void setVolume(int percent){requested_=std::clamp(percent,0,100);SetEvent(changed_);}

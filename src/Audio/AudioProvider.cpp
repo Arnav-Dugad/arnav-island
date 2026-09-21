@@ -9,7 +9,7 @@ public:
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id,void** p)override {if(!p)return E_POINTER;*p=nullptr;if(id==__uuidof(IUnknown)||id==__uuidof(IAudioEndpointVolumeCallback)){*p=static_cast<IAudioEndpointVolumeCallback*>(this);AddRef();return S_OK;}return E_NOINTERFACE;}
     ULONG STDMETHODCALLTYPE AddRef()override{return ++refs_;}
     ULONG STDMETHODCALLTYPE Release()override{auto n=--refs_;if(!n)delete this;return n;}
-    HRESULT STDMETHODCALLTYPE OnNotify(PAUDIO_VOLUME_NOTIFICATION_DATA n)override{owner_.value=int(std::lround(n->fMasterVolume*100));owner_.muted=n->bMuted!=FALSE;PostMessageW(window_,AudioMessage,1,0);return S_OK;}
+    HRESULT STDMETHODCALLTYPE OnNotify(PAUDIO_VOLUME_NOTIFICATION_DATA n)override{owner_.value=int(std::lround(n->fMasterVolume*100));owner_.muted=n->bMuted!=FALSE;if(!owner_.notificationPending.exchange(true))PostMessageW(window_,AudioMessage,1,0);return S_OK;}
 };
 class DeviceCallback final:public IMMNotificationClient {
     std::atomic<ULONG> refs_{1};HANDLE event_;

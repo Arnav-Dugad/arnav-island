@@ -4,3 +4,4 @@
 *.log
 *.user
 .vs/
+/app/

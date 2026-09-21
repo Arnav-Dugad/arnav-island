@@ -2,6 +2,7 @@
 #include "IslandWindow.h"
 #include <windowsx.h>
 #include <dwmapi.h>
+#include <uxtheme.h>
 #include <psapi.h>
 #include <sstream>
 #include <iomanip>
@@ -37,6 +38,7 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     store_.log("Info","application_stopped");return int(msg.wParam);
 }
 IslandWindow::~IslandWindow(){
+    if(qaMatte_)DestroyWindow(qaMatte_);if(qaBrush_)DeleteObject(qaBrush_);
     foregroundOwner=nullptr;if(foregroundHook_)UnhookWinEvent(foregroundHook_);
     media_.reset();audio_.reset();for(auto h:powerNotifications_)UnregisterPowerSettingNotification(h);
     if(tray_.hWnd)Shell_NotifyIconW(NIM_DELETE,&tray_);
@@ -69,15 +71,26 @@ void IslandWindow::animate(){
 void IslandWindow::transition(IslandState s){state_=s;animate();if(lab_)InvalidateRect(lab_,nullptr,FALSE);}
 void IslandWindow::power(bool notify){
     SYSTEM_POWER_STATUS p{};if(GetSystemPowerStatus(&p)){
+        const int previousBattery=content_.battery;const bool previouslyCharging=content_.charging;
         content_.battery=p.BatteryLifePercent<=100?p.BatteryLifePercent:-1;
         if(p.BatteryFlag&128)content_.battery=-1;
         content_.charging=p.ACLineStatus==1;
-        if(notify){events_.publish({ActivityKind::Power,"power",content_.battery>=0&&content_.battery<10?100:30,double(content_.battery),.8,3},seconds());
-            content_.headline=content_.charging?L"A little energy. A fresh start.":L"Ready to go with you.";
-            content_.detail=content_.charging?L"Power connected. Settle in.":L"Running on battery power.";
-            renderer_->redraw(content_,debug_);transition(IslandState::Expanded);SetTimer(window_,ActivityTimer,500,nullptr);
+        if(notify&&(previousBattery!=content_.battery||previouslyCharging!=content_.charging)){
+            if(previouslyCharging!=content_.charging||(content_.battery>=0&&content_.battery<10)){
+                events_.publish({ActivityKind::Power,"power",content_.battery>=0&&content_.battery<10?100:30,double(content_.battery),.8,3},seconds());presentActivity();
+            }else renderer_->redraw(content_,debug_);
         }
     }
+}
+void IslandWindow::presentActivity(){
+    if(!events_.active())return;
+    switch(events_.active()->kind){
+    case ActivityKind::Volume:content_.headline=content_.muted?L"A moment of quiet.":L"Sound, just where you want it.";content_.detail=L"System output volume";break;
+    case ActivityKind::Power:content_.headline=content_.battery>=0&&content_.battery<10?L"Time to connect your charger.":content_.charging?L"A little energy. A fresh start.":L"Ready to go with you.";content_.detail=content_.charging?L"Power connected. Settle in.":L"Running on battery power.";break;
+    case ActivityKind::Media:content_.headline=L"A new rhythm.";content_.detail=L"Now in your Windows media session";break;
+    default:break;
+    }
+    renderer_->redraw(content_,debug_);transition(IslandState::Expanded);SetTimer(window_,ActivityTimer,500,nullptr);
 }
 void CALLBACK IslandWindow::foregroundEvent(HWINEVENTHOOK,DWORD,HWND,LONG,LONG,DWORD,DWORD){if(foregroundOwner)PostMessageW(foregroundOwner->window_,FullscreenMessage,0,0);}
 void IslandWindow::fullscreen(){
@@ -114,14 +127,14 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
         }else if(interaction_==InteractionState::Rest){interaction_=InteractionState::Hover;TRACKMOUSEEVENT e{sizeof(e),TME_LEAVE,window_,0};TrackMouseEvent(&e);animate();}return 0;}
     case WM_MOUSELEAVE:if(interaction_==InteractionState::Hover){interaction_=InteractionState::Rest;animate();}return 0;
     case WM_LBUTTONDOWN:interaction_=InteractionState::Pressed;GetCursorPos(&down_);lastPointer_=down_;dragTime_=seconds();SetCapture(window_);animate();return 0;
-    case WM_LBUTTONUP:{bool dragged=interaction_==InteractionState::Dragging;ReleaseCapture();interaction_=InteractionState::Hover;
+    case WM_LBUTTONUP:{bool dragged=interaction_==InteractionState::Dragging;interaction_=InteractionState::Hover;ReleaseCapture();
         if(dragged){double now=seconds();auto pos=motion_.dragY.sample(now).position;motion_.dragY.reset(pos,now,dragVelocity_*.3);motion_.dragY.retarget(0,now,motion_.body);motion_.dragX.retarget(0,now,motion_.body);animate();}
         else transition(state_==IslandState::Compact?IslandState::Expanded:IslandState::Compact);return 0;}
     case WM_CAPTURECHANGED:if(interaction_==InteractionState::Pressed||interaction_==InteractionState::Dragging){interaction_=InteractionState::Rest;motion_.dragX.retarget(0,seconds(),motion_.body);motion_.dragY.retarget(0,seconds(),motion_.body);animate();}return 0;
     case WM_RBUTTONUP:showMenu();return 0;
     case WM_MOUSEWHEEL:if(audio_&&audio_->available)audio_->setVolume(audio_->value+(GET_WHEEL_DELTA_WPARAM(w)>0?2:-2));return 0;
-    case MediaMessage:if(media_){auto s=media_->snapshot();content_.media=s.title;content_.artist=s.artist;renderer_->redraw(content_,debug_);store_.log("Info",s.available?"media_session_connected":"media_no_active_session_or_unavailable");}return 0; case AudioMessage:if(audio_){content_.volume=audio_->value;content_.muted=audio_->muted;motion_.volume.retarget(content_.muted?0:content_.volume/100.,seconds(),{1,550,42});
-        if(w){events_.publish({ActivityKind::Volume,"volume",40,double(content_.volume),.5,2},seconds());content_.headline=content_.muted?L"A moment of quiet.":L"Sound, just where you want it.";content_.detail=audio_->available?L"System output volume":L"Audio output unavailable";renderer_->redraw(content_,debug_);transition(IslandState::Expanded);SetTimer(window_,ActivityTimer,500,nullptr);}
+    case MediaMessage:if(media_){auto s=media_->snapshot();bool changed=s.title!=content_.media;content_.media=s.title;content_.artist=s.artist;if(s.available&&changed){events_.publish({ActivityKind::Media,"media",20,0,.8,4},seconds());presentActivity();}else renderer_->redraw(content_,debug_);store_.log("Info",s.available?"media_session_connected":s.title==L"No media session"?"media_manager_connected_no_session":"media_provider_unavailable");}return 0; case AudioMessage:if(audio_){audio_->notificationPending=false;content_.volume=audio_->value;content_.muted=audio_->muted;motion_.volume.retarget(content_.muted?0:content_.volume/100.,seconds(),{1,550,42});
+        if(w){events_.publish({ActivityKind::Volume,"volume",40,double(content_.volume),.5,2},seconds());presentActivity();}
         else{renderer_->redraw(content_,debug_);renderer_->animate(motion_,seconds());}}return 0;
     case WM_POWERBROADCAST:if(w==PBT_POWERSETTINGCHANGE)power(true);return TRUE;
     case FullscreenMessage:fullscreen();return 0;
@@ -130,8 +143,20 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
     case WM_SETTINGCHANGE:{BOOL enabled=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&enabled,0);motion_.reduced=settings_.reduceMotion||!enabled;return 0;}
     case TrayMessage:if(l==WM_RBUTTONUP||l==WM_CONTEXTMENU)showMenu();else if(l==WM_LBUTTONDBLCLK)openLab(true);return 0;
     case WM_TIMER:
-        if(w==5){KillTimer(window_,5);captureWindow(window_,store_.directory/L"island-capture.png");if(lab_)captureWindow(lab_,store_.directory/L"lab-capture.png");} if(w==SettleTimer){updateRegion(false);KillTimer(window_,SettleTimer);}
-        if(w==ActivityTimer&&events_.tick(seconds())){if(!events_.active()){KillTimer(window_,ActivityTimer);if(interaction_==InteractionState::Rest)transition(IslandState::Compact);}}
+        if(w==5){
+            KillTimer(window_,5);
+            WNDCLASSW matteClass{};matteClass.lpfnWndProc=DefWindowProcW;matteClass.hInstance=instance_;matteClass.hbrBackground=CreateSolidBrush(RGB(34,40,50));matteClass.lpszClassName=L"NexusIsland.QAMatte";RegisterClassW(&matteClass);
+            RECT r{};GetWindowRect(window_,&r);HWND matte=CreateWindowExW(WS_EX_NOACTIVATE|WS_EX_TOOLWINDOW|WS_EX_TOPMOST,matteClass.lpszClassName,L"Nexus QA matte",WS_POPUP,r.left,r.top,r.right-r.left,r.bottom-r.top,nullptr,nullptr,instance_,nullptr);
+            qaMatte_=matte;qaBrush_=matteClass.hbrBackground;
+            ShowWindow(matte,SW_SHOWNOACTIVATE);SetWindowPos(window_,HWND_TOPMOST,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);UpdateWindow(matte);SetTimer(window_,6,250,nullptr);
+        }
+        if(w==6){
+            KillTimer(window_,6);DwmFlush();captureWindow(window_,store_.directory/L"island-capture.png");
+            DestroyWindow(qaMatte_);qaMatte_=nullptr;UnregisterClassW(L"NexusIsland.QAMatte",instance_);DeleteObject(qaBrush_);qaBrush_=nullptr;
+            if(lab_)captureWindow(lab_,store_.directory/L"lab-capture.png",true);
+        }
+        if(w==SettleTimer){double t=seconds();if(motion_.width.settled(t)&&motion_.height.settled(t)&&motion_.dragX.settled(t)&&motion_.dragY.settled(t)){updateRegion(false);KillTimer(window_,SettleTimer);}else SetTimer(window_,SettleTimer,200,nullptr);}
+        if(w==ActivityTimer&&events_.tick(seconds())){if(!events_.active()){KillTimer(window_,ActivityTimer);if(interaction_==InteractionState::Rest)transition(IslandState::Compact);}else presentActivity();}
         if(w==HudTimer)updateHud();
         if(w==ScenarioTimer){
             ++scenarioStep_;double now=seconds();
@@ -163,7 +188,7 @@ void IslandWindow::openLab(bool settings){
     WNDCLASSW wc{};wc.hInstance=instance_;wc.lpfnWndProc=labProcedure;wc.lpszClassName=L"NexusIsland.Lab";wc.hCursor=LoadCursor(nullptr,IDC_ARROW);RegisterClassW(&wc);
     lab_=CreateWindowExW(WS_EX_CONTROLPARENT,wc.lpszClassName,settings?L"Nexus Island / Settings":L"Nexus Island / Animation Lab",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,180,220,730,650,nullptr,nullptr,instance_,this);
     BOOL dark=TRUE;DwmSetWindowAttribute(lab_,DWMWA_USE_IMMERSIVE_DARK_MODE,&dark,sizeof(dark));
-    auto control=[&](const wchar_t* cls,const wchar_t* title,DWORD style,int id,int x,int y,int width,int height){HWND h=CreateWindowExW(0,cls,title,WS_CHILD|WS_VISIBLE|WS_TABSTOP|style,x,y,width,height,lab_,reinterpret_cast<HMENU>(INT_PTR(id)),instance_,nullptr);SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);return h;};
+    auto control=[&](const wchar_t* cls,const wchar_t* title,DWORD style,int id,int x,int y,int width,int height){if(wcscmp(cls,L"BUTTON")==0&&style==BS_PUSHBUTTON)style=BS_OWNERDRAW;HWND h=CreateWindowExW(0,cls,title,WS_CHILD|WS_VISIBLE|WS_TABSTOP|style,x,y,width,height,lab_,reinterpret_cast<HMENU>(INT_PTR(id)),instance_,nullptr);if(style==BS_AUTOCHECKBOX)SetWindowTheme(h,L"",L"");SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);return h;};
     auto combo=control(L"COMBOBOX",L"",CBS_DROPDOWNLIST,100,32,173,270,200);
     for(auto name:{L"Balanced",L"Fluid",L"Playful",L"Snappy",L"Calm"})SendMessageW(combo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name));SendMessageW(combo,CB_SETCURSEL,settings_.preset,0);
     control(L"BUTTON",L"Expand",BS_PUSHBUTTON,101,32,232,142,38);control(L"BUTTON",L"Collapse",BS_PUSHBUTTON,102,184,232,142,38);control(L"BUTTON",L"Interrupt / reverse",BS_PUSHBUTTON,103,336,232,174,38);control(L"BUTTON",L"Media shape",BS_PUSHBUTTON,104,520,232,146,38);
@@ -211,6 +236,16 @@ LRESULT CALLBACK IslandWindow::labProcedure(HWND h,UINT m,WPARAM w,LPARAM l){
     try{
     if(m==WM_PAINT){self->drawLab(h);return 0;}
     if(m==WM_ERASEBKGND)return 1;
+    if(m==WM_CTLCOLORSTATIC||m==WM_CTLCOLORBTN){static HBRUSH background=CreateSolidBrush(RGB(14,18,25));SetTextColor(reinterpret_cast<HDC>(w),RGB(211,221,234));SetBkColor(reinterpret_cast<HDC>(w),RGB(14,18,25));return reinterpret_cast<LRESULT>(background);}
+    if(m==WM_DRAWITEM){auto d=reinterpret_cast<DRAWITEMSTRUCT*>(l);if(d->CtlType==ODT_BUTTON){
+        HBRUSH background=CreateSolidBrush(RGB(14,18,25));FillRect(d->hDC,&d->rcItem,background);DeleteObject(background);
+        bool pressed=d->itemState&ODS_SELECTED,accent=d->CtlID==123;
+        COLORREF color=accent?(pressed?RGB(107,177,160):RGB(145,219,197)):(pressed?RGB(42,53,67):RGB(29,37,49));
+        HBRUSH brush=CreateSolidBrush(color);HPEN pen=CreatePen(PS_SOLID,1,accent?color:RGB(51,63,79));auto oldBrush=SelectObject(d->hDC,brush),oldPen=SelectObject(d->hDC,pen);
+        RoundRect(d->hDC,d->rcItem.left,d->rcItem.top,d->rcItem.right,d->rcItem.bottom,10,10);SelectObject(d->hDC,oldBrush);SelectObject(d->hDC,oldPen);DeleteObject(brush);DeleteObject(pen);
+        wchar_t label[128]{};GetWindowTextW(d->hwndItem,label,128);SetBkMode(d->hDC,TRANSPARENT);SetTextColor(d->hDC,accent?RGB(10,27,23):RGB(229,235,244));HFONT font=uiFont(14,FW_MEDIUM);auto oldFont=SelectObject(d->hDC,font);DrawTextW(d->hDC,label,-1,&d->rcItem,DT_CENTER|DT_VCENTER|DT_SINGLELINE);SelectObject(d->hDC,oldFont);DeleteObject(font);
+        if(d->itemState&ODS_FOCUS){RECT focus=d->rcItem;InflateRect(&focus,-4,-4);DrawFocusRect(d->hDC,&focus);}return TRUE;
+    }}
     if(m==WM_COMMAND&&(HIWORD(w)==BN_CLICKED||HIWORD(w)==CBN_SELCHANGE)){self->labCommand(LOWORD(w));return 0;}
     if(m==WM_HSCROLL){self->motion_.body.stiffness=SendDlgItemMessageW(h,110,TBM_GETPOS,0,0);self->motion_.body.damping=SendDlgItemMessageW(h,111,TBM_GETPOS,0,0);self->motion_.body.mass=SendDlgItemMessageW(h,112,TBM_GETPOS,0,0)/10.;self->animate();InvalidateRect(h,nullptr,FALSE);return 0;}
     if(m==WM_CLOSE){DestroyWindow(h);return 0;}
@@ -236,5 +271,3 @@ void IslandWindow::finishBenchmark(){
     store_.log("Info","benchmark_completed");PostMessageW(window_,WM_CLOSE,0,0);
 }
 }
-
-

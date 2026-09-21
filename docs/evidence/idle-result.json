@@ -1,0 +1,8 @@
+{
+  "scenario": "settled idle",
+  "elapsed_seconds": 15.0123967,
+  "cpu_seconds": 0.0,
+  "single_core_percent": 0.0,
+  "working_set_bytes": 69173248,
+  "peak_working_set_bytes": 71262208
+}

@@ -5,10 +5,10 @@
 namespace nexus {
 // Explicit QA capture only. Never scheduled in a normal run. Captures our HWND's
 // visible screen rectangle, so developer captures must not be published blindly.
-inline void captureWindow(HWND window,const std::filesystem::path& path){
+inline void captureWindow(HWND window,const std::filesystem::path& path,bool print=false){
     RECT r{};GetWindowRect(window,&r);int w=r.right-r.left,h=r.bottom-r.top;
     HDC screen=GetDC(nullptr),memory=CreateCompatibleDC(screen);HBITMAP bitmap=CreateCompatibleBitmap(screen,w,h);auto previous=SelectObject(memory,bitmap);
-    BitBlt(memory,0,0,w,h,screen,r.left,r.top,SRCCOPY|CAPTUREBLT);SelectObject(memory,previous);DeleteDC(memory);ReleaseDC(nullptr,screen);
+    if(print)PrintWindow(window,memory,2);else BitBlt(memory,0,0,w,h,screen,r.left,r.top,SRCCOPY|CAPTUREBLT);SelectObject(memory,previous);DeleteDC(memory);ReleaseDC(nullptr,screen);
     try{
         ComPtr<IWICImagingFactory> factory;check(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory)));
         ComPtr<IWICBitmap> source;check(factory->CreateBitmapFromHBITMAP(bitmap,nullptr,WICBitmapIgnoreAlpha,&source));

@@ -33,6 +33,7 @@ int main(){try{
     std::stringstream invalid("version 1\npreset 999\nverticalOffset -100\n");auto clamped=Settings::parse(invalid);require(clamped.preset==4&&clamped.verticalOffset==0,"Settings bounds");
     for(int i=0;i<=10;++i){auto g=geometry(IslandState(i));require(g.width>0&&g.height>0&&g.radius<=std::min(g.width,g.height)/2,"Geometry valid");}
     require(rubberBand(10000)<90&&rubberBand(-10000)>-90,"Drag resistance bounded");
+    MotionEngine reduced;reduced.reduced=true;reduced.target(IslandState::Expanded,0);require(reduced.width.sample(0).position==geometry(IslandState::Expanded).width,"Reduced motion has no spatial transition");
     auto start=std::chrono::steady_clock::now();size_t segments=0;for(int i=0;i<1000;++i){Spring a{204};a.retarget(480,0,preset(MotionPreset::Balanced));double d;segments+=a.curve(0,d).size();}
     auto ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
     std::cout<<"PASS "<<count<<" checks; max curve error "<<maxError<<" DIP; 1000 curves "<<ms<<" ms; "<<segments<<" segments\n";return 0;

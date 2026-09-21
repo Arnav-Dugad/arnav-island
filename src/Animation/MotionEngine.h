@@ -93,7 +93,7 @@ inline Geometry geometry(IslandState s) {
     switch(s) {
     case IslandState::Dot:return {44,28,14};
     case IslandState::Compact:return {204,38,19};
-    case IslandState::Expanded:return {480,284,30};
+    case IslandState::Expanded:return {480,316,30};
     case IslandState::Dashboard:return {520,340,32};
     case IslandState::FileDrop:return {440,240,32};
     case IslandState::Media:return {420,176,28};
@@ -110,6 +110,7 @@ struct MotionEngine {
     bool reduced=false;
     void target(IslandState state,double now,bool hover=false,bool pressed=false) {
         auto g=geometry(state);
+        if(reduced){width.reset(g.width,now);height.reset(g.height,now);radius.reset(g.radius,now);reveal.retarget(g.height>110?1:0,now,{1,1800,85});return;}
         auto s=reduced?SpringSpec{1,1800,85}:body;
         width.retarget(g.width+(hover?4:0)-(pressed?5:0),now,s);
         height.retarget(g.height-(pressed?2:0),now,s);

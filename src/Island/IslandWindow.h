@@ -12,7 +12,7 @@
 namespace nexus {
 enum class InteractionState { Rest,Hover,Pressed,Dragging };
 class IslandWindow {
-    HWND window_=nullptr,lab_=nullptr;HINSTANCE instance_{};HWINEVENTHOOK foregroundHook_=nullptr;
+    HWND window_=nullptr,lab_=nullptr,qaMatte_=nullptr;HBRUSH qaBrush_=nullptr;HINSTANCE instance_{};HWINEVENTHOOK foregroundHook_=nullptr;
     std::vector<HPOWERNOTIFY> powerNotifications_;
     std::unique_ptr<Renderer> renderer_;std::unique_ptr<AudioProvider> audio_;std::unique_ptr<MediaProvider> media_;
     LocalStore store_;Settings settings_;MotionEngine motion_;EventOrchestrator events_;ContentSnapshot content_;
@@ -25,7 +25,7 @@ class IslandWindow {
     static LRESULT CALLBACK labProcedure(HWND,UINT,WPARAM,LPARAM);
     static void CALLBACK foregroundEvent(HWINEVENTHOOK,DWORD,HWND,LONG,LONG,DWORD,DWORD);
     LRESULT message(UINT,WPARAM,LPARAM);
-    void position();void animate();void transition(IslandState);void updateRegion(bool envelope);
+    void position();void animate();void transition(IslandState);void updateRegion(bool envelope);void presentActivity();
     void power(bool notify);void showMenu();void openLab(bool settings=false);void updateHud();void fullscreen();
     void drawLab(HWND);void labCommand(int);void finishBenchmark();
 public:

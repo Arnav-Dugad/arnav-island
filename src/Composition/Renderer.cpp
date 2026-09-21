@@ -13,13 +13,13 @@ void Renderer::initialize(HWND hwnd,float dpi) {
     check(device_->CreateTargetForHwnd(hwnd,TRUE,&target_));
     for(auto* p:{std::addressof(root_),std::addressof(body_),std::addressof(inner_),std::addressof(header_),std::addressof(content_),std::addressof(bar_)})check(device_->CreateVisual(p->GetAddressOf()));
     check(target_->SetRoot(root_.Get()));check(root_->AddVisual(body_.Get(),FALSE,nullptr));
-    for(auto* p:{std::addressof(inner_),std::addressof(header_),std::addressof(content_),std::addressof(bar_)})check(body_->AddVisual(p->Get(),TRUE,nullptr));
-    check(device_->CreateRectangleClip(&clip_));check(body_->SetClip(clip_.Get()));
-    check(device_->CreateRectangleClip(&innerClip_));check(inner_->SetClip(innerClip_.Get()));
+    for(auto* p:{std::addressof(inner_),std::addressof(header_),std::addressof(content_),std::addressof(bar_)})check(body_->AddVisual(p->Get(),FALSE,nullptr));
+    check(device_->CreateRectangleClip(&clip_));check(clip_->SetLeft(0.f));check(clip_->SetTop(0.f));check(body_->SetClip(clip_.Get()));
+    check(device_->CreateRectangleClip(&innerClip_));check(innerClip_->SetLeft(0.f));check(innerClip_->SetTop(0.f));check(inner_->SetClip(innerClip_.Get()));
     check(inner_->SetOffsetX(1));check(inner_->SetOffsetY(1));
     check(content_->SetOffsetX(24*scale_));check(content_->SetOffsetY(61*scale_));
     check(bar_->SetOffsetX(24*scale_));check(bar_->SetOffsetY(240*scale_));
-    check(device_->CreateRectangleClip(&barClip_));check(bar_->SetClip(barClip_.Get()));
+    check(device_->CreateRectangleClip(&barClip_));check(barClip_->SetLeft(0.f));check(barClip_->SetTop(0.f));check(bar_->SetClip(barClip_.Get()));
     check(barClip_->SetBottom(4*scale_));
     check(device_->CreateEffectGroup(&contentEffect_));
     check(content_->SetEffect(contentEffect_.Get()));check(bar_->SetEffect(contentEffect_.Get()));
@@ -42,7 +42,7 @@ void Renderer::surface(ComPtr<IDCompositionSurface>& s,int w,int h,std::function
         auto properties=D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),dpi_,dpi_);
         ComPtr<ID2D1RenderTarget> rt;check(d2d_->CreateDxgiSurfaceRenderTarget(dx.Get(),&properties,&rt));
         rt->BeginDraw();rt->SetTransform(D2D1::Matrix3x2F::Translation(offset.x/scale_,offset.y/scale_));
-        rt->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);rt->Clear(D2D1::ColorF(0,0));draw(rt.Get());check(rt->EndDraw());
+        rt->PushAxisAlignedClip(D2D1::RectF(0,0,float(w),float(h)),D2D1_ANTIALIAS_MODE_ALIASED);rt->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);rt->Clear(D2D1::ColorF(0,0));draw(rt.Get());rt->PopAxisAlignedClip();check(rt->EndDraw());
     }catch(...){s->EndDraw();throw;}
     check(s->EndDraw());++redraws;
 }
@@ -54,7 +54,7 @@ void Renderer::text(ID2D1RenderTarget* rt,const std::wstring& value,float x,floa
     rt->DrawText(value.c_str(),UINT32(value.size()),f.Get(),D2D1::RectF(x,y,x+w,y+size*1.6f),b.Get(),D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
 void Renderer::redraw(const ContentSnapshot& s,bool debug) {
-    surface(headerSurface_,204,42,[&](auto* rt){
+    if(!headerSurface_)surface(headerSurface_,204,42,[&](auto* rt){
         ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(0x92dcca),&b);
         rt->FillEllipse(D2D1::Ellipse({34,19},3,3),b.Get());
         text(rt,L"N E X U S",51,9,114,13,0xe9edf3,DWRITE_FONT_WEIGHT_SEMI_BOLD);
@@ -109,4 +109,3 @@ void Renderer::animate(const MotionEngine& m,double now) {
     commit();
 }
 }
-
