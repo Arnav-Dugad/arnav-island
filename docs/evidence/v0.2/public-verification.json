@@ -1,0 +1,9 @@
+{
+  "public_repository": "https://github.com/Arnav-Dugad/arnav-island",
+  "release": "https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.2.0-preview.1",
+  "prerelease": true,
+  "asset": "Arnav-Island-0.2.0-preview.1-win-x64.zip",
+  "bytes": 1002465,
+  "anonymous_download_verified": true,
+  "sha256": "e0d891466b6161390671e6a739c24e0c828553c4bfbd0aabf8355699aa1174b9"
+}

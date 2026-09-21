@@ -28,3 +28,11 @@ This is a **public preview**, not completed Milestone 1 or an Apple-quality cert
 The window now uses a small moving conservative hit envelope instead of covering the entire canvas during motion. Updating that Win32 region requires a 30 ms timer only while moving; compositor animation itself is independent of that timer. A small area beyond the silhouette can still intercept input during motion. GPU device loss still closes the app instead of rebuilding the device. Hardware temperatures, invasive OEM controls, file shelf, clipboard, external notifications and arbitrary plugins remain absent.
 
 The distribution is a portable, unsigned Windows x64 ZIP with license and notices. Source, safe screenshots, measured evidence and this report are intended for the requested GitHub release. Runtime logs, local settings, private media captures and unrelated Desktop files are excluded. See QUICK_START.md for use and FUTURE_IDEAS.md for the next design candidates.
+
+## Publication verified
+
+- Public preview: https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.2.0-preview.1
+- The ZIP was downloaded anonymously and its SHA-256 matched the tested package. Verification record: evidence/v0.2/public-verification.json.
+- Source implementation checkpoint: 0f0eff88cd34233d53c846e257dc040caa5af884, pushed to the existing private nexus-island repository. The new public repository contains distribution documentation and binaries; the existing private source history remains private.
+- Desktop/Arnav Island contains the source, report, application and shortcuts. The installed executable hash matches the tested executable and it was launched successfully.
+- Local settings, logs and captures containing private current media are excluded from publication. The public screenshot was visually inspected with the media provider disabled.
