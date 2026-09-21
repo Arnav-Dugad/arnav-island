@@ -1,44 +1,20 @@
-# Performance engineering
+# Performance policy
 
-## Current design
+Arnav Island uses compositor animation for size, corners and offsets. It does not render a frame from an application 60 Hz loop. A short 30 ms Win32 region timer runs only during physical movement for input bounds; it is not the animation clock.
 
-DirectComposition owns animation sampling. No application render loop, polling
-of audio/media/battery state, per-frame disk writes or repeated geometry rasterizing.
-D3D11 is only an interop device; there are no application shaders. Graphics objects
-and surfaces persist. Content changes allocate temporary text/brush resources;
-these are not allocated for every compositor frame. Further caching is planned.
+Idle workers wait on events. CPU/RAM/network collection activates after Overview/System remains visible for 400 ms and samples at 1 second intervals. Disk space is refreshed about every 30 active samples. Media timeline repainting runs once per second only for a visible, playing media view. Focus uses a 1 second timer while running, including when collapsed. The app does not continuously query GPU sensors or use a monitoring driver.
 
-Audio and GSMTC have dedicated COM workers. Audio events carry atomics and a
-coalesced posted notification; media workers publish short snapshots. Filesystem
-settings/log writes run on one bounded background queue. Power and foreground
-changes arrive as OS events. HUD counters update only when enabled. Activity
-expiry uses a temporary 500 ms timer. A settle timer tightens the input region
-after motion; it does not drive rendering. All these timers stop when idle.
+Thumbnail decoding happens on the media worker and is capped to 512 pixels on its longest edge. Input compressed stream size, dimensions and pixel count are bounded. Surface rasterization occurs for changed content and button hover states, not each body-animation frame. D2D surface updates can still allocate render targets/bitmaps; richer retained content caching is future optimization work.
 
-## Instrumentation
+Developer scenarios:
 
-Right-click the island or tray icon > Performance HUD opens the lab and adds
-DWM refresh cadence, process working set, composition commit count, queue depth,
-and island state to its title. DWM refresh is explicitly **not app FPS**.
-Per-app presented FPS, frame-time percentiles, GPU cost, UI-stall percentiles and
-active-animation counts are not yet instrumented. Do not infer them from commits.
+```powershell
+.\build\ArnavIsland.exe --benchmark
+.\scripts\measure-idle.ps1
+.\build\ArnavIsland.exe --ui-test --capture-safe
+.\build\ArnavIsland.exe --expanded --lab
+```
 
-## Repeatable runs
+The HUD reports process memory, DWM refresh rate, compositor commit count and activity queue depth. It does not report true presented application FPS or GPU load. A refresh-rate reading must never be relabeled FPS. See PERFORMANCE_RESULTS.md for actual measured evidence and untested conditions.
 
-1. `scripts/build.ps1 -Test`: release build, physical/state/settings tests and
-   real provider start/stop lifecycle tests. Provider tests never change volume.
-2. Close the running prototype, then `build/NexusIsland.exe --benchmark`.
-   The app executes 200 size reversals with coalesced synthetic volume activities
-   at a 73 ms input cadence; this cadence is a stress input rate, not frame rate.
-   It exits and writes `%LOCALAPPDATA%/NexusIsland/benchmark.json`.
-3. `scripts/measure-idle.ps1`: launches or measures the app after settling,
-   collecting process CPU time and working set over a timed idle interval.
-4. `--lab --expanded --capture`: explicit app QA screenshots. A neutral temporary
-   matte shields personal desktop content during island capture. Lab uses
-   PrintWindow. Capture is never enabled in normal usage.
-
-The remaining matrix must cover real volume-key storms, supported media players,
-power attachment, file drag after implementation, notification storms after
-implementation, dashboard, mixed-DPI multi-monitor, suspend/resume, GPU device
-loss, 60/90/120/144/165/240 Hz physical displays and multi-day soak. Preserve raw
-measurements and tool/build context. Do not claim unmeasured battery impact.
+Required future acceptance: high-refresh frame pacing, actual presentation latency, UI stalls under heavy load, GPU-loss recovery, WARP, integrated-only laptops, mixed DPI, multi-day leaks and battery drain. No claim of Apple-level motion quality is made from compilation or numerical tests alone.

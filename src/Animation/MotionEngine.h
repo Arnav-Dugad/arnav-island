@@ -93,8 +93,8 @@ inline Geometry geometry(IslandState s) {
     switch(s) {
     case IslandState::Dot:return {44,28,14};
     case IslandState::Compact:return {204,38,19};
-    case IslandState::Expanded:return {480,316,30};
-    case IslandState::Dashboard:return {520,340,32};
+    case IslandState::Expanded:return {560,492,30};
+    case IslandState::Dashboard:return {560,492,30};
     case IslandState::FileDrop:return {440,240,32};
     case IslandState::Media:return {420,176,28};
     case IslandState::Hardware:return {440,230,28};

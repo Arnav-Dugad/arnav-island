@@ -1,8 +1,8 @@
 param([int]$Seconds=15)
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
-$app=Get-Process NexusIsland -ErrorAction SilentlyContinue | Select-Object -First 1
-if(-not $app){$app=Start-Process -FilePath "$projectRoot\build\NexusIsland.exe" -PassThru}
+$app=Get-Process ArnavIsland -ErrorAction SilentlyContinue | Select-Object -First 1
+if(-not $app){$app=Start-Process -FilePath "$projectRoot\build\ArnavIsland.exe" -PassThru}
 Start-Sleep -Seconds 4
 $app.Refresh();$cpuBefore=$app.TotalProcessorTime.TotalSeconds;$start=[Diagnostics.Stopwatch]::StartNew()
 Start-Sleep -Seconds $Seconds

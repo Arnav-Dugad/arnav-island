@@ -1,63 +1,29 @@
-# Feature status
+# Feature status — v0.2 preview
 
-This is an engineering prototype of Milestone 1, **not a completed Milestone 1
-or production release**. Implemented is not synonymous with fully validated.
+Implemented does not mean validated on every Windows configuration.
 
-| Area | Current state | Remaining verification / work |
+| Area | Available now | Limits |
 |---|---|---|
-| Native island | Running Win32 + DirectComposition; no taskbar/Alt-Tab surface; tray controls | Shell lifecycle, mixed displays, release QA |
-| Motion | Analytic springs, preserved velocity, compositor curves, size/radius morph | Actual frame timing, shared elements, content choreography |
-| Interaction | Hover, press, click toggle, rubber-band drag/release, scroll volume | Touch, accessibility tree, transient input routing |
-| Geometry states | All named destinations modeled; compact/expanded main flow | Per-state content layout; most other states are lab geometry only |
-| Volume | Real endpoint callbacks, coalescing, mute state, animated bar, scroll writes | Friendly device name, switcher, rapid physical-key QA |
-| Media | Public GSMTC manager/session events, title and artist, worker lifecycle | Active-player test; artwork, timeline, visible transport controls, palette |
-| Battery | Real percentage/AC events; low-battery priority; unknown stays unknown | Saver policy, physical charger tests, richer energy animation |
-| Animation Lab | Native controls, five presets, tuning, reversal, impulse, deliberate stall | More channels, graphs, polished accessible controls |
-| Settings | Native skeleton, versioned local settings, presets, reset/save | Complete sections, import/export UI, all geometry controls, tuning persistence |
-| Diagnostics | Structured local log, rotation, open/clear, optional basic HUD, benchmark | Rich FPS/stall/GPU instrumentation, copy diagnostics |
-| DPI | PMv2 declaration, island surface recreation on DPI change | Fractional DPI, settings layout and multi-monitor validation |
-| Displays | Primary/selected numeric monitor setting, display-change repositioning | Stable monitor identifiers, profiles, follow-active and all displays |
-| Fullscreen | Foreground event + monitor bounds heuristic, hide option | Movies/games, borderless false positives, importance/minimal policy |
-| Material | Dark gradient base, physical one-pixel rim, antialiased clip | Native acrylic/backdrop implementation, soft shadow, GlassMaterial integration |
-| Providers | Separate audio/media workers, power events, normalized orchestration | Universal provider contract, retry/backoff, out-of-process isolation |
-| File shelf | Deferred | OLE drag/drop, safe references, previews, drag-out |
-| Clipboard | Not implemented; nothing observed/stored | Explicit opt-in privacy design and exclusions |
-| Notifications | Researched; not observed | Manifest capability, user consent, supported action semantics |
-| Brightness | Researched WMI path | Internal panel capability detection; optional external DDC/CI |
-| Hardware | Process memory in HUD only | OS utilization providers; no temperatures/fans shown |
-| ASUS ROG | Research boundary only | No safe supported OEM data contract integrated |
-| Gaming | Generic fullscreen hide only | Session tracking, supported utilization; no injection |
-| Privacy indicators | Unavailable | No unsupported global mic/camera usage claims |
-| Downloads | Activity enum foundation only | Application-owned downloads and reliable progress source |
-| Productivity | Deferred | Timer, stopwatch, Pomodoro, notes, calendar |
-| Quick controls | Scroll system volume only | Supported brightness/audio/network controls |
-| Themes | Dark prototype | System/high contrast/light, readable adaptive accents |
-| Accessibility | Native lab keyboard controls, OS animation setting | UIA island provider, text scaling, complete high contrast |
-| Startup | Manual quiet launch | Opt-in login registration |
-| Plugins | No third-party code loading | Secure broker/schema model |
-| Crash recovery | Caught provider errors; app fails independently | Device-loss recovery, provider restart, multi-day resilience |
+| Identity and UI | Arnav Island; five native dashboard views | Not a finished WinUI settings app |
+| Body motion | Analytic springs, preserved velocity, independent DirectComposition curves, shape morph, rubber-band drag | Shared artwork motion and content choreography pending |
+| Hover | Configurable opening delay, leave-to-close, pin | Pointer regression passed; touch not supported |
+| Overview | Time/date, real CPU/RAM, power/battery, media, network, volume | Larger customization system pending |
+| Media | OS thumbnail, title/artist, playing state, transport capability checks, timeline; music/video layouts | Player must expose SMTC; browser classification can require manual override; all named services not tested |
+| Audio | Endpoint events, volume buttons/scroll, mute toggle | Output-device name and switcher pending |
+| Power | Battery percentage, AC connection, low-battery priority | Rich charging motion and saver policy pending |
+| System | CPU/history, RAM, physical adapter traffic, disk free/total, uptime, logical processor count | No GPU temperature, fan, OEM firmware or driver access; >64-core groups not covered |
+| Focus | Focus/break timer and stopwatch, pause/reset, completion activity | No persistence through app exit, calendar or notes |
+| Quick controls | Windows sound/display/network/Bluetooth settings links | Links are not in-island toggles |
+| Settings | Hover toggle/delay, five motion presets, reduced motion, fullscreen hide, automatic local save | No complete geometry editor or import/export UI |
+| Animation Lab | Tuning, interruption, impulses, deliberate UI stall | Not all requested animation channels implemented |
+| Diagnostics | Local structured logs, basic optional HUD, benchmark, app-only capture | No claimed measured FPS/GPU utilization |
+| DPI/display | Per-monitor-v2, selected monitor setting, display-change repositioning | Mixed-DPI, hot-plug, every-monitor and high refresh unvalidated |
+| Fullscreen | Documented foreground/bounds heuristic; monitoring sleeps when hidden | Games/movies matrix unvalidated |
+| Privacy | Local-only; no account, upload, clipboard, microphone samples or arbitrary plugin loading | Explicit QA capture can include current media unless --capture-safe is used |
+| Accessibility | Native lab keyboard controls; island Tab/Enter/Escape; OS reduced-motion setting | Full UIA, text scaling and high contrast remain release gates |
+| Resilience | Provider boundaries, caught media/audio errors, no Windows injection or patching | Provider retry and GPU device-loss recovery pending |
+| Distribution | Portable Windows x64 preview, static compiler runtime | Unsigned; no automatic updater or startup registration |
 
-## Known release blockers
+A conservative moving window region can still intercept clicks just outside the visual edge during motion. The whole canvas is no longer used as the temporary region. It is not a complete cross-process click-through solution.
 
-- During motion the island temporarily uses a larger Win32 input region so the
-  compositor cannot be cropped by stale window geometry. HTTRANSPARENT is not a
-  general cross-process input-forwarding contract. Click-through outside the
-  moving silhouette needs a dedicated input-routing design and testing.
-- GPU device loss currently closes the prototype instead of rebuilding the
-  graphics device; this is safe for Windows but not production-grade resilience.
-- Native Settings is a skeleton. It is not a finished WinUI 3 settings application.
-- Custom island controls do not yet expose a complete UI Automation provider.
-- No active player was available for the live media integration acceptance test.
-
-## Safe future integrations
-
-LibreHardwareMonitor is MPL-2.0 and includes hardware access paths that may need
-privileges/drivers. It is researched, **not bundled or invoked**. Review each sensor
-backend and its dependencies before considering an optional read-only provider.
-G-Helper uses ASUS ACPI/WMI through the ASUS System Control Interface and carries
-GPL-3.0 licensing. It is researched, **not copied or invoked**. Do not probe unknown
-ACPI endpoints, alter ASUS services, or port firmware writes into this project.
-
-Sources: [LibreHardwareMonitor license](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/master/LICENSE),
-[G-Helper license](https://github.com/seerge/g-helper/blob/main/LICENSE),
-[G-Helper FAQ](https://github.com/seerge/g-helper/wiki/FAQ).
+File shelf, clipboard, notification observation, brightness, ROG actions, temperature/fan sensors, camera/microphone indicators, downloads and external plugins are deferred. No placeholder sensor values or fake provider successes are presented. LibreHardwareMonitor and G-Helper remain research references only; no code, driver or firmware interface from either is bundled.

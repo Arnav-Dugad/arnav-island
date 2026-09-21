@@ -1,0 +1,23 @@
+Add-Type -AssemblyName System.Drawing
+$bitmap=[Drawing.Bitmap]::new(256,256)
+$graphics=[Drawing.Graphics]::FromImage($bitmap)
+$graphics.SmoothingMode=[Drawing.Drawing2D.SmoothingMode]::AntiAlias
+$graphics.Clear([Drawing.Color]::Transparent)
+$shape=[Drawing.Drawing2D.GraphicsPath]::new()
+$shape.AddArc(17,65,126,126,90,180)
+$shape.AddArc(113,65,126,126,270,180)
+$shape.CloseFigure()
+$base=[Drawing.SolidBrush]::new([Drawing.Color]::FromArgb(255,18,18,22))
+$outline=[Drawing.Pen]::new([Drawing.Color]::FromArgb(255,155,155,167),4)
+$mint=[Drawing.SolidBrush]::new([Drawing.Color]::FromArgb(255,167,220,201))
+$ink=[Drawing.SolidBrush]::new([Drawing.Color]::FromArgb(255,235,235,241))
+$graphics.FillPath($base,$shape);$graphics.DrawPath($outline,$shape)
+$graphics.FillEllipse($mint,54,114,28,28)
+$graphics.FillRectangle($ink,105,109,88,9);$graphics.FillRectangle($ink,105,138,60,9)
+$stream=[IO.MemoryStream]::new();$bitmap.Save($stream,[Drawing.Imaging.ImageFormat]::Png);$png=$stream.ToArray()
+$path=Join-Path (Split-Path $PSScriptRoot -Parent) 'src\App\ArnavIsland.ico'
+$file=[IO.File]::Create($path);$writer=[IO.BinaryWriter]::new($file)
+$writer.Write([uint16]0);$writer.Write([uint16]1);$writer.Write([uint16]1)
+$writer.Write([byte]0);$writer.Write([byte]0);$writer.Write([byte]0);$writer.Write([byte]0)
+$writer.Write([uint16]1);$writer.Write([uint16]32);$writer.Write([uint32]$png.Length);$writer.Write([uint32]22);$writer.Write($png)
+$writer.Dispose();$stream.Dispose();$graphics.Dispose();$bitmap.Dispose();$shape.Dispose();$base.Dispose();$outline.Dispose();$mint.Dispose();$ink.Dispose()

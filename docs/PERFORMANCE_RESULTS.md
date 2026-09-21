@@ -1,4 +1,35 @@
-# Measured performance — 2026-09-21
+# Arnav Island v0.2 measurements — 2026-09-21
+
+Final Release executable SHA-256: `d9e80321f9db8b950423dd01a6893006dc4fa519d3252fc5c837aea7e25a7382`.
+
+| Measurement | Observed |
+|---|---:|
+| Core checks | 11,682 passed |
+| Dashboard/timer/settings checks | 21 passed |
+| CTest suites | 3/3 passed, including real audio/media/system lifecycle |
+| Native interaction regression | Passed hover on/off, leave close, navigation, timer actions, hit targets |
+| 200 interrupted morphs | 15.9604 s wall time |
+| Stress process CPU time | 0.390625 s |
+| Stress CPU, fraction of one logical core | 2.45% |
+| Stress working set | 69.49 MiB |
+| Stress composition commits / surface redraws | 206 / 9 |
+| Stress pending activities at finish | 0 |
+| Idle duration, media provider disabled | 15.0044312 s |
+| Idle CPU-time increase | 0 s |
+| Idle working set | 63.71 MiB |
+| Visible Overview duration, media provider disabled | 15.0115055 s |
+| Visible Overview process CPU time | 0.203125 s |
+| Visible Overview CPU, fraction of one logical core | 1.35% |
+| Visible Overview working set | 69.96 MiB |
+
+Raw v0.2 records and reviewed app-only screenshots are in [evidence/v0.2](evidence/v0.2/). The media provider was disabled for idle/dashboard release measurements and screenshots to exclude private playback. The stress run used normal providers. A separate earlier idle sample with media enabled recorded 0 measurable CPU seconds over 15.018 s and 69.80 MiB, but is not the final-binary acceptance sample.
+
+These are short process-counter samples. Zero means below measurement resolution, not zero energy use. Process CPU excludes DWM/GPU work. No presented FPS, frame-time percentile, GPU utilization or battery-life claim is made. Physical high-refresh displays, mixed DPI, GPU-loss recovery and multi-day behavior remain unverified. Mathematical high-refresh tests do not establish visual smoothness.
+
+All five views, video layout and Animation Lab were visually inspected. A real active media session also supplied a thumbnail and transport state during local inspection; private metadata/artwork were excluded from the published evidence. Empty video state wording was corrected after inspection so it no longer claims paused playback without a session.
+
+The original v0.1 measurements below remain historical context and do not describe the redesigned dashboard.
+# Historical v0.1 baseline — 2026-09-21
 
 These results cover a short engineering-prototype run, not production acceptance.
 Raw records are in [evidence](evidence/).

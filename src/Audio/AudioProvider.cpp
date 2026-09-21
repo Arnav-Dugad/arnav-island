@@ -36,7 +36,7 @@ void AudioProvider::run(){
         check(enumerator->RegisterEndpointNotificationCallback(devices.Get()));
         bool done=false;
         while(!done){
-            int requested=requested_.exchange(-1);
+            int requested=requested_.exchange(-1);bool mute=muteRequest_.exchange(false);if(mute&&endpoint){BOOL current=FALSE;if(SUCCEEDED(endpoint->GetMute(&current)))endpoint->SetMute(!current,nullptr);}
             if(requested>=0&&endpoint) endpoint->SetMasterVolumeLevelScalar(requested/100.f,nullptr);
             else {
                 if(endpoint){endpoint->UnregisterControlChangeNotify(volume.Get());endpoint.Reset();}
@@ -55,4 +55,3 @@ void AudioProvider::run(){
     CoUninitialize();
 }
 }
-

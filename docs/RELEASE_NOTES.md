@@ -1,21 +1,20 @@
-# v0.1.0 — Native motion prototype
+# Arnav Island v0.2.0-preview.1
 
-First runnable engineering prototype, not a production release or completed
-Milestone 1. Windows 11 x64; no installer or administrator privileges required.
+A redesigned native island with five clean views, configurable hover opening, real system statistics, music/video layouts with Windows media artwork, volume/mute controls and focus timers.
 
-Contains a DirectComposition island, velocity-preserving springs, geometry
-morphing, pointer feedback, real system volume/battery, GSMTC metadata foundation,
-Animation Lab, Settings skeleton and local diagnostics. No cloud or paid APIs.
+Download the Windows x64 ZIP, extract it, and run ArnavIsland.exe. No installer or account is required. The executable is unsigned and this is a preview.
 
-Extract the archive, then open `app/NexusIsland.exe`. Right-click the island or
-tray icon for Animation Lab, Settings, diagnostics and Exit. Scroll over the
-island changes system volume. Only one instance runs at a time.
+Highlights:
+- Overview, Media, System, Focus and Settings navigation.
+- Hover-to-open, adjustable delay, delayed close and Pin.
+- Player-provided thumbnails, timeline and supported transport buttons; Auto/Music/Video layout selection.
+- CPU/history, RAM, network traffic, disk space, uptime and logical processor count.
+- System volume/mute and direct Windows settings shortcuts.
+- Focus timer, break timer and stopwatch.
+- Settings migration, local logging, native Animation Lab, privacy-safe QA captures and regression tests.
 
-Validation: release build, two test suites, 11,682 core checks, five real provider
-start/stop cycles, 200-interruption stress run and reviewed native screenshots.
-See `docs/PERFORMANCE_RESULTS.md` for measurements and their limits.
+Compatibility depends on the media player's Windows SMTC integration. Netflix, JioHotstar, Prime Video, Apple TV and every browser/player combination are not universally supported or individually certified. No scraping is used.
 
-Known release gates include transient click-through routing, full accessibility,
-mixed-DPI Settings layout, device-loss recovery, active-player testing, artwork
-and complete frame/GPU instrumentation. See `docs/FEATURE_MATRIX.md` and
-`docs/REPORT.md`. No high-refresh or multi-day reliability claim is made.
+Known preview limits: incomplete screen-reader/high-contrast/text-scale support, unvalidated high refresh and mixed displays, conservative input envelope during motion, no GPU device-loss recovery, no code signing. No hardware temperatures, file shelf, clipboard capture, notification interception, cloud or invasive OEM control.
+
+See the repository report, measured performance records and feature matrix. Future ideas are listed separately from implemented features.

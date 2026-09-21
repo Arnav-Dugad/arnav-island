@@ -12,11 +12,36 @@ struct Async : IInspectable {
     virtual HRESULT STDMETHODCALLTYPE get_Completed(IUnknown**)=0;
     virtual HRESULT STDMETHODCALLTYPE GetResults(IInspectable**)=0;
 };
+struct EnumReference : IInspectable {virtual HRESULT STDMETHODCALLTYPE get_Value(INT32*)=0;};
+struct StreamReference : IInspectable {virtual HRESULT STDMETHODCALLTYPE OpenReadAsync(Async**)=0;};
 struct Properties : IInspectable {
     virtual HRESULT STDMETHODCALLTYPE get_Title(HSTRING*)=0;
     virtual HRESULT STDMETHODCALLTYPE get_Subtitle(HSTRING*)=0;
     virtual HRESULT STDMETHODCALLTYPE get_AlbumArtist(HSTRING*)=0;
     virtual HRESULT STDMETHODCALLTYPE get_Artist(HSTRING*)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_AlbumTitle(HSTRING*)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_TrackNumber(INT32*)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_Genres(IInspectable**)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_AlbumTrackCount(INT32*)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_PlaybackType(EnumReference**)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_Thumbnail(StreamReference**)=0;
+};
+struct Controls : IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE Play(BYTE*)=0;virtual HRESULT STDMETHODCALLTYPE Pause(BYTE*)=0;
+    virtual HRESULT STDMETHODCALLTYPE Stop(BYTE*)=0;virtual HRESULT STDMETHODCALLTYPE Record(BYTE*)=0;
+    virtual HRESULT STDMETHODCALLTYPE Forward(BYTE*)=0;virtual HRESULT STDMETHODCALLTYPE Rewind(BYTE*)=0;
+    virtual HRESULT STDMETHODCALLTYPE Next(BYTE*)=0;virtual HRESULT STDMETHODCALLTYPE Previous(BYTE*)=0;
+    virtual HRESULT STDMETHODCALLTYPE ChannelUp(BYTE*)=0;virtual HRESULT STDMETHODCALLTYPE ChannelDown(BYTE*)=0;
+    virtual HRESULT STDMETHODCALLTYPE Toggle(BYTE*)=0;
+};
+struct PlaybackInfo : IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE get_Controls(Controls**)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_Status(INT32*)=0;
+};
+struct Timeline : IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE get_Start(INT64*)=0;virtual HRESULT STDMETHODCALLTYPE get_End(INT64*)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_MinSeek(INT64*)=0;virtual HRESULT STDMETHODCALLTYPE get_MaxSeek(INT64*)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_Position(INT64*)=0;virtual HRESULT STDMETHODCALLTYPE get_LastUpdated(INT64*)=0;
 };
 struct Session : IInspectable {
     virtual HRESULT STDMETHODCALLTYPE get_SourceAppUserModelId(HSTRING*)=0;

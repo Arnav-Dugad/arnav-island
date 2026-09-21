@@ -6,7 +6,7 @@ memory. Audio monitoring reads volume/mute, not microphone samples. There is no
 loopback audio recording, screen recording, clipboard history, notification
 observation, file content collection or sensor driver in normal operation.
 
-Local data lives under `%LOCALAPPDATA%/NexusIsland`:
+Local data lives under `%LOCALAPPDATA%/ArnavIsland`:
 
 - `settings.nexus`: versioned preferences; temporary file then atomic replacement.
 - `events.log` and `events.previous.log`: bounded structured event diagnostics.
@@ -25,3 +25,5 @@ documentation and reviewed project artifacts, not the user's local runtime data.
 Future clipboard, notifications, calendar and plugins require separate opt-in
 designs. No global camera/microphone indicator is shown without trustworthy OS
 evidence. No third-party native plugin execution is enabled.
+
+v0.2: artwork is decoded in memory, never logged or stored in normal use. System monitoring reads aggregate OS counters, not network packet contents. Version 1 settings are copied from the old NexusIsland directory only if new settings do not exist. Legacy files are retained. `--capture-safe` disables the media provider for that QA run; release screenshots use it. `--ui-test` moves and restores the cursor and runs only when explicitly requested. No normal startup input injection occurs.

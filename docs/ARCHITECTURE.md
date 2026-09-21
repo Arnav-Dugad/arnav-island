@@ -1,4 +1,4 @@
-# Nexus Island architecture
+# Arnav Island architecture
 
 ## Decision record — 2026-09-21
 
@@ -92,3 +92,15 @@ gate; native settings controls are the accessible fallback in this prototype.
 - https://learn.microsoft.com/en-us/windows/win32/api/endpointvolume/nn-endpointvolume-iaudioendpointvolumecallback
 - https://learn.microsoft.com/en-us/windows/apps/develop/notifications/app-notifications/notification-listener
 - https://learn.microsoft.com/en-us/windows/win32/wmicoreprov/wmimonitorbrightnessmethods
+
+## v0.2 dashboard and provider changes
+
+Five explicit Page states share the retained island body. Renderer-owned HitTarget rectangles define the same bounds used for pointer input. Disabled media controls cannot be invoked. FocusClock holds elapsed-time state independently of visuals. Settings v2 reads v1 and migrates the legacy settings file by copy into ArnavIsland's local directory.
+
+SystemProvider sleeps on events while hidden. A 400 ms visibility delay avoids repeated queries during rapid open/close motion. CPU derives from GetSystemTimes, RAM from GlobalMemoryStatusEx, traffic from GetIfTable2's active physical adapters, disk space from GetDiskFreeSpaceEx, uptime from GetTickCount64. Data is sampled off the UI thread; no sensor driver is loaded. CPU on systems with more than 64 logical processors is limited to the calling processor group.
+
+Media decodes the public Thumbnail stream through CreateStreamOverRandomAccessStream and WIC on its worker, caps input dimensions and output to 512 pixels, and caches artwork across unchanged tracks. The public PlaybackType selects music/video, with an explicit override for unknown sessions. PlaybackInfoChanged and TimelinePropertiesChanged are subscribed. A player failure remains isolated; robust retries are future work.
+
+Native Win32 hit regions use a conservative 90 ms look-ahead envelope during motion, updated at 30 ms intervals and stopped when settled. This avoids the previous canvas-wide input block. It trades a small transient input margin for unclipped compositor animation; it is not a general click-through guarantee. Geometry animation is still compositor-driven, not sampled by this hit-region timer.
+
+Primary references: [GSMTC media properties](https://learn.microsoft.com/en-us/uwp/api/windows.media.control.globalsystemmediatransportcontrolssessionmediaproperties), [stream interop](https://learn.microsoft.com/en-us/windows/win32/api/shcore/nf-shcore-createstreamoverrandomaccessstream), [GetSystemTimes](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getsystemtimes), [GetIfTable2](https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-getiftable2).

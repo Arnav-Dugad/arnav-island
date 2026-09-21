@@ -13,9 +13,10 @@ class LocalStore {
 public:
     std::filesystem::path directory;
     LocalStore() {
-        PWSTR path=nullptr;check(SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&path));directory=std::filesystem::path(path)/L"NexusIsland";CoTaskMemFree(path);
+        PWSTR path=nullptr;check(SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&path));directory=std::filesystem::path(path)/L"ArnavIsland";CoTaskMemFree(path);
         std::filesystem::create_directories(directory);
-        worker_=std::thread([this]{for(;;){std::function<void()> job;{std::unique_lock lock(mutex_);cv_.wait(lock,[&]{return closing_||!work_.empty();});if(closing_&&work_.empty())break;job=std::move(work_.front());work_.pop_front();}try{job();}catch(...){OutputDebugStringW(L"Nexus Island: local storage operation failed\n");}}});
+        auto legacy=directory.parent_path()/L"NexusIsland"/L"settings.nexus";if(!std::filesystem::exists(directory/L"settings.nexus")&&std::filesystem::exists(legacy))try{std::filesystem::copy_file(legacy,directory/L"settings.nexus");}catch(...){/* Fall back to defaults; never overwrite legacy data. */}
+        worker_=std::thread([this]{for(;;){std::function<void()> job;{std::unique_lock lock(mutex_);cv_.wait(lock,[&]{return closing_||!work_.empty();});if(closing_&&work_.empty())break;job=std::move(work_.front());work_.pop_front();}try{job();}catch(...){OutputDebugStringW(L"Arnav Island: local storage operation failed\n");}}});
     }
     ~LocalStore(){{std::lock_guard lock(mutex_);closing_=true;}cv_.notify_one();if(worker_.joinable())worker_.join();}
     void submit(std::function<void()> f) {{std::lock_guard lock(mutex_);if(work_.size()<256)work_.push_back(std::move(f));}cv_.notify_one();}

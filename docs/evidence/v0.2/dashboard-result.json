@@ -1,0 +1,8 @@
+{
+  "scenario": "visible Overview with 1 Hz statistics; media provider disabled",
+  "elapsed_seconds": 15.0115055,
+  "cpu_seconds": 0.203125,
+  "single_core_percent": 1.353128771794408,
+  "working_set_bytes": 73359360,
+  "peak_working_set_bytes": 73789440
+}

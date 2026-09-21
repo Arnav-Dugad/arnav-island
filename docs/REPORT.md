@@ -1,79 +1,30 @@
-# Nexus Island — development report
+# Arnav Island v0.2 development report
 
 ## Delivered
 
-A real, locally running C++23 Windows application was researched, implemented,
-built, tested and visually inspected. It uses Win32, DirectComposition,
-Direct2D/DirectWrite and a small D3D11 interop device. No web runtime, cloud
-service, paid API, account, kernel driver or system patch is required.
+The application is now named **Arnav Island**. A native five-view dashboard replaces the original single-panel prototype: Overview, Media, System, Focus and Settings. The visual treatment uses restrained monochrome surfaces, clearer type hierarchy, consistent rounded controls and more breathing room. The original compositor spring engine remains responsible for the persistent body, size and corner morphs.
 
-The island is one retained physical object. Analytic springs preserve current
-position and velocity on interruption. DWM samples uploaded physical curves
-independently of an application render loop. The implementation includes
-compact/expanded states, continuous size/corner morphs, hover/press feedback,
-drag resistance and settling, real volume/mute and battery data, a GSMTC metadata
-provider, event priority/coalescing, native Animation Lab, Settings skeleton,
-optional basic performance HUD, local versioned settings and bounded logging.
+Hover opening is on by default with a configurable delay. Leaving closes the island after 650 ms; Pin keeps it open. Controls now expose real actions: media transport, volume/mute, page selection, timers and Windows settings links. Tab/Shift+Tab and Enter/Space are supported after activation. This is not yet a complete accessible surface.
 
-Desktop delivery contains source, documentation and `app/NexusIsland.exe`.
-The executable is portable on supported Windows 11 systems and requires no
-administrator privileges. The source can be rebuilt with the existing toolchain.
+Media uses Windows GSMTC metadata and WIC thumbnail decoding on the provider worker. Music and video have different layouts. Playback type drives Auto, with a manual override for ambiguous browser sessions. The timeline uses reported position/duration and extrapolates only while playing. Unsupported transport actions are disabled. A real active media session supplied artwork and playback state during this run; its private title and thumbnail were not included in the release evidence. Named streaming services have not all been individually tested.
 
-## Important architecture decision
+The System provider reports OS CPU, RAM, network traffic, disk space, logical processor count and uptime. It samples once per second only while Overview/System is visible, after a 400 ms activation delay. Disk space refreshes less often. A first stress run revealed repeated wakeups during fast reversals; delaying monitoring reduced observed process CPU time from 1.35938 s to 0.28125 s for approximately 16 seconds of stress. The first sample also included a QA capture, so this is a practical iteration comparison, not a controlled scientific benchmark.
 
-The machine did not have MSVC, the Windows SDK, Windows App SDK development
-packages or a .NET SDK. The available MinGW compiler had public DirectComposition
-and Win32 headers. That enabled a runnable native compositor prototype without a
-large tooling install. This is a documented alternative to the preferred
-C++/WinRT/Windows.UI.Composition strategy, not a claim that the preferred stack
-was installed. The media provider uses isolated public WinRT ABI declarations
-checked against Microsoft's metadata projection.
+Focus has a 25-minute timer, 5-minute break and stopwatch with pause/reset. Countdown state uses elapsed time rather than counting frames. Settings v2 migrates old preferences by copy, saves atomically, and retains the legacy files. All operation remains local.
 
-See [architecture](ARCHITECTURE.md) for API research and official references.
+## Validation
 
-## Evidence
+- Native Release build completed with installed GCC/MinGW; no new paid dependency or runtime.
+- Core spring/orchestration tests, real audio/media/system provider lifecycle tests, and new dashboard/timer/settings tests pass.
+- Native interaction regression exercises hover open, leave close, disabled hover, navigation, timer actions and hit targets. The test moves the cursor and restores it; external pointer movement can interfere.
+- Actual native Overview, Media empty state, System, Focus and Settings captures inspected. Release images explicitly disable the media provider so private playback is excluded.
+- Actual active-session thumbnail rendering inspected locally. No unsupported per-service compatibility claim is made.
+- Repeatable retarget stress and idle/dashboard process counters recorded in PERFORMANCE_RESULTS.md. No unmeasured FPS, GPU-use or power claim.
 
-- Release build succeeded with the locally installed compiler.
-- 11,682 core assertions passed, including retarget continuity, all damping
-  regimes, curve precision, refresh-independent sampling, geometry, event storms,
-  queue bounds, preemption and settings validation.
-- Real audio and media workers survived five start/stop cycles. Windows media
-  manager connection succeeded; no active player was available for track tests.
-- A 200-interruption compositor stress run completed with zero queued activities.
-- Idle CPU counter did not measurably increase during a 15-second sample.
-- Real app screenshots exposed renderer defects, which were corrected and
-  recaptured. Reviewed screenshots contain no unrelated desktop content.
+## Release scope and remaining work
 
-Exact measurements and limitations are in [performance results](PERFORMANCE_RESULTS.md).
+This is a **public preview**, not completed Milestone 1 or an Apple-quality certification. It is substantially more useful and readable than v0.1, but shared-element artwork motion, deeply animated microinteractions, native acrylic, a complete UI Automation tree, high-contrast/text-scale acceptance, high-refresh capture and long-running resilience still need work.
 
-## Honest status
+The window now uses a small moving conservative hit envelope instead of covering the entire canvas during motion. Updating that Win32 region requires a 30 ms timer only while moving; compositor animation itself is independent of that timer. A small area beyond the silhouette can still intercept input during motion. GPU device loss still closes the app instead of rebuilding the device. Hardware temperatures, invasive OEM controls, file shelf, clipboard, external notifications and arbitrary plugins remain absent.
 
-This is a **Milestone 1 engineering prototype**, not a declaration that the full
-requested application or Milestone 1 acceptance criteria are complete. The
-numerical motion foundation and compositor execution are in place. The level of
-polish requested still needs live high-refresh testing and interaction refinement.
-
-Primary release gates are transient click-through outside animated geometry,
-full island accessibility, mixed-DPI Settings layout, GPU device-loss recovery,
-active-player media testing, shared-element artwork, complete developer metrics
-and a longer soak. The current fullscreen policy is a heuristic. Settings is a
-native skeleton, not the finished WinUI 3 application. No unsupported sensor
-readings or system integrations are presented as working.
-
-File Shelf, notification listener, clipboard, downloads, brightness, productivity,
-ROG hardware actions and arbitrary plugins were deliberately not added before
-the motion milestone is stable. See the complete [feature matrix](FEATURE_MATRIX.md).
-
-## Next engineering work
-
-1. Separate transparent visual output from robust cross-process input routing.
-2. Implement full UI Automation semantics and DPI-aware settings layout.
-3. Add device-loss reconstruction and provider reconnect/backoff.
-4. Validate live GSMTC metadata; add artwork, transport controls and shared motion.
-5. Capture presented-frame timing on real 60/120/165 Hz hardware under load.
-6. Complete Milestone 1 acceptance before adding broader providers or File Shelf.
-
-Source and this report are published in the private
-[Nexus Island repository](https://github.com/Arnav-Dugad/nexus-island).
-Local settings, logs and initial desktop captures are excluded.
-
+The distribution is a portable, unsigned Windows x64 ZIP with license and notices. Source, safe screenshots, measured evidence and this report are intended for the requested GitHub release. Runtime logs, local settings, private media captures and unrelated Desktop files are excluded. See QUICK_START.md for use and FUTURE_IDEAS.md for the next design candidates.

@@ -1,0 +1,8 @@
+{
+  "scenario": "settled idle, media provider disabled",
+  "elapsed_seconds": 15.0044312,
+  "cpu_seconds": 0.0,
+  "single_core_percent": 0.0,
+  "working_set_bytes": 66809856,
+  "peak_working_set_bytes": 71372800
+}
