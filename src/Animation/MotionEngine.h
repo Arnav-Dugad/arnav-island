@@ -7,6 +7,9 @@
 
 namespace nexus {
 struct SpringSpec { double mass=1, stiffness=390, damping=36; };
+namespace MotionTokens {
+inline constexpr SpringSpec artwork{.7,420,30},artworkOpacity{1,500,44},icon{.65,640,35},iconPosition{.7,500,35},navigation{.8,450,33},handoff{1,120,22},ring{1,150,25},content{1,380,37};
+}
 enum class MotionPreset { Balanced, Fluid, Playful, Snappy, Calm };
 inline SpringSpec preset(MotionPreset p) {
     switch(p) {
@@ -19,6 +22,32 @@ inline SpringSpec preset(MotionPreset p) {
 }
 struct PhysicalState { double position=0, velocity=0; };
 struct CubicSegment { double time, p, v, quadratic, cubic; };
+
+template<class Sample,class Settled>
+inline std::vector<CubicSegment> approximateCurve(Sample sample,Settled settled,double now,double& duration){
+        std::vector<CubicSegment> result;
+        double t=0;
+        while(t<8) {
+            double h=.032;
+            auto a=sample(now+t);
+            double b2=0,b3=0;
+            for(;;) {
+                auto b=sample(now+t+h);
+                b2=(3*(b.position-a.position)/h-2*a.velocity-b.velocity)/h;
+                b3=(2*(a.position-b.position)/h+a.velocity+b.velocity)/(h*h);
+                bool accurate=true;
+                for(double f : {.25,.5,.75}) {
+                    double u=h*f,p=a.position+u*(a.velocity+u*(b2+u*b3));
+                    if(std::abs(p-sample(now+t+u).position)>.002) accurate=false;
+                }
+                if(accurate||h<.001) break;
+                h*=.5;
+            }
+            result.push_back({t,a.position,a.velocity,b2,b3});t+=h;
+            if(settled(now+t)) break;
+        }
+        duration=t;return result;
+}
 
 class Spring {
     PhysicalState initial_{};
@@ -60,28 +89,7 @@ public:
     bool settled(double now) const {auto s=sample(now);return std::abs(s.position-target_)<.015&&std::abs(s.velocity)<.08;}
     // Adaptive cubic Hermite approximation. This is a time curve, never a frame schedule.
     std::vector<CubicSegment> curve(double now,double& duration) const {
-        std::vector<CubicSegment> result;
-        double t=0;
-        while(t<8) {
-            double h=.032;
-            auto a=sample(now+t);
-            double b2=0,b3=0;
-            for(;;) {
-                auto b=sample(now+t+h);
-                b2=(3*(b.position-a.position)/h-2*a.velocity-b.velocity)/h;
-                b3=(2*(a.position-b.position)/h+a.velocity+b.velocity)/(h*h);
-                bool accurate=true;
-                for(double f : {.25,.5,.75}) {
-                    double u=h*f,p=a.position+u*(a.velocity+u*(b2+u*b3));
-                    if(std::abs(p-sample(now+t+u).position)>.002) accurate=false;
-                }
-                if(accurate||h<.001) break;
-                h*=.5;
-            }
-            result.push_back({t,a.position,a.velocity,b2,b3});t+=h;
-            if(settled(now+t)) break;
-        }
-        duration=t;return result;
+        return approximateCurve([this](double t){return sample(t);},[this](double t){return settled(t);},now,duration);
     }
 };
 inline double rubberBand(double displacement,double limit=90) {
@@ -93,8 +101,8 @@ inline Geometry geometry(IslandState s) {
     switch(s) {
     case IslandState::Dot:return {44,28,14};
     case IslandState::Compact:return {196,34,17};
-    case IslandState::Expanded:return {420,300,22};
-    case IslandState::Dashboard:return {420,300,22};
+    case IslandState::Expanded:return {420,334,22};
+    case IslandState::Dashboard:return {420,334,22};
     case IslandState::FileDrop:return {440,240,32};
     case IslandState::Media:return {420,176,28};
     case IslandState::Hardware:return {440,230,28};
@@ -109,8 +117,12 @@ struct MotionEngine {
     SpringSpec body=preset(MotionPreset::Balanced);
     bool reduced=false;int edge=0;double compactWidth=196,corner=22;
     Spring artX{12},artY{6},artSize{22},artOpacity{0},pulse{0},hoverX{20},hoverY{38},hoverW{40},hoverH{26},hoverOpacity{0},contentShift{0};
+    PhysicalState visibility(double now,bool compactHeader=false)const {
+        auto h=height.sample(now),a=reveal.sample(now);double low=compactHeader?(edge?150.:34.):230.,range=compactHeader?100.:90.;double q=std::clamp((h.position-low)/range,0.,1.),gate=q*q*(3-2*q),speed=(q>0&&q<1)?6*q*(1-q)*h.velocity/range:0;
+        if(compactHeader)return {1-gate,-speed};return {gate*a.position,speed*a.position+gate*a.velocity};
+    }
     void target(IslandState state,double now,bool hover=false,bool pressed=false) {
-        auto g=geometry(state);if(state==IslandState::Compact)g=edge?Geometry{64,150,22}:Geometry{compactWidth,34,17};else if(state==IslandState::Expanded||state==IslandState::Dashboard)g={420,300,corner};
+        auto g=geometry(state);if(state==IslandState::Compact)g=edge?Geometry{64,150,22}:Geometry{compactWidth,34,17};else if(state==IslandState::Expanded||state==IslandState::Dashboard)g={420,334,corner};
         if(reduced){width.reset(g.width,now);height.reset(g.height,now);radius.reset(g.radius,now);reveal.retarget(state!=IslandState::Compact&&g.height>110?1:0,now,{1,1800,85});return;}
         auto s=reduced?SpringSpec{1,1800,85}:body;
         width.retarget(g.width+(hover?4:0)-(pressed?5:0),now,s);

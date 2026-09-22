@@ -1,0 +1,26 @@
+[
+  {
+    "scenario": "idle",
+    "media_provider": "disabled for reproducibility",
+    "elapsed_seconds": 15.0057681,
+    "cpu_seconds": 0.0,
+    "single_core_percent": 0.0,
+    "working_set_bytes": 64823296
+  },
+  {
+    "scenario": "dashboard",
+    "media_provider": "disabled for reproducibility",
+    "elapsed_seconds": 15.0129318,
+    "cpu_seconds": 0.09375,
+    "single_core_percent": 0.6244616391316717,
+    "working_set_bytes": 71000064
+  },
+  {
+    "scenario": "compact-timer",
+    "media_provider": "disabled for reproducibility",
+    "elapsed_seconds": 15.0073276,
+    "cpu_seconds": 0.171875,
+    "single_core_percent": 1.1452738594178486,
+    "working_set_bytes": 69480448
+  }
+]

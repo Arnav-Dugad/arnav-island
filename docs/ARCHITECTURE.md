@@ -122,3 +122,19 @@ Startup uses HKCU Run and the quoted current executable path. The install step r
 Native acrylic uses [DWMSBT_TRANSIENTWINDOW](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwm_systembackdrop_type), available from Windows 11 build 22621. Visual testing found DWM's backdrop did not obey the shaped host region. A separate unactivated material host is therefore confined to the expanded rectangular content interior; the island perimeter stays opaque. It hides while geometry moves, on collapse/fullscreen, battery saver or high contrast. No undocumented SetWindowCompositionAttribute is used.
 
 Other API references: [RegisterDragDrop](https://learn.microsoft.com/en-us/windows/win32/api/ole2/nf-ole2-registerdragdrop), [SHCreateDataObject](https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/nf-shlobj_core-shcreatedataobject), [Run registry keys](https://learn.microsoft.com/en-us/windows/win32/setupapi/run-and-runonce-registry-keys).
+
+## v0.4 retained icon and artwork layers
+
+`Design/Icons.h` contains the original vector symbol library; `Design/Layout.h` contains layout permutation, metric selection and coordinate helpers. `Composition/Details.cpp` owns retained icon visuals, icon feedback, artwork handoff and ring markers. Navigation views retain identity across reordering, and hit tests use their current physical positions.
+
+Artwork handoff keeps two 256×256 CPU BGRA buffers and two retained GPU surfaces. On a changed cover, the visible blend is flattened once; opacity then runs on DirectComposition. No bitmap readback, frame-by-frame CPU blending or queue of outgoing covers is used. The change-time resample is bounded but currently happens on the UI thread; it is not falsely described as worker-thread work.
+
+The renderer converts a smooth product of body-height visibility and content opacity into adaptive compositor curves. It prevents content from crossing traveling artwork during reversals. Stable body/content positions snap to pixels; moving positions remain continuous. The native visual ordering follows [Microsoft's documented AddVisual behavior](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositionvisual-addvisual), including its special null-reference ordering.
+
+Settings v4 stores validated navigation and metric arrays, with conservative defaults for corrupt layouts. Existing unrelated settings survive migration. QA runs use synthetic artwork only when explicitly requested with capture flags, never as a fallback for unavailable player artwork.
+
+The v0.4 compact refresh path marks expanded content dirty rather than drawing it off-screen. A transition to expanded consumes that dirty state once. This retains fresh timer/media information on open while avoiding hidden icon/text surface work.
+
+## Foreground integration
+
+`AppSwitchPolicy` separates panel dismissal and fullscreen geometry decisions from Win32 plumbing. Foreground changes dismiss only eligible unpinned panels through existing velocity-preserving body springs. Out-of-context `EVENT_OBJECT_LOCATIONCHANGE` events are filtered to the current foreground window and debounced by a one-shot 120 ms timer; there is no periodic foreground polling. DWM visible bounds determine full-monitor coverage. See Microsoft's [GetWindowRect documentation](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getwindowrect) and [window-change monitoring example](https://devblogs.microsoft.com/oldnewthing/20210104-00/?p=104656). Hooks are unregistered at shutdown. No process names or window titles are retained.

@@ -1,0 +1,16 @@
+{
+  "version": "0.4.0-preview.1",
+  "executable_sha256": "e69944b7ae9b358cebb8bf8a25f0fb1f545b3ef3f6485b97952817c8d8517849",
+  "core_checks": 11682,
+  "model_checks": 1244,
+  "ctest_suites_passed": 3,
+  "native_interaction": "PASS",
+  "motion_capture_frames": 10,
+  "fixture": "Original local QA artwork, never real playback",
+  "unmeasured": [
+    "high-refresh frame pacing",
+    "GPU utilization",
+    "input-to-photon latency",
+    "multi-day soak"
+  ]
+}

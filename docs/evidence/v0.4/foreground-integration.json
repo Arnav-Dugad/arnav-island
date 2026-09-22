@@ -1,0 +1,12 @@
+{
+  "status": "INCONCLUSIVE",
+  "reason": "QA helper did not obtain foreground activation; visibility samples cannot establish behavior",
+  "attempt": {
+    "normal_app_visible": false,
+    "fullscreen_hidden": true,
+    "foreground_unchanged": false,
+    "restored_after_resize": false
+  },
+  "unit_policy": "PASS",
+  "native_policy": "PASS"
+}

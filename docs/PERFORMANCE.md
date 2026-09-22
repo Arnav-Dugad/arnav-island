@@ -20,3 +20,9 @@ The HUD reports process memory, DWM refresh rate, compositor commit count and ac
 Required future acceptance: high-refresh frame pacing, actual presentation latency, UI stalls under heavy load, GPU-loss recovery, WARP, integrated-only laptops, mixed DPI, multi-day leaks and battery drain. No claim of Apple-level motion quality is made from compilation or numerical tests alone.
 
 v0.3 avoids full dashboard redraw on pure expand/collapse reversals. The DWM material host only exists after an expanded panel requests glass; it hides during movement. No steady animation timer runs for settled hover highlights, artwork, or charging. Motion is uploaded to DirectComposition as time curves. See PERFORMANCE_RESULTS.md for measured process counters and explicit unmeasured metrics.
+
+## v0.4 rendering policy
+
+Icon assets are cached per retained slot; pointer feedback changes compositor transforms. Artwork work is bounded to cover changes. Full dashboard redraws are skipped while compact; timer ticks update the compact header/rings and mark the hidden content dirty. Opening performs one fresh content render. No background frame callback or continuous decorative loop was added.
+
+The measurement loop separately records settled idle, visible Home, compact active timer and 200 rapid geometry retargets. All are process counters, with actual media disabled for reproducibility. The compact timer optimization was made after observing avoidable hidden content repaint cost.

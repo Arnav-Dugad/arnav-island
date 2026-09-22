@@ -113,3 +113,20 @@ The stress run made 405 compositor commits and 211 surface updates with zero que
 A zero CPU delta means below process-counter resolution during this short idle interval; it does not prove zero power use. GPU activity, input-to-photon latency, dropped frames, high-refresh operation, native-glass power impact and multi-day stability were not measured. No live media stress or physical multi-monitor run was performed in this iteration.
 
 Raw evidence: `evidence/v0.3/process-counters.json`, `retarget.json`, `tests.txt`, `ui-test.txt`, `audio-adapter.txt`. Core tests report 11,682 checks with 0.00198515 DIP maximum sampled curve error; dashboard/geometry tests report 456 checks. All three CTest suites pass.
+
+## v0.4 measured on 2026-09-22
+
+Final Windows 11 x64 build. Real media was disabled for reproducible process-counter sampling. CPU percentages below are fractions of one logical core, not whole-system CPU or GPU utilization.
+
+| Scenario | Elapsed | CPU time | One-core equivalent | Working set |
+|---|---:|---:|---:|---:|
+| idle | 15.006 s | 0.000000 s | 0.00% | 61.82 MiB |
+| dashboard | 15.013 s | 0.093750 s | 0.62% | 67.71 MiB |
+| compact-timer | 15.007 s | 0.171875 s | 1.15% | 66.26 MiB |
+| 200 interrupted retargets | 15.698 s | 1.187500 s | 7.56% | 64.10 MiB |
+
+The stress run recorded 406 compositor commits, 225 surface redraws and zero queued activities at completion. The compact timer now refreshes its header/rings without redrawing the hidden dashboard. Before that change, the recorded timer sample used 0.250000 CPU seconds; this final sample used 0.171875. These short sequential observations are not a controlled performance comparison.
+
+Zero idle CPU delta means below the process counter resolution during this sample, not zero power use. GPU usage, actual FPS/frame pacing, input latency, high-refresh displays, battery drain and multi-day stability remain unmeasured. Original synthetic cover fixtures support the separately reviewed app-only motion captures; the benchmark does not establish live-player artwork performance.
+
+All three CTest suites pass. Core: 11,682 checks; dashboard/models: 1,244 checks. Native regression passes nine stages including app-switch policy. External foreground/fullscreen integration was inconclusive because the QA helper did not obtain foreground activation; see `evidence/v0.4/foreground-integration.json`. Raw counters and captures are in `evidence/v0.4`.

@@ -1,18 +1,16 @@
-# Next design candidates
+# Further design candidates
 
-These are suggestions, not shipped capabilities.
+These are suggestions, not shipped features.
 
-1. **Track handoff** — outgoing and incoming covers briefly share the same space, with readable title changes.
-2. **True drag absorption** — carry a file's shell drag image into the shelf and reverse the motion on drag-out.
-3. **Glance rings** — choose two tiny, readable indicators for timer, battery or daily focus while collapsed.
-4. **Quiet focus scene** — dim nonessential controls during a running timer and reveal them as your pointer approaches.
-5. **Precision scrubber** — a larger timeline appears under the pointer for accurate media seeking, where supported.
-6. **Personal layouts** — reorder views and select which two statistics appear on Home.
-7. **Display profiles** — remember geometry, scale and fullscreen behavior separately for each monitor.
-8. **Accessible narration** — a full UI Automation tree, text-size adaptation and polished high-contrast palette.
-9. **Shelf previews** — decode small image/file thumbnails asynchronously without opening originals or persisting content.
-10. **Motion recorder** — capture a reproducible transition trace and flag stalls using real present statistics.
-11. **Output handoff** — show connection status and confirmation when switching between speakers and headphones.
-12. **Session continuity** — restore chosen timers and layouts after restart, with explicit shelf-persistence consent.
-13. **Intent-aware hover** — distinguish a pointer passing through from a deliberate approach before expanding.
-14. **Adaptive density** — condense secondary text gracefully as panel width changes instead of clipping labels.
+1. **Cover-derived atmospheres** — a very faint, readable ambient glow behind playing media.
+2. **Precision timeline** — expand the scrubber under the pointer for accurate seeking in supported players.
+3. **Drag absorption** — carry the real shell drag image into and out of the file shelf.
+4. **Shelf previews** — safe asynchronous image thumbnails and recognizable file previews.
+5. **Intent-aware hover** — distinguish a passing pointer from a deliberate approach.
+6. **Display profiles** — remember layouts and fullscreen policies for each monitor.
+7. **Saved scenes** — switch between work, media and focus arrangements with one compact control.
+8. **Accessible narration** — complete screen-reader semantics, text scaling and keyboard focus treatment.
+9. **Output handoff** — clear device connection and route confirmation during headphone/speaker switching.
+10. **Resume your session** — restore chosen timers and layouts after restart with explicit persistence controls.
+11. **Motion diagnostics** — present-time traces and latency measurements for reproducible performance investigations.
+12. **Typography adaptation** — adjust secondary labels gracefully at extreme scale or long translated text.

@@ -32,3 +32,9 @@ v0.2: artwork is decoded in memory, never logged or stored in normal use. System
 The file shelf keeps only file-path/text references in memory. It never copies file contents to a cache, uploads data or deletes originals. Clear and quit discard references. Text dragged into the shelf is explicitly supplied by the user; clipboard history is not monitored.
 
 Audio switching is local and opt-out. Startup writes only this application's HKCU Run value. Settings and local log files remain excluded from source and release archives. Release screenshots use `--capture-safe`, which disables real media sessions. The artwork study screenshot is explicitly labelled synthetic local QA artwork; it is not an active music service.
+
+## v0.4 local data
+
+Personal layout adds only navigation IDs, metric IDs and visual preferences to local settings. Artwork handoff buffers are in memory and discarded with the renderer. No media images, titles, new analytics or network requests are persisted by these features. Synthetic motion-study images are explicit developer diagnostics, excluded from ordinary operation.
+
+Foreground integration observes only transient window handles and visible bounds to apply local fullscreen and dismissal policies. No foreground application history, executable paths, titles or content is saved or transmitted.

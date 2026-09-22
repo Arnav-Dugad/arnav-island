@@ -43,3 +43,13 @@ Artwork X/Y, size and opacity are retained spring channels. Compact/Home/Media d
 Charging uses a one-shot spring opacity impulse; it does not run a perpetual pulse. Magnetic feedback shifts a lightweight highlight by at most two DIPs and compresses it on press. Labels are not transformed, preserving text clarity. Reduced motion disables spatial art retargeting and large body motion. Focus timers refresh once per second only while running; monitoring stops when the relevant view is hidden.
 
 Native acrylic is deliberately interior-only and is hidden while the body is moving. File absorption is represented by immediate shelf insertion, expansion and a settling highlight pulse; no shell drag-image shared-element transition is claimed.
+
+## v0.4 handoff and choreography
+
+`MotionTokens` centralizes artwork, opacity, icon, navigation, ring and content springs. Icon feedback animates retained transforms; the selected navigation indicator retargets continuously. Reordered navigation hit regions follow the current spring positions.
+
+Two artwork surfaces blend with a critically damped scalar. An interrupted change snapshots the visible composite before beginning the new handoff. Unit tests verify byte-identical continuity at the interruption and bounded storage across repeated changes. Cover color velocity is not claimed to be conserved; spatial artwork/body springs retain their physical state.
+
+Content visibility depends smoothly on body height. Expanded content appears only when enough geometry is available, and the compact header appears as the body settles toward compact dimensions. The projected opacity and derivative are approximated with the existing adaptive Hermite curve mechanism, without a UI-thread frame loop. Sparse native motion captures confirmed removal of label/art overlap.
+
+Glance arcs use actual battery or elapsed timer snapshots. Their endpoint markers rotate on compositor springs; there is no fabricated continuously looping ring. Focus arc text/ring redraws at the timer's 1 Hz update cadence.

@@ -1,20 +1,21 @@
-# Arnav Island v0.3.0-preview.1
+# Arnav Island 0.4 — a new visual system
 
-A smaller native Windows 11 island, connected to the top edge with curved shoulders. Hover to open; pin to keep it open. Right-edge docking is optional.
+A native Windows 11 island with a compact connected silhouette, original vector icons and responsive physical motion.
 
-![Arnav Island](docs/evidence/v0.3/expanded.png)
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.4.0-preview.1)
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.3.0-preview.1). Extract the ZIP and run ArnavIsland.exe. No account, subscription, browser engine, cloud or administrator access is required. The binary is unsigned.
+![Arnav Island](docs/evidence/v0.4/artwork.png)
 
-- Seven views: Home, Media, Stats, Focus, Shelf, Audio and Preferences.
-- A 196 × 34 logical-pixel compact body; 420 × 300 expanded panel, configurable scale, width, corners, placement and theme.
-- Retargetable compositor springs, persistent artwork glide, restrained charging response, magnetic button highlights, compact media/timer/volume activities.
-- Native acrylic within the expanded panel, with opaque fallback. The outer silhouette stays solid.
-- Copy-only file and text shelf. Drag an item back out. Scroll through up to 32 entries; clearing removes references, not originals.
-- Live Windows media metadata/artwork, volume, output selection, CPU/RAM/network/disk statistics, battery and focus timers.
-- Five preference groups, automatic local save, sign-in startup toggle and Animation Lab.
+- A redesigned dashboard: clear text hierarchy, aligned statistic cards, centered controls and a labelled icon navigation bar.
+- 35 original vector symbols on one optical grid. Interactive icons lift and compress through compositor springs; the selected navigation indicator travels between destinations.
+- **Track handoff:** outgoing and incoming covers blend while the same artwork object glides between compact and expanded views. Interrupting a blend preserves its visible mixture.
+- **Personal layouts:** reorder all seven navigation items and independently choose three Home statistics. Settings survive restart, and invalid saved orders recover safely.
+- **Glance rings:** battery and timer progress with animated markers; select Battery, Timer, Both or Off.
+- A real draggable volume slider, keyboard volume adjustment, media controls, focus timers, file shelf, audio outputs and local system statistics.
+- Dark/light/system themes, native interior acrylic, configurable hover, startup and reduced motion.
 
-Source is in the private development repository; the separate public repository distributes the app. This remains a preview. See [feature limits](docs/FEATURE_MATRIX.md), [validation report](docs/REPORT.md), [privacy](docs/PRIVACY.md) and [measured performance](docs/PERFORMANCE_RESULTS.md).
+No account, subscription, browser engine, cloud, driver or administrator access is required. Extract the ZIP and run ArnavIsland.exe. The release is unsigned and remains a preview: full accessibility, mixed-DPI/high-refresh hardware acceptance and long-duration reliability are unfinished.
 
-Build using CMake and a C++23 Windows toolchain, or run `scripts/build.ps1 -Test`. Development uses installed MinGW-w64/GCC and DirectComposition rather than adding a Windows App SDK runtime. No source was copied from UsageNotch; its UI was studied as a design reference.
+The public repository distributes binaries and user documentation; source history remains private. [Report](docs/REPORT.md) · [Feature limits](docs/FEATURE_MATRIX.md) · [Design system](docs/DESIGN_SYSTEM.md) · [Performance evidence](docs/PERFORMANCE_RESULTS.md) · [Privacy](docs/PRIVACY.md).
 
+Build with a C++23 Windows toolchain and CMake, or `scripts/build.ps1 -Test`. The current native backend is Win32/DirectComposition/Direct2D/DirectWrite. Original Windows APIs provide system information; unavailable values are not invented.

@@ -1,40 +1,40 @@
-# Arnav Island v0.3 development report
+# Arnav Island v0.4 development report
 
-## Result
+## Delivered
 
-The new default is a smaller top-center island with the reference's curved edge connection. Right-edge docking remains optional. The project continues to use native C++23/Win32/DirectComposition; the UsageNotch folder was read as a visual reference, without copying its code or assets.
+The interface has been reworked around original vector icons, consistent control alignment, physical icon feedback, labelled navigation and a clear title/task/statistics hierarchy. The compact body remains 196 × 34 DIPs; the expanded panel is 420 × 334 DIPs. The expanded height makes space for legible navigation labels rather than squeezing icons into the old button row.
 
-The compact body is 196 × 34 DIPs and the expanded dashboard is 420 × 300 DIPs, with configurable scale. Home, Media, Stats, Focus, Shelf, Audio and Preferences use restrained spacing and small controls. Preferences now contains five groups of controls. The installed app has a Desktop-root shortcut and configurable per-user startup.
+Track handoff now uses two retained artwork surfaces. If another track arrives before the blend finishes, the current visible composite becomes the outgoing image. The new blend begins without reverting to an earlier cover. A shared parent still moves the artwork between compact, Home and Media destinations. Buffer storage is bounded.
 
-The persistent artwork visual moves between compact, Home and Media positions with velocity-preserving spring curves. Palette extraction runs on the media worker. Volume, charging, timer and track activity appear while compact. Hover opening/closing, light/dark/system themes, monitor, edge, width, corner, scale, motion and accent controls are saved locally.
+Personal layouts are implemented: all seven navigation items can be reordered, three distinct Home statistics can be chosen, and Reset layout is separate from resetting preferences. Settings v4 migrates v1–v3 and validates layout permutations. Hit testing follows moving navigation icons rather than their eventual positions.
 
-The shelf accepts files and Unicode text through OLE, holds up to 32 entries, and supports copy-only drag-out. Clear forgets entries and never touches originals. File rows currently show names, not decoded image/file thumbnails. The island responds on entry; pre-entry drag attraction and shell-image absorption are future work.
+Glance rings show real battery and focus-clock progress, with compositor-driven marker rotation. They can show battery, timer, both or neither. The Focus surface also has a larger ring. Interactive navigation/media/audio/shelf icons have physical hover and press responses; static information symbols do not animate continuously. The new volume bar supports pointer dragging and keyboard adjustment.
 
-Audio outputs come from real endpoint enumeration. Optional switching uses an isolated compatibility adapter because Windows does not expose a documented system-default setter. Reselecting the currently selected endpoint succeeded on this laptop. Switching between physical headphones and speakers was not tested. Users can disable compatibility switching and open Windows sound settings.
+## Defects found and corrected during native inspection
 
-Native DWM acrylic required a correction after real UI inspection: its backdrop did not respect the curved window region and spilled outside it. The final material host is confined to the panel interior, with an opaque outer silhouette. Another correction expanded the native input mask by one pixel to avoid cutting away antialiased edge pixels. Material is disabled during body motion, in battery saver/high contrast or when explicitly turned off.
+A rapid expansion reversal allowed artwork to cross fading labels. Expanded text and headers are now gated by the actual body geometry; captures show the cover traveling through an uncluttered surface. Fractional content offsets also kept text slightly blurred after settling. Stable offsets now snap to physical pixels while moving transforms remain continuous.
 
-## Validation and evidence
+The previous media log labelled an empty but connected media session manager as unavailable. This diagnostic classification is corrected. Disabled primary playback controls now use a visibly muted surface.
 
-The final build passes CTest's core physics/orchestrator, provider lifecycle/OLE and dashboard/settings/geometry suites. Native interaction regression covers hover, collapse, disabled hover, page navigation, timers, hit targets, scale/theme/right-edge changes and shelf drop/clear. Audio compatibility reselection returned S_OK. Evidence is under `docs/evidence/v0.3`.
+## Validation
 
-Actual native captures cover compact, Home, light theme, right edge, shelf, audio, settings, media artwork, video layout and 110% application scale. Captures disable real media; the artwork study is explicitly labelled original local QA artwork. No private media artwork, local settings or logs are included.
+CTest covers existing physics/event orchestration and provider lifecycle, plus new interrupted artwork composites, buffer bounds, layout validation/migration, unique Home metrics, ring ranges, slider mapping and geometry-gated visibility. Native regression covers hover/collapse, navigation, timers, shelf, scale/theme/edge changes, layout reorder, moving hit targets, chosen statistics and detail toggles.
 
-Performance measurements are in PERFORMANCE_RESULTS.md. They are process counters, not a measured FPS, GPU utilization or perceptual-quality certification. No high-refresh hardware or multi-day test was performed. This is a preview, not a claim that the entire original fifty-part specification is complete.
+Native UI captures and a ten-frame app-only motion study are stored in `docs/evidence/v0.4`. The study exercises rapid cover changes, press response and collapse/expand interruption. Original synthetic QA artwork is explicitly labelled; no private playback image is published. Captures are sparse observations, not a video frame-pacing benchmark.
 
-## Remaining limitations
+Measured process-counter results are recorded in PERFORMANCE_RESULTS.md. No FPS, GPU-use, latency, high-refresh or multi-day result is invented.
 
-Full accessibility/UI Automation, text scaling, per-display profiles, import/export, provider retries/device-loss restoration, thumbnail previews for shelved files, true shell-image absorption, track crossfades and broader hardware/player validation remain unfinished. No private streaming-service thumbnails are scraped or captured. Windows media metadata determines availability. No unsafe ROG/ACPI code, kernel drivers, analytics, cloud services or paid dependency has been introduced.
+## Release limits
 
-Public distribution remains separate from private source history. Publication and installation verification are appended after the actual upload and local installation.
+This remains a preview. A standard suitable for hundreds of millions of installations needs considerably broader hardware, accessibility, reliability and deployment validation than one laptop can establish. Complete UI Automation/text scaling, high-contrast acceptance, device-loss recovery, mixed-DPI/hot-plug/high-refresh tests, automatic update/signing infrastructure and long soak testing remain unfinished.
 
-## Publication and local installation verified
+The existing file shelf, audio-output compatibility boundary, privacy policy and local-only operation remain in place. File content thumbnails, per-service media guarantees and invasive hardware integrations are not claimed. Publication and local installation verification will be appended after completion.
+## v0.4 multitasking refinement
 
-- Public release: https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.3.0-preview.1
-- Source implementation checkpoint: `80f499e`, pushed to the private development repository, tagged `v0.3.0-preview.1`.
-- The public ZIP was downloaded without credentials and SHA-256 matched: `3806342d4a9c358af32af5922b5b0aec0e876d5ede9dd7f6de5b1138cdba3935`.
-- The installed executable matches the tested build: `a0da094aba596c103ce8bb30068ed92c113a77c79184efd3f901656fc1ca5fa1`.
-- Installed at Desktop/Arnav Island/app; Desktop-root `Arnav Island.lnk` points to this copy. It was verified running and responsive.
-- Per-user HKCU Run points to the quoted installed executable with `--startup`; this was read back and verified. An actual reboot/sign-in cycle was not performed.
-- The obsolete Desktop/Nexus Island folder was clean, its Git history was preserved, and its only ignored files were the known app and shortcuts. It was sent to the Recycle Bin. UsageNotch was retained.
-- Verification records: `evidence/v0.3/public-verification.json` and `cleanup.json`.
+Unpinned panels settle back into the compact island when another application takes the foreground. The current page, timer and shelf remain intact. Pinning a panel keeps it open; active pointer and file-drop gestures are protected. Preferences → Multitasking can disable this behavior.
+
+Volume scrolling now targets the volume slider by default, preventing accidental changes when scrolling over navigation or statistics. The previous anywhere-on-island behavior is available as an explicit preference. Shelf and output lists keep their own scrolling.
+
+Fullscreen detection observes foreground changes and debounced foreground-window geometry events, so entering fullscreen in the same player is detected. It uses DWM visible frame bounds rather than invisible resize borders. All monitoring is local and no app titles, paths or content are collected. Windows that do not expose valid bounds are not guessed to be fullscreen.
+
+The final multitasking checks pass all 16 dismissal-policy combinations plus native collapse/pin/drop checks. An external-window fullscreen attempt was inconclusive because the QA helper did not obtain foreground activation; it is not recorded as a successful end-to-end player/fullscreen test. Geometry and lifecycle checks pass; real game/player transitions remain an acceptance task.
