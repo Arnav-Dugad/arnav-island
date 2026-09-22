@@ -1,0 +1,16 @@
+{
+  "release_url": "https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.4.0-preview.1",
+  "anonymous_download_verified": true,
+  "archive_sha256": "e61863d0fb7ecbbee9db208f910e3200a89f15afff8d28f670fc1a65bb077d06",
+  "executable_sha256": "e69944b7ae9b358cebb8bf8a25f0fb1f545b3ef3f6485b97952817c8d8517849",
+  "installed_sha256": "e69944b7ae9b358cebb8bf8a25f0fb1f545b3ef3f6485b97952817c8d8517849",
+  "installed_version": "0.4.0-preview.1",
+  "installed_running": true,
+  "installed_responding": true,
+  "desktop_shortcut_verified": true,
+  "startup_preference_preserved": true,
+  "startup_enabled": true,
+  "settings_file_preserved": true,
+  "source_commit": "6579a7c",
+  "public_commit": "2c46e23"
+}

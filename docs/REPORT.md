@@ -28,7 +28,7 @@ Measured process-counter results are recorded in PERFORMANCE_RESULTS.md. No FPS,
 
 This remains a preview. A standard suitable for hundreds of millions of installations needs considerably broader hardware, accessibility, reliability and deployment validation than one laptop can establish. Complete UI Automation/text scaling, high-contrast acceptance, device-loss recovery, mixed-DPI/hot-plug/high-refresh tests, automatic update/signing infrastructure and long soak testing remain unfinished.
 
-The existing file shelf, audio-output compatibility boundary, privacy policy and local-only operation remain in place. File content thumbnails, per-service media guarantees and invasive hardware integrations are not claimed. Publication and local installation verification will be appended after completion.
+The existing file shelf, audio-output compatibility boundary, privacy policy and local-only operation remain in place. File content thumbnails, per-service media guarantees and invasive hardware integrations are not claimed. Publication and local installation are verified below.
 ## v0.4 multitasking refinement
 
 Unpinned panels settle back into the compact island when another application takes the foreground. The current page, timer and shelf remain intact. Pinning a panel keeps it open; active pointer and file-drop gestures are protected. Preferences → Multitasking can disable this behavior.
@@ -38,3 +38,13 @@ Volume scrolling now targets the volume slider by default, preventing accidental
 Fullscreen detection observes foreground changes and debounced foreground-window geometry events, so entering fullscreen in the same player is detected. It uses DWM visible frame bounds rather than invisible resize borders. All monitoring is local and no app titles, paths or content are collected. Windows that do not expose valid bounds are not guessed to be fullscreen.
 
 The final multitasking checks pass all 16 dismissal-policy combinations plus native collapse/pin/drop checks. An external-window fullscreen attempt was inconclusive because the QA helper did not obtain foreground activation; it is not recorded as a successful end-to-end player/fullscreen test. Geometry and lifecycle checks pass; real game/player transitions remain an acceptance task.
+
+## Published and installed
+
+- Private source implementation: `6579a7c`; public distribution commit: `2c46e23`.
+- [Public Windows x64 release v0.4.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.4.0-preview.1), including ZIP and SHA-256 checksum.
+- Downloaded the published ZIP without authentication, verified the archive and executable hashes, and installed that downloaded executable in the existing Desktop app folder.
+- Installed version is `0.4.0-preview.1`; process remained alive and responding. Desktop shortcut target verified. Startup remains enabled and unchanged. Existing settings file hash is unchanged by installation.
+- Final validation: 3/3 CTest suites, 11,682 core checks, 1,244 model checks, nine-stage native interaction regression, reviewed native captures and recorded process counters. The external fullscreen attempt remains explicitly inconclusive.
+- Executable SHA-256: `e69944b7ae9b358cebb8bf8a25f0fb1f545b3ef3f6485b97952817c8d8517849`.
+- Full verification: `docs/evidence/v0.4/public-verification.json`.
