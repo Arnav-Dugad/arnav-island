@@ -5,12 +5,13 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR command,int){
     if(GetLastError()==ERROR_ALREADY_EXISTS){
         std::wstring args=command?command:L"";HWND existing=FindWindowW(L"ArnavIsland.Surface",nullptr);
         if(existing&&args.find(L"--lab")!=std::wstring::npos)PostMessageW(existing,WM_APP+50,1,0);
+        else if(existing&&args.find(L"--enable-startup")!=std::wstring::npos)PostMessageW(existing,WM_APP+50,3,0);
         else if(existing&&args.find(L"--expanded")!=std::wstring::npos)PostMessageW(existing,WM_APP+50,2,0);
         if(single)CloseHandle(single);return 0;
     }
-    HRESULT hr=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+    HRESULT hr=OleInitialize(nullptr);
     int result=1;
     try{nexus::IslandWindow app;result=app.run(instance,command?command:L"");}
     catch(const std::exception& e){MessageBoxA(nullptr,e.what(),"Arnav Island could not start",MB_ICONERROR);}
-    if(SUCCEEDED(hr))CoUninitialize();if(single)CloseHandle(single);return result;
+    if(SUCCEEDED(hr))OleUninitialize();if(single)CloseHandle(single);return result;
 }

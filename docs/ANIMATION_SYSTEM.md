@@ -36,3 +36,10 @@ Release gates: capture high-refresh motion, verify QPC continuity against actual
 presentation timing, remove the transient input-envelope limitation, test rapid
 direction reversal under CPU/GPU load, add reduced-motion and high-contrast UIA
 acceptance runs. A numerical continuity test is not a visual smoothness certificate.
+
+## v0.3 motion channels
+Artwork X/Y, size and opacity are retained spring channels. Compact/Home/Media destinations retarget them from current position and velocity. The source bitmap is not recreated during a glide. A new track can replace the bitmap without reallocating the surface; a two-art crossfade remains future work.
+
+Charging uses a one-shot spring opacity impulse; it does not run a perpetual pulse. Magnetic feedback shifts a lightweight highlight by at most two DIPs and compresses it on press. Labels are not transformed, preserving text clarity. Reduced motion disables spatial art retargeting and large body motion. Focus timers refresh once per second only while running; monitoring stops when the relevant view is hidden.
+
+Native acrylic is deliberately interior-only and is hidden while the body is moving. File absorption is represented by immediate shelf insertion, expansion and a settling highlight pulse; no shell drag-image shared-element transition is claimed.

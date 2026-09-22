@@ -4,6 +4,9 @@
 #include "TelemetryLocal/LocalStore.h"
 #include "Audio/AudioProvider.h"
 #include "Media/MediaProvider.h"
+#include "Composition/DockGeometry.h"
+#include "Composition/GlassMaterial.h"
+#include "Settings/Startup.h"
 #include <memory>
 #include <vector>
 #include <commctrl.h>
@@ -17,6 +20,8 @@ class IslandWindow {
     std::unique_ptr<Renderer> renderer_;std::unique_ptr<AudioProvider> audio_;std::unique_ptr<MediaProvider> media_;
     std::unique_ptr<SystemProvider> system_;bool systemRequested_=false;Action pressedAction_=Action::None;
     void perform(Action);Action hit(LPARAM);void refresh();void clockTimer();
+    ComPtr<ShelfDropTarget> dropTarget_;GlassMaterial glass_;bool testing_=false,positioning_=false;
+    bool showGlass();void feedback(Action,float x=0,float y=0,bool press=false);void applySettings(bool rebuild=false);void dragShelf(size_t);
     LocalStore store_;Settings settings_;MotionEngine motion_;EventOrchestrator events_;ContentSnapshot content_;
     IslandState state_=IslandState::Compact;InteractionState interaction_=InteractionState::Rest;
     float dpi_=96;double lastMotion_=0,dragTime_=0,dragVelocity_=0;

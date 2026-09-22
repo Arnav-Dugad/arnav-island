@@ -1,0 +1,18 @@
+[
+  {
+    "scenario": "idle",
+    "media_provider": "disabled for reproducibility",
+    "elapsed_seconds": 15.0122148,
+    "cpu_seconds": 0.0,
+    "single_core_percent": 0.0,
+    "working_set_bytes": 67309568
+  },
+  {
+    "scenario": "dashboard",
+    "media_provider": "disabled for reproducibility",
+    "elapsed_seconds": 15.0007037,
+    "cpu_seconds": 0.078125,
+    "single_core_percent": 0.5208089004517834,
+    "working_set_bytes": 72773632
+  }
+]

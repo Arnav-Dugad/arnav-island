@@ -18,3 +18,5 @@ Developer scenarios:
 The HUD reports process memory, DWM refresh rate, compositor commit count and activity queue depth. It does not report true presented application FPS or GPU load. A refresh-rate reading must never be relabeled FPS. See PERFORMANCE_RESULTS.md for actual measured evidence and untested conditions.
 
 Required future acceptance: high-refresh frame pacing, actual presentation latency, UI stalls under heavy load, GPU-loss recovery, WARP, integrated-only laptops, mixed DPI, multi-day leaks and battery drain. No claim of Apple-level motion quality is made from compilation or numerical tests alone.
+
+v0.3 avoids full dashboard redraw on pure expand/collapse reversals. The DWM material host only exists after an expanded panel requests glass; it hides during movement. No steady animation timer runs for settled hover highlights, artwork, or charging. Motion is uploaded to DirectComposition as time curves. See PERFORMANCE_RESULTS.md for measured process counters and explicit unmeasured metrics.

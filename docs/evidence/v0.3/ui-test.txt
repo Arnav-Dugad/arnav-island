@@ -1,0 +1,1 @@
+stage 6 state 1 interaction 0 width 411.663: PASS native hover open, leave close, disabled hover, navigation, timer actions, hit targets, edge/scale/theme, OLE drop and shelf clear

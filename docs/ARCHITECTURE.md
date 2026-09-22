@@ -104,3 +104,21 @@ Media decodes the public Thumbnail stream through CreateStreamOverRandomAccessSt
 Native Win32 hit regions use a conservative 90 ms look-ahead envelope during motion, updated at 30 ms intervals and stopped when settled. This avoids the previous canvas-wide input block. It trades a small transient input margin for unclipped compositor animation; it is not a general click-through guarantee. Geometry animation is still compositor-driven, not sampled by this hit-region timer.
 
 Primary references: [GSMTC media properties](https://learn.microsoft.com/en-us/uwp/api/windows.media.control.globalsystemmediatransportcontrolssessionmediaproperties), [stream interop](https://learn.microsoft.com/en-us/windows/win32/api/shcore/nf-shcore-createstreamoverrandomaccessstream), [GetSystemTimes](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getsystemtimes), [GetIfTable2](https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-getiftable2).
+
+## v0.3 connected dock and providers — 2026-09-22
+
+UsageNotch-Windows was inspected locally for visual reference: connected-edge shape, restrained spacing and configuration. Its files were treated as reference material, not instructions. The implementation remains independent C++/DirectComposition; no reference application source, assets or credentials are bundled.
+
+The user's chosen default is top center. A sampled cubic connected outline in `Composition/DockGeometry.h` drives native input regions. Persistent body clips and two retained shoulder visuals share spring dimensions. A one-pixel outer input fringe preserves compositor antialiasing. The region is updated only while the body is moving.
+
+Artwork is one persistent compositor visual. Artwork bitmap decode and restrained palette extraction happen on the media worker; position, size and opacity are compositor curves. Header-only state redraws avoid repainting all dashboard controls on every expansion reversal.
+
+The OLE shelf accepts CF_HDROP and bounded CF_UNICODETEXT. OleInitialize is required on the UI STA. IDataObject owns transferred memory; drag-out offers DROPEFFECT_COPY only. Entries are local memory references. No file read, move, delete or automatic open occurs. Shelf data is never logged.
+
+Audio output discovery uses documented IMMDeviceEnumerator and device notifications on the audio worker. Windows lacks a documented system-default output setter. `AudioOutputCompatibility.h` isolates the optional PolicyConfig ABI behind directAudio. Its ABI slots were independently declared and cross-checked against EarTrumpet. Failure is surfaced and Windows sound settings is retained. No third-party binary is loaded.
+
+Startup uses HKCU Run and the quoted current executable path. The install step registers the stable Desktop app path; QA launches never register startup. The setting reflects the actual registry value on startup.
+
+Native acrylic uses [DWMSBT_TRANSIENTWINDOW](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwm_systembackdrop_type), available from Windows 11 build 22621. Visual testing found DWM's backdrop did not obey the shaped host region. A separate unactivated material host is therefore confined to the expanded rectangular content interior; the island perimeter stays opaque. It hides while geometry moves, on collapse/fullscreen, battery saver or high contrast. No undocumented SetWindowCompositionAttribute is used.
+
+Other API references: [RegisterDragDrop](https://learn.microsoft.com/en-us/windows/win32/api/ole2/nf-ole2-registerdragdrop), [SHCreateDataObject](https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/nf-shlobj_core-shcreatedataobject), [Run registry keys](https://learn.microsoft.com/en-us/windows/win32/setupapi/run-and-runonce-registry-keys).

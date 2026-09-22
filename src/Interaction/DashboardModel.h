@@ -8,12 +8,12 @@
 #include <cwctype>
 #include <cwchar>
 namespace nexus {
-enum class Page { Overview,Media,System,Focus,Settings };
-enum class Action { None,Overview,Media,System,Focus,Settings,Pin,Close,Play,Previous,Next,MediaMode,VolumeDown,Mute,VolumeUp,Timer25,Timer5,Stopwatch,TimerToggle,TimerReset,HoverToggle,HoverDelay,FullscreenToggle,ReducedToggle,MotionPreset,Offset,Monitor,SoundSettings,DisplaySettings,NetworkSettings,BluetoothSettings,Lab };
+enum class Page { Overview,Media,System,Focus,Settings,Shelf,Audio };
+enum class Action { None,Overview,Media,System,Focus,Settings,Pin,Close,Play,Previous,Next,MediaMode,VolumeDown,Mute,VolumeUp,Timer25,Timer5,Stopwatch,TimerToggle,TimerReset,HoverToggle,HoverDelay,FullscreenToggle,ReducedToggle,MotionPreset,Offset,Monitor,SoundSettings,DisplaySettings,NetworkSettings,BluetoothSettings,Lab,Shelf,Audio,SettingsNext,StartupToggle,Theme,Scale,Corner,Edge,CompactWidth,CollapseDelay,GlassToggle,AccentsToggle,MagneticToggle,CompactMediaToggle,CompactBatteryToggle,Accent,AudioCompatibility,ShelfClear,SettingsReset,DeviceBase=100,ShelfItemBase=200 };
 struct HitTarget { Action action;float x,y,width,height;bool enabled=true;
     bool contains(float px,float py)const{return enabled&&px>=x&&px<x+width&&py>=y&&py<y+height;}
 };
-struct Artwork {uint32_t width=0,height=0;std::vector<uint8_t> pixels;};
+struct Artwork {uint32_t width=0,height=0,accent=0xa5d8c5;std::vector<uint8_t> pixels;};
 enum class MediaKind { Unknown,Music,Video };
 inline MediaKind classifyMedia(int osType,std::wstring source){
     if(osType==1)return MediaKind::Music;if(osType==2)return MediaKind::Video;

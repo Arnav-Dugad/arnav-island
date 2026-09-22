@@ -97,3 +97,19 @@ readers remain unverified. Mathematical tests sample 60/90/120/144/165/240 Hz,
 which verifies time-based math only. Native computer-use inspection timed out on
 app approval; app-owned captures were used instead. No user action is required
 to build or run the provided prototype.
+
+## v0.3 measured on 2026-09-22
+
+Windows 11 on the same laptop. Process counters measured with real media disabled for reproducibility; no fabricated media playback workload was used. Units below are process CPU time and resident working set, not GPU time or measured FPS.
+
+| Scenario | Elapsed | CPU time | One-core equivalent | Working set |
+|---|---:|---:|---:|---:|
+| Settled compact, 15-second sample | 15.012 s | 0.000 s | 0.00% | 64.19 MiB |
+| Visible Home, 15-second sample | 15.001 s | 0.078125 s | 0.52% | 69.40 MiB |
+| 200 rapid body reversals and coalesced volume events | 15.934 s | 0.984375 s | 6.18% | 64.20 MiB |
+
+The stress run made 405 compositor commits and 211 surface updates with zero queued activities at completion. The earlier v0.3 iteration repainted the full dashboard on each reversal: 1.75 CPU seconds, 411 surface updates. Header-only redraws reduced this to 0.984375 CPU seconds and 211 updates. This is an observed iteration comparison, not an isolated laboratory benchmark.
+
+A zero CPU delta means below process-counter resolution during this short idle interval; it does not prove zero power use. GPU activity, input-to-photon latency, dropped frames, high-refresh operation, native-glass power impact and multi-day stability were not measured. No live media stress or physical multi-monitor run was performed in this iteration.
+
+Raw evidence: `evidence/v0.3/process-counters.json`, `retarget.json`, `tests.txt`, `ui-test.txt`, `audio-adapter.txt`. Core tests report 11,682 checks with 0.00198515 DIP maximum sampled curve error; dashboard/geometry tests report 456 checks. All three CTest suites pass.

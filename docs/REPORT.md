@@ -1,38 +1,29 @@
-# Arnav Island v0.2 development report
+# Arnav Island v0.3 development report
 
-## Delivered
+## Result
 
-The application is now named **Arnav Island**. A native five-view dashboard replaces the original single-panel prototype: Overview, Media, System, Focus and Settings. The visual treatment uses restrained monochrome surfaces, clearer type hierarchy, consistent rounded controls and more breathing room. The original compositor spring engine remains responsible for the persistent body, size and corner morphs.
+The new default is a smaller top-center island with the reference's curved edge connection. Right-edge docking remains optional. The project continues to use native C++23/Win32/DirectComposition; the UsageNotch folder was read as a visual reference, without copying its code or assets.
 
-Hover opening is on by default with a configurable delay. Leaving closes the island after 650 ms; Pin keeps it open. Controls now expose real actions: media transport, volume/mute, page selection, timers and Windows settings links. Tab/Shift+Tab and Enter/Space are supported after activation. This is not yet a complete accessible surface.
+The compact body is 196 × 34 DIPs and the expanded dashboard is 420 × 300 DIPs, with configurable scale. Home, Media, Stats, Focus, Shelf, Audio and Preferences use restrained spacing and small controls. Preferences now contains five groups of controls. The installed app has a Desktop-root shortcut and configurable per-user startup.
 
-Media uses Windows GSMTC metadata and WIC thumbnail decoding on the provider worker. Music and video have different layouts. Playback type drives Auto, with a manual override for ambiguous browser sessions. The timeline uses reported position/duration and extrapolates only while playing. Unsupported transport actions are disabled. A real active media session supplied artwork and playback state during this run; its private title and thumbnail were not included in the release evidence. Named streaming services have not all been individually tested.
+The persistent artwork visual moves between compact, Home and Media positions with velocity-preserving spring curves. Palette extraction runs on the media worker. Volume, charging, timer and track activity appear while compact. Hover opening/closing, light/dark/system themes, monitor, edge, width, corner, scale, motion and accent controls are saved locally.
 
-The System provider reports OS CPU, RAM, network traffic, disk space, logical processor count and uptime. It samples once per second only while Overview/System is visible, after a 400 ms activation delay. Disk space refreshes less often. A first stress run revealed repeated wakeups during fast reversals; delaying monitoring reduced observed process CPU time from 1.35938 s to 0.28125 s for approximately 16 seconds of stress. The first sample also included a QA capture, so this is a practical iteration comparison, not a controlled scientific benchmark.
+The shelf accepts files and Unicode text through OLE, holds up to 32 entries, and supports copy-only drag-out. Clear forgets entries and never touches originals. File rows currently show names, not decoded image/file thumbnails. The island responds on entry; pre-entry drag attraction and shell-image absorption are future work.
 
-Focus has a 25-minute timer, 5-minute break and stopwatch with pause/reset. Countdown state uses elapsed time rather than counting frames. Settings v2 migrates old preferences by copy, saves atomically, and retains the legacy files. All operation remains local.
+Audio outputs come from real endpoint enumeration. Optional switching uses an isolated compatibility adapter because Windows does not expose a documented system-default setter. Reselecting the currently selected endpoint succeeded on this laptop. Switching between physical headphones and speakers was not tested. Users can disable compatibility switching and open Windows sound settings.
 
-## Validation
+Native DWM acrylic required a correction after real UI inspection: its backdrop did not respect the curved window region and spilled outside it. The final material host is confined to the panel interior, with an opaque outer silhouette. Another correction expanded the native input mask by one pixel to avoid cutting away antialiased edge pixels. Material is disabled during body motion, in battery saver/high contrast or when explicitly turned off.
 
-- Native Release build completed with installed GCC/MinGW; no new paid dependency or runtime.
-- Core spring/orchestration tests, real audio/media/system provider lifecycle tests, and new dashboard/timer/settings tests pass.
-- Native interaction regression exercises hover open, leave close, disabled hover, navigation, timer actions and hit targets. The test moves the cursor and restores it; external pointer movement can interfere.
-- Actual native Overview, Media empty state, System, Focus and Settings captures inspected. Release images explicitly disable the media provider so private playback is excluded.
-- Actual active-session thumbnail rendering inspected locally. No unsupported per-service compatibility claim is made.
-- Repeatable retarget stress and idle/dashboard process counters recorded in PERFORMANCE_RESULTS.md. No unmeasured FPS, GPU-use or power claim.
+## Validation and evidence
 
-## Release scope and remaining work
+The final build passes CTest's core physics/orchestrator, provider lifecycle/OLE and dashboard/settings/geometry suites. Native interaction regression covers hover, collapse, disabled hover, page navigation, timers, hit targets, scale/theme/right-edge changes and shelf drop/clear. Audio compatibility reselection returned S_OK. Evidence is under `docs/evidence/v0.3`.
 
-This is a **public preview**, not completed Milestone 1 or an Apple-quality certification. It is substantially more useful and readable than v0.1, but shared-element artwork motion, deeply animated microinteractions, native acrylic, a complete UI Automation tree, high-contrast/text-scale acceptance, high-refresh capture and long-running resilience still need work.
+Actual native captures cover compact, Home, light theme, right edge, shelf, audio, settings, media artwork, video layout and 110% application scale. Captures disable real media; the artwork study is explicitly labelled original local QA artwork. No private media artwork, local settings or logs are included.
 
-The window now uses a small moving conservative hit envelope instead of covering the entire canvas during motion. Updating that Win32 region requires a 30 ms timer only while moving; compositor animation itself is independent of that timer. A small area beyond the silhouette can still intercept input during motion. GPU device loss still closes the app instead of rebuilding the device. Hardware temperatures, invasive OEM controls, file shelf, clipboard, external notifications and arbitrary plugins remain absent.
+Performance measurements are in PERFORMANCE_RESULTS.md. They are process counters, not a measured FPS, GPU utilization or perceptual-quality certification. No high-refresh hardware or multi-day test was performed. This is a preview, not a claim that the entire original fifty-part specification is complete.
 
-The distribution is a portable, unsigned Windows x64 ZIP with license and notices. Source, safe screenshots, measured evidence and this report are intended for the requested GitHub release. Runtime logs, local settings, private media captures and unrelated Desktop files are excluded. See QUICK_START.md for use and FUTURE_IDEAS.md for the next design candidates.
+## Remaining limitations
 
-## Publication verified
+Full accessibility/UI Automation, text scaling, per-display profiles, import/export, provider retries/device-loss restoration, thumbnail previews for shelved files, true shell-image absorption, track crossfades and broader hardware/player validation remain unfinished. No private streaming-service thumbnails are scraped or captured. Windows media metadata determines availability. No unsafe ROG/ACPI code, kernel drivers, analytics, cloud services or paid dependency has been introduced.
 
-- Public preview: https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.2.0-preview.1
-- The ZIP was downloaded anonymously and its SHA-256 matched the tested package. Verification record: evidence/v0.2/public-verification.json.
-- Source implementation checkpoint: 0f0eff88cd34233d53c846e257dc040caa5af884, pushed to the existing private nexus-island repository. The new public repository contains distribution documentation and binaries; the existing private source history remains private.
-- Desktop/Arnav Island contains the source, report, application and shortcuts. The installed executable hash matches the tested executable and it was launched successfully.
-- Local settings, logs and captures containing private current media are excluded from publication. The public screenshot was visually inspected with the media provider disabled.
+Public distribution remains separate from private source history. Publication and installation verification are appended after the actual upload and local installation.

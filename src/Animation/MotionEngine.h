@@ -92,9 +92,9 @@ struct Geometry {double width,height,radius;};
 inline Geometry geometry(IslandState s) {
     switch(s) {
     case IslandState::Dot:return {44,28,14};
-    case IslandState::Compact:return {204,38,19};
-    case IslandState::Expanded:return {560,492,30};
-    case IslandState::Dashboard:return {560,492,30};
+    case IslandState::Compact:return {196,34,17};
+    case IslandState::Expanded:return {420,300,22};
+    case IslandState::Dashboard:return {420,300,22};
     case IslandState::FileDrop:return {440,240,32};
     case IslandState::Media:return {420,176,28};
     case IslandState::Hardware:return {440,230,28};
@@ -105,17 +105,18 @@ inline Geometry geometry(IslandState s) {
     }
 }
 struct MotionEngine {
-    Spring width{204},height{38},radius{19},lift{0},reveal{0},volume{.5},dragX{0},dragY{0};
+    Spring width{196},height{34},radius{17},lift{0},reveal{0},volume{.5},dragX{0},dragY{0};
     SpringSpec body=preset(MotionPreset::Balanced);
-    bool reduced=false;
+    bool reduced=false;int edge=0;double compactWidth=196,corner=22;
+    Spring artX{12},artY{6},artSize{22},artOpacity{0},pulse{0},hoverX{20},hoverY{38},hoverW{40},hoverH{26},hoverOpacity{0},contentShift{0};
     void target(IslandState state,double now,bool hover=false,bool pressed=false) {
-        auto g=geometry(state);
-        if(reduced){width.reset(g.width,now);height.reset(g.height,now);radius.reset(g.radius,now);reveal.retarget(g.height>110?1:0,now,{1,1800,85});return;}
+        auto g=geometry(state);if(state==IslandState::Compact)g=edge?Geometry{64,150,22}:Geometry{compactWidth,34,17};else if(state==IslandState::Expanded||state==IslandState::Dashboard)g={420,300,corner};
+        if(reduced){width.reset(g.width,now);height.reset(g.height,now);radius.reset(g.radius,now);reveal.retarget(state!=IslandState::Compact&&g.height>110?1:0,now,{1,1800,85});return;}
         auto s=reduced?SpringSpec{1,1800,85}:body;
         width.retarget(g.width+(hover?4:0)-(pressed?5:0),now,s);
         height.retarget(g.height-(pressed?2:0),now,s);
         radius.retarget(g.radius,now,s);
-        reveal.retarget(g.height>110?1:0,now,{1,320,36});
+        reveal.retarget(state!=IslandState::Compact&&g.height>110?1:0,now,{1,320,36});
     }
 };
 }
