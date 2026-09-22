@@ -27,3 +27,14 @@ Performance measurements are in PERFORMANCE_RESULTS.md. They are process counter
 Full accessibility/UI Automation, text scaling, per-display profiles, import/export, provider retries/device-loss restoration, thumbnail previews for shelved files, true shell-image absorption, track crossfades and broader hardware/player validation remain unfinished. No private streaming-service thumbnails are scraped or captured. Windows media metadata determines availability. No unsafe ROG/ACPI code, kernel drivers, analytics, cloud services or paid dependency has been introduced.
 
 Public distribution remains separate from private source history. Publication and installation verification are appended after the actual upload and local installation.
+
+## Publication and local installation verified
+
+- Public release: https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.3.0-preview.1
+- Source implementation checkpoint: `80f499e`, pushed to the private development repository, tagged `v0.3.0-preview.1`.
+- The public ZIP was downloaded without credentials and SHA-256 matched: `3806342d4a9c358af32af5922b5b0aec0e876d5ede9dd7f6de5b1138cdba3935`.
+- The installed executable matches the tested build: `a0da094aba596c103ce8bb30068ed92c113a77c79184efd3f901656fc1ca5fa1`.
+- Installed at Desktop/Arnav Island/app; Desktop-root `Arnav Island.lnk` points to this copy. It was verified running and responsive.
+- Per-user HKCU Run points to the quoted installed executable with `--startup`; this was read back and verified. An actual reboot/sign-in cycle was not performed.
+- The obsolete Desktop/Nexus Island folder was clean, its Git history was preserved, and its only ignored files were the known app and shortcuts. It was sent to the Recycle Bin. UsageNotch was retained.
+- Verification records: `evidence/v0.3/public-verification.json` and `cleanup.json`.

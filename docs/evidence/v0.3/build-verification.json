@@ -1,0 +1,10 @@
+{
+  "version": "0.3.0-preview.1",
+  "executable_sha256": "a0da094aba596c103ce8bb30068ed92c113a77c79184efd3f901656fc1ca5fa1",
+  "core_checks": 11682,
+  "dashboard_geometry_checks": 456,
+  "ctest_suites_passed": 3,
+  "native_interaction": "PASS",
+  "audio_current_output_reselection": "S_OK",
+  "notes": "No physical headset switch, reboot, high-refresh hardware or multi-day test performed."
+}
