@@ -1,13 +1,16 @@
-# Arnav Island quick start
+# Quick start
 
-Windows 11, x64. Extract the ZIP and run ArnavIsland.exe. No installer, account, admin privileges or runtime download is required. This is an unsigned preview; ordinary Windows reputation checks can appear. Do not disable Windows security.
+1. Extract the ZIP into a folder you intend to keep. Run **ArnavIsland.exe**.
+2. Hover over the top-center island to open it. Click the dot to pin; × or Escape closes it. Right-click opens the tray menu.
+3. Home shows media, CPU, memory, battery and volume. Media uses Windows media sessions; Stats provides real OS counters; Focus includes 25-minute focus, 5-minute break and stopwatch.
+4. Drag a file or text onto the island to open Shelf. Drag a shelf row back out. Transfers are copy-only. Scroll to reach additional rows; Clear forgets references. Quit clears the shelf.
+5. Audio lists active Windows outputs. Choose one to switch, or use Windows sound settings. Direct switching is optional compatibility behavior, configurable under Preferences → Activities.
+6. The **⋯** view is Preferences. Click the group selector to cycle Behavior, Appearance, Motion, Activities and Advanced. Changes save locally.
+7. Enable or disable **Start at sign-in** in Behavior. This registers the current executable path for your Windows account. If you move the app, toggle it off/on from the new location. The developer-installed copy already has this enabled.
+8. Tab/Shift+Tab select controls after activation; Enter/Space activate; Escape collapses. Animation Lab is available from the right-click menu or Advanced preferences.
 
-Hover: open after a short delay. Leave: close after 650 ms. Pin: keep open. Click the collapsed pill: open and pin. Click the header: collapse. Right-click: menu and Exit. Scroll: adjust system volume. Drag the header: test elastic movement. Click an expanded control to use it; Tab / Shift+Tab and Enter / Space navigate and invoke controls after activation; Escape closes.
+Settings: `%LOCALAPPDATA%\ArnavIsland\settings.nexus`. Logs: same folder, `events.log`. No user media text, file paths or clipboard content are logged. The legacy Nexus settings are migrated by copy.
 
-Overview, Media, System, Focus and Settings are available in the bottom navigation. The Media layout button cycles Auto / Music / Video. Some browsers do not identify music versus video correctly, so manual selection is available. Thumbnails, timeline and transport controls depend on what the player shares with Windows.
+Artwork appears only when Windows media metadata provides it. Use Media's Auto/Music/Video selector for ambiguous browser sessions. Play/previous/next are disabled when the player does not advertise the capability. The app does not suppress the normal Windows volume flyout.
 
-Settings save automatically to %LOCALAPPDATA%\ArnavIsland\settings.nexus. Existing NexusIsland preferences migrate by copy on first launch. Old files are not deleted. Logs contain diagnostic event names, never media titles or artwork. Open or clear logs from the right-click menu. Timers are in-memory and do not survive exiting the app.
-
-There is no automatic startup, updater, telemetry upload, screen recording in normal use, arbitrary plugin loading or driver. The System view reports supported OS counters, not guessed GPU temperatures or fans. Monitoring sleeps while the relevant views are closed.
-
-Preview limits: custom island controls do not yet expose a complete screen-reader tree; high contrast, text scaling, mixed-DPI displays, high refresh, GPU-loss recovery and long-duration stability need further validation. A small conservative input envelope exists while the body is moving. Use the tray menu to exit if anything looks wrong; this app does not patch or inject into Windows.
+Remove sign-in startup before deleting the portable folder. No service, driver or Explorer modification is installed.

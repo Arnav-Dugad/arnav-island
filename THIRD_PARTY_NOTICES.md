@@ -27,3 +27,7 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 G-Helper and LibreHardwareMonitor were researched only; neither is a dependency.
+
+The optional audio compatibility ABI slot order was cross-checked against EarTrumpet's public IPolicyConfig declaration:
+https://github.com/File-New-Project/EarTrumpet/blob/master/EarTrumpet/Interop/MMDeviceAPI/IPolicyConfig.cs
+The minimal slot-only interface here is independently authored; no EarTrumpet implementation or binary is included. EarTrumpet has its own license (including exclusions); it is not described as an unrestricted MIT dependency. UsageNotch was a visual reference only and is not bundled.

@@ -1,23 +1,25 @@
 # Arnav Island
 
-A clean, native Windows 11 island for media, useful system statistics and focus.
+A small, local Windows 11 island with smooth native motion and a curved connection to the display edge.
 
-**[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases)**
+[Download v0.3.0-preview.1 for Windows x64](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.3.0-preview.1)
 
-![Arnav Island Overview](images/overview.png)
+![Arnav Island dashboard](images/overview.png)
 
-Extract the ZIP and run **ArnavIsland.exe**. Hover to open, leave to close, or pin it. Settings control hover delay, motion and fullscreen behavior. No account, cloud backend, subscription, paid API or installer is required.
+Hover to open. Browse Media, Stats, Focus, Shelf, Audio and Preferences. Hold files or text temporarily, switch audio outputs, keep track of timers, and customize the shape, theme, motion and startup behavior.
 
-Five views:
-- **Overview:** clock/date, current media, battery/power, CPU, memory, network and volume/mute.
-- **Media:** player-provided thumbnails and controls, timeline, separate music/video layouts with a manual override.
-- **System:** CPU history, RAM, disk space, upload/download, uptime and links to Windows settings.
-- **Focus:** 25-minute focus timer, 5-minute break and stopwatch.
-- **Settings:** hover preferences, five spring presets, reduced motion and fullscreen hiding.
+![Compact island](images/compact.png)
 
-The app is native C++23 with Win32, DirectComposition, Direct2D and DirectWrite. Geometry is animated by the Windows compositor. Monitoring sleeps when the relevant panels are closed. Private media stays in memory and is never uploaded or logged.
+Extract the ZIP and launch ArnavIsland.exe. No account, cloud, subscription, browser engine, driver or administrator access is required. This is an unsigned preview.
 
-**This is an unsigned preview.** Complete screen-reader/high-contrast support, mixed-DPI and high-refresh acceptance, device-loss recovery and multi-day reliability remain unfinished. Media integrations depend on what the player exposes to Windows; universal support for Netflix, JioHotstar, Prime Video, Apple TV or every browser is not claimed. The screenshots intentionally show an empty media state for privacy.
+- Small top-center dock; optional right-edge placement.
+- Persistent artwork glide, compact activities, physical hover feedback and charging pulse.
+- Native acrylic inside expanded panels with opaque fallback.
+- Five preference groups, sign-in startup toggle, dark/light/system themes and configurable hover.
+- Real Windows media, battery, CPU/RAM/network statistics and output devices.
 
-Read [Quick Start](QUICK_START.md), [Release notes](RELEASE_NOTES.md), and [Future ideas](FUTURE_IDEAS.md). This repository hosts portable downloads, release notes and the public roadmap.
+[Quick start](QUICK_START.md) · [Release notes and limitations](RELEASE_NOTES.md) · [Future ideas](FUTURE_IDEAS.md)
 
+Media artwork depends on what Windows receives from the player. Direct audio switching is an optional compatibility interface. File shelf entries are in-memory references and text, copy-only; file-content previews are not included. Full accessibility, mixed-DPI/high-refresh validation and long-duration reliability remain unfinished. No complete feature or performance guarantee is made.
+
+This public repository hosts releases and user documentation. The development repository remains private.

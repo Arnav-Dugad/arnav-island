@@ -1,20 +1,24 @@
-# Arnav Island v0.2.0-preview.1
+# Arnav Island v0.3.0-preview.1
 
-A redesigned native island with five clean views, configurable hover opening, real system statistics, music/video layouts with Windows media artwork, volume/mute controls and focus timers.
+Smaller, quieter, connected to the display edge.
 
-Download the Windows x64 ZIP, extract it, and run ArnavIsland.exe. No installer or account is required. The executable is unsigned and this is a preview.
+## Changes
+- Top-center curved shoulders; optional right-edge docking.
+- Compact body reduced to 196 × 34 DIPs. Expanded panel is 420 × 300 DIPs.
+- Seven focused views with restrained typography and small controls.
+- One retained artwork visual glides between compact, Home and Media destinations. Album-derived accents are computed off the UI thread.
+- Copy-only OLE file/text shelf with drag-out, deduplication, scroll and clear. Nothing moves or deletes originals.
+- Event-driven audio output enumeration and optional direct switching. Windows sound settings remain available.
+- Charging pulse, compact volume/media/timer information, subtle magnetic hover/press highlight and spring content offset.
+- Dark/light/system themes; scale, width, corner, edge, monitor, offsets, hover/close delays, motion presets, reduced motion, accents, compact activity and glass controls.
+- Per-user sign-in startup, configurable from Preferences → Behavior.
+- Native Windows acrylic is confined to the expanded content interior. Opaque fallback is used when disabled, unavailable, in high contrast or battery saver.
 
-Highlights:
-- Overview, Media, System, Focus and Settings navigation.
-- Hover-to-open, adjustable delay, delayed close and Pin.
-- Player-provided thumbnails, timeline and supported transport buttons; Auto/Music/Video layout selection.
-- CPU/history, RAM, network traffic, disk space, uptime and logical processor count.
-- System volume/mute and direct Windows settings shortcuts.
-- Focus timer, break timer and stopwatch.
-- Settings migration, local logging, native Animation Lab, privacy-safe QA captures and regression tests.
+## Compatibility and scope
+Windows 11 x64. Media artwork depends on what the player exposes through Windows media sessions: protected services and browsers can omit it. No browser scraping, video capture or DRM bypass is used.
 
-Compatibility depends on the media player's Windows SMTC integration. Netflix, JioHotstar, Prime Video, Apple TV and every browser/player combination are not universally supported or individually certified. No scraping is used.
+Direct output switching is an isolated, optional undocumented Windows compatibility interface; it can be disabled in Activities preferences. A failed switch does not claim success, and the Windows sound-settings button remains available. Communications routing is not deliberately changed.
 
-Known preview limits: incomplete screen-reader/high-contrast/text-scale support, unvalidated high refresh and mixed displays, conservative input envelope during motion, no GPU device-loss recovery, no code signing. No hardware temperatures, file shelf, clipboard capture, notification interception, cloud or invasive OEM control.
+Shelf entries live in memory and disappear on exit; file rows preview names, not file contents. Image files can be held as file references; bitmap and virtual cloud-file drag formats are not supported. The island reacts on drag entry, not before the pointer reaches its region.
 
-See the repository report, measured performance records and feature matrix. Future ideas are listed separately from implemented features.
+The preview is unsigned. Full UI Automation/text scaling, high-refresh hardware validation, mixed-DPI hot-plug, long-duration reliability and device-loss recovery remain unfinished. No measured smoothness guarantee or universal player compatibility is claimed.
