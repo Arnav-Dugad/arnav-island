@@ -71,15 +71,36 @@ int main(){try{
     struct Bounds:SvgSink{float x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;int segments=0;void add(float x,float y){x0=std::min(x0,x);y0=std::min(y0,y);x1=std::max(x1,x);y1=std::max(y1,y);++segments;}
         void move(float x,float y)override{add(x,y);}void line(float x,float y)override{add(x,y);}void cubic(float,float,float,float,float x,float y)override{add(x,y);}void quad(float,float,float x,float y)override{add(x,y);}void arc(float,float,float,bool,bool,float x,float y)override{add(x,y);}void close()override{}};
     for(auto& mark:brandMarks){Bounds b;test(SvgPathReader(mark.path).read(b),"brand path parses");test(b.segments>2&&b.x0>=-.6f&&b.y0>=-.6f&&b.x1<=24.6f&&b.y1<=24.6f,"brand path inside view box");}
-    test(std::size(brandMarks)>=80,"many real brand marks embedded");
+    test(std::size(brandMarks)>=170,"many real brand marks embedded");
+    for(auto slug:{"xbox","aula","philips","powera","marshall","jabra","jiohotstar","logitech","nintendo","microsoft","openai","gmail","f1","googlegemini","claude","github","cloudflare","primevideo","hulu"})test(findBrand(slug)!=nullptr,"brand mark present");
+    test(deviceBrand(L"AULA-F75 5.0 KB")=="aula","AULA keyboard");test(deviceBrand(L"Xbox Wireless Controller")=="xbox","Xbox controller");test(deviceBrand(L"PowerA Enhanced Wireless Controller")=="powera","PowerA controller");
+    test(deviceBrand(L"Philips TAT3217")=="philips","Philips earbuds");test(deviceBrand(L"Marshall Major IV")=="marshall"&&deviceBrand(L"MAJOR IV")=="marshall","Marshall headphones");test(deviceBrand(L"Jabra Elite 85t")=="jabra","Jabra earbuds");
+    test(deviceBrand(L"MX Master 3S")=="logitech"&&deviceBrand(L"Pro Controller")=="nintendo","Logitech and Nintendo by model");test(deviceBrand(L"Surface Headphones 2")=="microsoft","Surface is Microsoft");
+    test(deviceBrand(L"Keyboard",0x045e,2)=="microsoft"&&deviceBrand(L"Gamepad",0x20d6,2)=="powera"&&deviceBrand(L"Mouse",0x01da,1)=="logitech","vendor and company IDs");
+    test(appBrand(L"Patriot Memory").empty()&&appBrand(L"Twitch").empty(),"no substring false positives (riot, itch)");test(appBrand(L"Microsoft.GamingApp_8wekyb3d8bbwe!Microsoft.Xbox.App")=="xbox","Xbox app");
+    test(assignServices({L"Episode 1 - YouTube TV"},{{L"Episode 1",L""}}).front()=="youtubetv","YouTube TV before YouTube");
     {Bounds b;test(SvgPathReader("M2 2h4v4H2zm8 0l2 2-2 2a2 2 0 1 1 0-4Z").read(b)&&b.x0==2&&b.x1==12,"relative commands and arcs");Bounds bad;test(!SvgPathReader("M2 2 Lx").read(bad),"malformed path rejected");}
     // Services: strong title matches win; brand-only titles need to be unique.
-    test(matchService({L"Lo-fi beats - YouTube - Google Chrome"},L"Lo-fi beats",L"")=="youtube","YouTube tab identified");
-    test(matchService({L"Blinding Lights - YouTube Music"},L"Blinding Lights",L"The Weeknd")=="youtubemusic","YouTube Music before YouTube");
-    test(matchService({L"Blinding Lights • The Weeknd - Google Chrome"},L"Blinding Lights",L"The Weeknd")=="spotify","Spotify web player title pattern");
-    test(matchService({L"Netflix - Microsoft Edge"},L"Episode 3",L"")=="netflix","brand-only service when unique");
-    test(matchService({L"Netflix",L"Prime Video: Home"},L"Episode 3",L"").empty(),"ambiguous brand-only titles give nothing");
-    test(matchService({L"Inbox - Outlook"},L"Episode 3",L"").empty(),"unrelated windows give nothing");
+    {auto one=[](std::vector<std::wstring> tabs,std::wstring title,std::wstring artist){return assignServices(tabs,{{title,artist}}).front();};
+    test(one({L"Lo-fi beats - YouTube - Memory usage - 120 MB"},L"Lo-fi beats",L"")=="youtube","YouTube tab identified");
+    test(one({L"Blinding Lights - YouTube Music"},L"Blinding Lights",L"The Weeknd")=="youtubemusic","YouTube Music before YouTube");
+    test(one({L"Blinding Lights \u2022 The Weeknd"},L"Blinding Lights",L"The Weeknd")=="spotify","Spotify web player title pattern");
+    test(one({L"Netflix"},L"Episode 3",L"")=="netflix","brand-only service when unique");
+    test(one({L"Netflix",L"Prime Video: Home"},L"Episode 3",L"").empty(),"ambiguous brand-only titles give nothing");
+    test(one({L"Inbox - Outlook"},L"Episode 3",L"").empty(),"unrelated tabs give nothing");
+    // Reported: a JioHotstar tab and a YouTube tab. Each session gets its own site, never one twice.
+    auto pair=assignServices({L"Saudi Arabia's $39B Factory Deal with China - YouTube",L"Watch The Night Manager Season 1 on JioHotstar"},{{L"Saudi Arabia's $39B Factory Deal with China",L"Uptin"},{L"The Night Manager",L""}});
+    test(pair[0]=="youtube"&&pair[1]=="jiohotstar","YouTube and JioHotstar sessions each identified from their own tab");
+    auto brandTab=assignServices({L"Saudi Arabia's $39B Factory Deal - YouTube",L"JioHotstar - Home"},{{L"Saudi Arabia's $39B Factory Deal",L"Uptin"},{L"S1 E4 \u00b7 Episode title",L""}});
+    test(brandTab[0]=="youtube"&&brandTab[1]=="jiohotstar","brand-only tab claims the one unmatched session");
+    // Reported: one YouTube tab, two sessions (a preview). The second must not borrow YouTube.
+    auto preview=assignServices({L"Saudi Arabia's $39B Factory Deal - YouTube"},{{L"Saudi Arabia's $39B Factory Deal",L"Uptin"},{L"Inside Apple Park",L"Neo"}});
+    test(preview[0]=="youtube"&&preview[1].empty(),"one YouTube tab never labels a second session");
+    auto twoUnmatched=assignServices({L"Netflix",L"Something - YouTube"},{{L"Episode 3",L""},{L"Episode 4",L""}});
+    test(twoUnmatched[0].empty()&&twoUnmatched[1].empty(),"brand-only never guesses between two unmatched sessions");
+    auto sameTitle=assignServices({L"Lo-fi beats - YouTube",L"Lo-fi beats - YouTube"},{{L"Lo-fi beats",L""},{L"Lo-fi beats",L""}});
+    test(sameTitle[0]=="youtube"&&sameTitle[1]=="youtube","two tabs with the same video each identify their session");
+    test(assignServices({},{{L"Anything",L""}}).front().empty()&&assignServices({L"x"},{}).empty(),"empty inputs are safe");}
     test(appBrand(L"Spotify.exe")=="spotify"&&appBrand(L"vlc media player")=="vlcmediaplayer"&&appBrand(L"Notepad").empty(),"app fallback marks");
     for(auto& r:serviceRules)test(findBrand(r.slug)||r.monogram,"every service has a mark or a monogram");
     // This laptop's paired devices classify sensibly.
@@ -88,7 +109,8 @@ int main(){try{
     test(deviceKind(0,L"Stone 352 Pro")==DeviceKind::Speaker&&deviceBrand(L"Stone 352 Pro")=="boat"&&deviceBrand(L"PartyPal 400")=="boat","boAt speakers");
     test(deviceKind(0x5a020c,L"Sam's S23+")==DeviceKind::Phone&&deviceBrand(L"Sam's S23+")=="samsung","Galaxy phone");
     test(deviceKind(0x002508,L"Xbox Wireless Controller")==DeviceKind::Gamepad&&deviceKind(0,L"AULA-F75 5.0 KB")==DeviceKind::Keyboard,"controller and keyboard");
-    test(deviceBrand(L"Philips TAS2400").empty()&&deviceKind(0,L"Philips TAS2400")==DeviceKind::Other&&deviceBrand(L"Galaxy S24 Ultra")=="samsung","model numbers match only at word starts");
+    test(deviceBrand(L"Philips TAS2400")=="philips"&&deviceBrand(L"TAS2400")=="philips"&&deviceKind(0,L"TAS2400")==DeviceKind::Other&&deviceBrand(L"Galaxy S24 Ultra")=="samsung","model numbers match only at word starts (TAS2400 is Philips, not Samsung)");
+    test(deviceBrand(L"Tatiana's phone").empty()&&deviceBrand(L"Metas2400").empty(),"Philips codes need a word start and digits");
     test(deviceBrand(L"Headset",0x054c,2)=="sony"&&deviceBrand(L"Buds",0x0075,1)=="samsung"&&deviceBrand(L"HBTS001").empty(),"vendor IDs and unknowns");
     for(auto& d:{L"sony",L"samsung",L"boat",L"apple",L"bose",L"jbl"}){std::string slug;for(wchar_t c:std::wstring(d))slug+=char(c);test(findBrand(slug)!=nullptr,"device brand marks present");}
     {BluetoothDevice a;a.name=L"WH-1000XM4";BluetoothDevice b=a;b.connected=true;auto on=bluetoothChanges({a},{b});test(on.size()==1&&on[0].connected,"connection event");auto off=bluetoothChanges({b},{a});test(off.size()==1&&!off[0].connected,"disconnection event");

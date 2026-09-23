@@ -1,6 +1,7 @@
 #include "SettingsWindow.h"
 #include "Animation/MotionEngine.h"
 #include "Design/Icons.h"
+#include "Design/Type.h"
 #include "Composition/GlassBackdrop.h"
 #include <d3d11.h>
 #include <dxgi1_2.h>
@@ -80,7 +81,7 @@ std::wstring SettingsUi::detail(const SettingItem& i)const{
 }
 IDWriteTextFormat* SettingsUi::format(float size,DWRITE_FONT_WEIGHT weight){
     int key=int(size*10)*1000+int(weight);auto it=formats_.find(key);if(it!=formats_.end())return it->second.Get();
-    ComPtr<IDWriteTextFormat> f;check(write_->CreateTextFormat(size>=20?L"Segoe UI Variable Display":L"Segoe UI Variable Text",nullptr,weight,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,size,L"en-us",&f));
+    ComPtr<IDWriteTextFormat> f;check(write_->CreateTextFormat(fontFamily(size),nullptr,weight,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,size,L"en-us",&f));
     f->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);DWRITE_TRIMMING trim{DWRITE_TRIMMING_GRANULARITY_CHARACTER,0,0};ComPtr<IDWriteInlineObject> ellipsis;write_->CreateEllipsisTrimmingSign(f.Get(),&ellipsis);f->SetTrimming(&trim,ellipsis.Get());
     formats_[key]=f;return f.Get();
 }
@@ -202,7 +203,7 @@ HWND SettingsUi::create(){
     check(dxgiFactory->CreateSwapChainForComposition(d3d_.Get(),&desc,nullptr,&swap_));
     D2D1_FACTORY_OPTIONS options{};check(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,__uuidof(ID2D1Factory1),&options,reinterpret_cast<void**>(factory_.GetAddressOf())));
     check(factory_->CreateDevice(dxgi.Get(),&device2d_));check(device2d_->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE,&dc_));dc_->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
-    check(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(write_.GetAddressOf())));
+    check(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(write_.GetAddressOf())));if(auto params=sharpTextParams(write_.Get()))dc_->SetTextRenderingParams(params.Get());
     check(DCompositionCreateDevice(dxgi.Get(),__uuidof(IDCompositionDevice),reinterpret_cast<void**>(composition_.GetAddressOf())));check(composition_->CreateTargetForHwnd(hwnd_,TRUE,&target_));check(composition_->CreateVisual(&visual_));check(visual_->SetContent(swap_.Get()));check(target_->SetRoot(visual_.Get()));check(composition_->Commit());
     check(dc_->CreateSolidColorBrush(D2D1::ColorF(0xffffff),&brush_));
     MARGINS margins{-1,-1,-1,-1};DwmExtendFrameIntoClientArea(hwnd_,&margins);theme();resize();

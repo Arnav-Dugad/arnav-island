@@ -31,7 +31,10 @@ class IslandWindow {
     std::unique_ptr<Renderer> renderer_;std::unique_ptr<AudioProvider> audio_;std::unique_ptr<MediaProvider> media_;
     std::thread platformThread_;std::unique_ptr<SystemProvider> system_;std::unique_ptr<LoopbackAnalyzer> analyzer_;std::unique_ptr<SessionMixer> mixer_;std::unique_ptr<BrightnessProvider> brightness_;std::unique_ptr<BatteryProvider> battery_;std::unique_ptr<BluetoothProvider> bluetooth_;std::unique_ptr<PowerModeWatcher> powerMode_;
     AutoHide autoHide_;bool autoHideTimer_=false;void autoHideTick();void showNotice(int kind,const BluetoothDevice& device={});bool deviceRequest_=false;void updateBattery();
-    std::wstring selectedSource_,followedSource_;double swipeAccumulator_=0,swipeTime_=0;bool mediaReachable_=false;
+    std::wstring selectedSource_;uint64_t selectedId_=0,followedId_=0;
+    // With edge reveal, a pointer resting on the edge rows shows the compact island only;
+    // the hover delay restarts once it moves onto the island itself.
+    bool edgeHold_=false;bool pointerOffEdge();double swipeAccumulator_=0,swipeTime_=0;bool mediaReachable_=false;
     void updateSessions();void switchSession(int delta,bool absolute=false);void updateProviders();void levelIndicator();void setMixerAt(LPARAM);bool systemRequested_=false,contentDirty_=true;Action pressedAction_=Action::None;
     void setVolumeAt(LPARAM);void scrubAt(LPARAM,bool begin=false);void endScrub(bool commit);void requestPreviews(const std::vector<ShelfItem>& incoming={});void perform(Action);Action hit(LPARAM);void refresh();void clockTimer();
     std::unique_ptr<ShelfPreviews> previews_;RouteConfirmation route_;std::wstring routeName_;ComPtr<ShelfDropTarget> dropTarget_;bool visibilityAudit_=false,testing_=false,positioning_=false,motionStudy_=false;unsigned motionStudyStep_=0;

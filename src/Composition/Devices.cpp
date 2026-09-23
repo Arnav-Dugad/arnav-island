@@ -30,8 +30,12 @@ void Renderer::updateTabs(const ContentSnapshot& s,float x,float y,int count,int
     double opacity=visible?1:0;if(std::abs(tabOpacity_.target()-opacity)>.001){if(s.reducedMotion)tabOpacity_.reset(opacity,now);else tabOpacity_.retarget(opacity,now,MotionTokens::artworkOpacity);}auto o=animation(tabOpacity_,now);tabEffect_->SetOpacity(o.Get());
     (void)count;
 }
-void Renderer::updateCard(const ContentSnapshot& s,UINT32 accent,UINT32 raised,UINT32 ink){
+void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UINT32 raised,UINT32 ink){
     bool shown=s.card&&s.notice.kind;double now=seconds();cardIconEffect_->SetOpacity(shown?1.f:0.f);
+    if(!shown){cardRing_->SetContent(nullptr);cardRingKey_=-1;}
+    else{const bool power=s.notice.kind>=3;const int percent=power?s.battery:s.notice.device.battery;const UINT32 color=s.notice.kind==3?0x5fd98a:accent;
+        int ringKey=int((s.notice.kind*101+percent+1)^int(color%100003)^int(track%9973));
+        if(ringKey!=cardRingKey_){cardRingKey_=ringKey;surface(cardRingSurface_,72,72,[&](auto* rt){drawRing(rt,d2d_.Get(),36,36,31,3,percent>=0?percent/100.:0,color,track);});cardRing_->SetContent(cardRingSurface_.Get());}}
     // Energy sweep sits on the ring of whichever surface shows power.
     if(shown){energy_->SetOffsetX(std::round((20+28-36)*scale_));energy_->SetOffsetY(std::round((16+28-36)*scale_));}
     else if(s.expanded&&!s.live&&s.page==Page::System&&s.statsTab==1){energy_->SetOffsetX(std::round((20+58-36)*scale_));energy_->SetOffsetY(std::round((38+100-36)*scale_));}

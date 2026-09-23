@@ -1,4 +1,5 @@
 #include "MediaProvider.h"
+#include "BrowserTabs.h"
 #include "MediaAbi.h"
 #include <roapi.h>
 #include <shcore.h>
@@ -48,7 +49,7 @@ std::shared_ptr<const Artwork> readArtwork(Properties* properties,HANDLE stop){
     ComPtr<IWICFormatConverter> converter;check(factory->CreateFormatConverter(&converter));check(converter->Initialize(scaler.Get(),GUID_WICPixelFormat32bppPBGRA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom));
     auto art=std::make_shared<Artwork>();art->width=w;art->height=h;art->pixels.resize(size_t(w)*h*4);check(converter->CopyPixels(nullptr,w*4,UINT(art->pixels.size()),art->pixels.data()));uint64_t red=0,green=0,blue=0,count=0;for(size_t i=0;i+3<art->pixels.size();i+=64){if(art->pixels[i+3]<200)continue;red+=art->pixels[i+2];green+=art->pixels[i+1];blue+=art->pixels[i];++count;}if(count){auto tone=[&](uint64_t v){return uint32_t(150+v/count*80/255);};art->accent=(tone(red)<<16)|(tone(green)<<8)|tone(blue);}return art;
 }
-struct Watched {ComPtr<Session> session;INT64 media=0,play=0,time=0;bool subscribed[3]{};MediaSnapshot last;};
+struct Watched {ComPtr<Session> session;uint64_t id=0;INT64 media=0,play=0,time=0;bool subscribed[3]{};MediaSnapshot last;};
 }
 MediaProvider::MediaProvider(HWND w):window_(w),stop_(CreateEventW(nullptr,TRUE,FALSE,nullptr)),changed_(signal()){if(!stop_)throw std::runtime_error("Media stop event allocation failed");worker_=std::thread([this]{run();});}
 MediaProvider::~MediaProvider(){SetEvent(stop_);if(worker_.joinable())worker_.join();CloseHandle(stop_);}
@@ -57,8 +58,8 @@ void MediaProvider::run(){
     if(FAILED(RoInitialize(RO_INIT_MULTITHREADED)))return;
     {
     ComPtr<Manager> manager;INT64 currentToken=0,sessionsToken=0;bool currentSubscribed=false,sessionsSubscribed=false;
-    ComPtr<Changed> managerChanged,listChanged,mediaChanged,playChanged,timeChanged;std::vector<Watched> watched;uint64_t revision=0;
-    std::map<std::wstring,AppIdentity> identities;std::map<std::wstring,std::string> services;std::map<std::string,std::shared_ptr<const Artwork>> serviceIcons;
+    ComPtr<Changed> managerChanged,listChanged,mediaChanged,playChanged,timeChanged;std::vector<Watched> watched;uint64_t revision=0,nextId=0;
+    std::map<std::wstring,AppIdentity> identities;std::wstring servicesKey;std::vector<std::string> assigned;std::map<std::string,std::shared_ptr<const Artwork>> serviceIcons;
     auto unsubscribe=[](Watched& w){if(w.subscribed[0])w.session->remove_MediaPropertiesChanged(w.media);if(w.subscribed[1])w.session->remove_PlaybackInfoChanged(w.play);if(w.subscribed[2])w.session->remove_TimelinePropertiesChanged(w.time);};
     try{
         HSTRING name=nullptr;const wchar_t* runtime=L"Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager";check(WindowsCreateString(runtime,UINT32(wcslen(runtime)),&name));
@@ -79,15 +80,15 @@ void MediaProvider::run(){
             std::vector<Watched> next;
             for(auto& s:list){auto it=std::find_if(watched.begin(),watched.end(),[&](auto& w){return w.session.Get()==s.Get();});
                 if(it!=watched.end()){next.push_back(std::move(*it));watched.erase(it);continue;}
-                Watched w;w.session=s;w.subscribed[0]=SUCCEEDED(s->add_MediaPropertiesChanged(mediaChanged.Get(),&w.media));w.subscribed[1]=SUCCEEDED(s->add_PlaybackInfoChanged(playChanged.Get(),&w.play));w.subscribed[2]=SUCCEEDED(s->add_TimelinePropertiesChanged(timeChanged.Get(),&w.time));next.push_back(std::move(w));}
+                Watched w;w.session=s;w.id=++nextId;w.subscribed[0]=SUCCEEDED(s->add_MediaPropertiesChanged(mediaChanged.Get(),&w.media));w.subscribed[1]=SUCCEEDED(s->add_PlaybackInfoChanged(playChanged.Get(),&w.play));w.subscribed[2]=SUCCEEDED(s->add_TimelinePropertiesChanged(timeChanged.Get(),&w.time));next.push_back(std::move(w));}
             for(auto& w:watched)unsubscribe(w);watched=std::move(next);
-            std::vector<Command> commands;double requested=-1;std::wstring seekSource,seekTitle;{std::lock_guard lock(mutex_);commands.swap(commands_);requested=requestedSeek_;requestedSeek_=-1;seekSource=seekSource_;seekTitle=seekTitle_;}
+            std::vector<Command> commands;double requested=-1;std::wstring seekSource,seekTitle;uint64_t seekId=0;{std::lock_guard lock(mutex_);commands.swap(commands_);requested=requestedSeek_;requestedSeek_=-1;seekSource=seekSource_;seekTitle=seekTitle_;seekId=seekId_;}
             std::vector<MediaSnapshot> result;
             for(auto& w:watched){
-                auto& session=w.session;MediaSnapshot snapshot;
+                auto& session=w.session;MediaSnapshot snapshot;snapshot.id=w.id;
                 HSTRING source=nullptr;if(SUCCEEDED(session->get_SourceAppUserModelId(&source)))snapshot.source=consume(source);
                 snapshot.current=session.Get()==systemCurrent.Get();
-                for(auto& c:commands)if(c.source==snapshot.source||(c.source.empty()&&snapshot.current)){ComPtr<IInspectable> action;if(c.action==1)session->TryTogglePlayPauseAsync(&action);else if(c.action==2)session->TrySkipPreviousAsync(&action);else if(c.action==3)session->TrySkipNextAsync(&action);}
+                for(auto& c:commands)if(c.id?c.id==w.id:(c.source==snapshot.source||(c.source.empty()&&snapshot.current))){ComPtr<IInspectable> action;if(c.action==1)session->TryTogglePlayPauseAsync(&action);else if(c.action==2)session->TrySkipPreviousAsync(&action);else if(c.action==3)session->TrySkipNextAsync(&action);}
                 try{
                     ComPtr<Async> props;check(session->TryGetMediaPropertiesAsync(&props));auto properties=awaitResult<Properties>(props.Get(),L"{84593a3d-951a-55b6-8353-5205e577797b}",stop_);
                     HSTRING title=nullptr,artist=nullptr;check(properties->get_Title(&title));snapshot.title=consume(title);check(properties->get_Artist(&artist));snapshot.artist=consume(artist);snapshot.available=true;
@@ -98,14 +99,20 @@ void MediaProvider::run(){
                 }catch(...){if(WaitForSingleObject(stop_,0)==WAIT_OBJECT_0)throw;snapshot.title=L"Media session";snapshot.available=true;}
                 ComPtr<PlaybackInfo> playback;if(SUCCEEDED(session->GetPlaybackInfo(reinterpret_cast<IInspectable**>(playback.GetAddressOf())))&&playback){INT32 status=0;playback->get_Status(&status);snapshot.playing=status==4;ComPtr<Controls> controls;if(SUCCEEDED(playback->get_Controls(&controls))&&controls){BYTE enabled=0;controls->Toggle(&enabled);snapshot.canToggle=enabled;controls->Previous(&enabled);snapshot.canPrevious=enabled;controls->Next(&enabled);snapshot.canNext=enabled;enabled=0;if(SUCCEEDED(controls->Position(&enabled)))snapshot.canSeek=enabled;}}
                 ComPtr<Timeline> timeline;if(SUCCEEDED(session->GetTimelineProperties(reinterpret_cast<IInspectable**>(timeline.GetAddressOf())))&&timeline){INT64 start=0,end=0,position=0;timeline->get_Start(&start);timeline->get_End(&end);timeline->get_Position(&position);snapshot.duration=std::max(0.,double(end-start)/1e7);snapshot.position=std::clamp(double(position-start)/1e7,0.,snapshot.duration);INT64 lo=0,hi=0;timeline->get_MinSeek(&lo);timeline->get_MaxSeek(&hi);snapshot.seekMin=std::clamp(double(lo-start)/1e7,0.,snapshot.duration);snapshot.seekMax=std::clamp(double(hi-start)/1e7,0.,snapshot.duration);snapshot.canSeek=snapshot.canSeek&&snapshot.seekMax>snapshot.seekMin;
-                    if(requested>=0&&snapshot.canSeek&&seekSource==snapshot.source&&seekTitle==snapshot.title){ComPtr<IInspectable> operation;session->TryChangePlaybackPositionAsync(start+INT64(std::clamp(requested,snapshot.seekMin,snapshot.seekMax)*1e7),&operation);requested=-1;}}
+                    if(requested>=0&&snapshot.canSeek&&(seekId?seekId==w.id:seekSource==snapshot.source)&&seekTitle==snapshot.title){ComPtr<IInspectable> operation;session->TryChangePlaybackPositionAsync(start+INT64(std::clamp(requested,snapshot.seekMin,snapshot.seekMax)*1e7),&operation);requested=-1;}}
                 auto id=identities.find(snapshot.source);if(id==identities.end())id=identities.emplace(snapshot.source,resolveApp(snapshot.source)).first;
                 snapshot.appName=id->second.name;snapshot.appIcon=id->second.icon;snapshot.browser=id->second.browser;
-                if(snapshot.browser){auto key=snapshot.source+L"\n"+snapshot.title;auto found=services.find(key);if(found==services.end()){if(services.size()>64)services.clear();found=services.emplace(key,detectService(id->second,snapshot.title,snapshot.artist)).first;}snapshot.service=found->second;
-                    // Services without a published mark use an installed app of the same name, if any.
-                    if(!snapshot.service.empty()&&!findBrand(snapshot.service)){auto icon=serviceIcons.find(snapshot.service);if(icon==serviceIcons.end()){auto* rule=findService(snapshot.service);icon=serviceIcons.emplace(snapshot.service,rule?installedAppIcon(std::wstring(rule->name)):nullptr).first;}snapshot.serviceIcon=icon->second;}}
                 snapshot.sampledAt=seconds();snapshot.revision=++revision;w.last=snapshot;result.push_back(std::move(snapshot));
             }
+            // Browser tabs share one app ID. The same title twice from one browser is one
+            // piece of media (a preview or duplicate session), so only the first is kept.
+            for(size_t i=0;i<result.size();++i)for(size_t j=result.size();j-->i+1;)if(result[i].browser&&result[j].browser&&result[i].source==result[j].source&&result[i].title==result[j].title&&result[i].artist==result[j].artist){if(result[j].current)result[i].current=true;result.erase(result.begin()+j);}
+            // Sites are identified jointly, from every open tab, only when the set of browser sessions changes.
+            {std::wstring key;std::vector<MediaTitle> titles;for(auto& s:result)if(s.browser){key+=s.source+L"\x1f"+s.title+L"\x1f"+s.artist+L"\x1e";titles.push_back({s.title,s.artist});}
+                if(key!=servicesKey){servicesKey=key;assigned.clear();if(!titles.empty()){auto slugs=assignServices(browserTabTitles(),titles);for(auto slug:slugs)assigned.emplace_back(slug);}}
+                size_t k=0;for(auto& s:result){if(!s.browser)continue;s.service=k<assigned.size()?assigned[k]:std::string{};++k;
+                    // Services without a published mark use an installed app of the same name, if any.
+                    if(!s.service.empty()&&!findBrand(s.service)){auto icon=serviceIcons.find(s.service);if(icon==serviceIcons.end()){auto* rule=findService(s.service);icon=serviceIcons.emplace(s.service,rule?installedAppIcon(std::wstring(rule->name)):nullptr).first;}s.serviceIcon=icon->second;}}}
             publish(std::move(result));HANDLE events[]={stop_,changed_.get()};if(WaitForMultipleObjects(2,events,FALSE,INFINITE)==WAIT_OBJECT_0)break;
         }
     }catch(...){if(WaitForSingleObject(stop_,0)!=WAIT_OBJECT_0){MediaSnapshot s;s.title=L"Media access unavailable";s.artist=L"Windows media sessions could not be reached";publish({s});}}

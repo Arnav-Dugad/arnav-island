@@ -7,6 +7,7 @@
 #include <dwrite.h>
 #include <functional>
 #include "Design/Icons.h"
+#include "Design/Type.h"
 #include "Design/Layout.h"
 #include "Animation/ArtworkHandoff.h"
 #include "Media/MediaProvider.h"
@@ -45,7 +46,7 @@ class Renderer {
     ComPtr<IDCompositionDevice> device_;
     ComPtr<IDCompositionTarget> target_;
     ComPtr<ID2D1Factory> d2d_;
-    ComPtr<IDWriteFactory> write_;
+    ComPtr<IDWriteFactory> write_;ComPtr<IDWriteRenderingParams> textParams_;
     ComPtr<IDCompositionVisual> stage_,root_,body_,inner_,header_,content_,bar_,art_,wingLeft_,wingRight_,pulseVisual_,hoverVisual_;
     ComPtr<IDCompositionRectangleClip> clip_,innerClip_,barClip_,artClip_;
     ComPtr<IDCompositionEffectGroup> contentEffect_,barEffect_,headerEffect_,artEffect_,pulseEffect_,hoverEffect_;
@@ -79,18 +80,22 @@ class Renderer {
     ComPtr<IDCompositionRectangleClip> hudClip_;Spring spectrumOpacity_{0},hudOpacity_{0},badgeOpacity_{0};UINT32 barColor_=0,meterColor_=0;int barMode_=-1,barCount_=0;float barInset_=0;
     std::shared_ptr<const Artwork> badgeIcon_;int badgeService_=-1;bool badgeLight_=false;int meterRows_=0;
     void updateSpectrumLayout(const ContentSnapshot&,UINT32 accent);void updateHud(const ContentSnapshot&,UINT32 accent,UINT32 track);void updateBadge(const ContentSnapshot&,UINT32 bg);
-    BrandPainter brands_;ComPtr<IDCompositionVisual> tabPill_,cardIcon_,energy_;ComPtr<IDCompositionSurface> tabSurface_,cardIconSurface_,energySurface_;ComPtr<IDCompositionEffectGroup> stageEffect_,tabEffect_,cardIconEffect_,energyEffect_;
+    BrandPainter brands_;ComPtr<IDCompositionVisual> tabPill_,cardIcon_,energy_,cardRing_;ComPtr<IDCompositionSurface> tabSurface_,cardIconSurface_,energySurface_,cardRingSurface_;int cardRingKey_=-1;ComPtr<IDCompositionEffectGroup> stageEffect_,tabEffect_,cardIconEffect_,energyEffect_;
     ComPtr<IDCompositionScaleTransform> cardIconScale_;ComPtr<IDCompositionRotateTransform> energyRotation_;Spring tabX_{0},tabOpacity_{0},cardPop_{1},energySpin_{0},energyGlow_{0};int tabKey_=-1;UINT32 tabColor_=0;int cardKey_=-1;
-    void updateTabs(const ContentSnapshot&,float x,float y,int count,int selected,bool visible,UINT32 fill);void updateCard(const ContentSnapshot&,UINT32 accent,UINT32 raised,UINT32 ink);
+    void updateTabs(const ContentSnapshot&,float x,float y,int count,int selected,bool visible,UINT32 fill);void updateCard(const ContentSnapshot&,UINT32 track,UINT32 accent,UINT32 raised,UINT32 ink);
     void identity(ID2D1RenderTarget*,const MediaSnapshot&,float x,float y,float size,UINT32 plate);void deviceBadge(ID2D1RenderTarget*,const BluetoothDevice&,float x,float y,float size,UINT32 plate,UINT32 ink);
     void drawPreview(ID2D1RenderTarget*,const Artwork&,float,float,float,float);
     float dpi_=96,scale_=1;
     ComPtr<IDCompositionAnimation> animation(const Spring&,double,float factor=1,float bias=0);
     ComPtr<IDCompositionAnimation> visibility(const MotionEngine&,double,bool compact=false);
     void surface(ComPtr<IDCompositionSurface>&,int,int,std::function<void(ID2D1RenderTarget*)>);
+    // Exact physical-pixel surface; drawing coordinates are pixels.
+    void pixelSurface(ComPtr<IDCompositionSurface>&,int,int,std::function<void(ID2D1RenderTarget*)>);
+    // Shoulders drawn 1:1 for a radius: wingAlong_ px along the edge (plus a 1 px overlap into the body), wingDepth_ px deep.
+    void wings(float radius);float wingRadius_=0;int wingAlong_=0,wingDepth_=0;
     void text(ID2D1RenderTarget*,const std::wstring&,float,float,float,float,UINT32,DWRITE_FONT_WEIGHT=DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT=DWRITE_TEXT_ALIGNMENT_LEADING,float height=0);
 public:
-    static constexpr float canvasWidth=600,canvasHeight=500;
+    static constexpr float canvasWidth=680,canvasHeight=500;
     std::vector<HitTarget> targets;
     Action hit(float x,float y)const;
     unsigned commits=0,redraws=0; bool software=false;

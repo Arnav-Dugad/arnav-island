@@ -26,16 +26,6 @@ inline AppIdentity resolveApp(const std::wstring& aumid){
     if(id.name.empty()){auto bang=aumid.find(L'!');std::wstring base=bang==std::wstring::npos?aumid:aumid.substr(bang+1);if(base.size()>4&&lower(base).ends_with(L".exe"))base.resize(base.size()-4);id.name=base.size()<=32?base:L"Media";}
     id.browser=isBrowserName(id.name)||isBrowserName(id.exe)||isBrowserName(aumid);return id;
 }
-// A browser session carries no site identity. Visible browser window titles are
-// read locally and matched against the playing title (see matchService).
-inline std::string detectService(const AppIdentity& app,const std::wstring& title,const std::wstring& artist){
-    if(!app.browser||title.size()<3)return {};
-    struct Search{std::map<DWORD,bool> browsers;std::vector<std::wstring> titles;} search;
-    HANDLE snapshot=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0);if(snapshot!=INVALID_HANDLE_VALUE){PROCESSENTRY32W entry{sizeof(entry)};for(BOOL ok=Process32FirstW(snapshot,&entry);ok;ok=Process32NextW(snapshot,&entry))if(isBrowserName(entry.szExeFile))search.browsers[entry.th32ProcessID]=true;CloseHandle(snapshot);}
-    EnumWindows([](HWND h,LPARAM p)->BOOL{auto& s=*reinterpret_cast<Search*>(p);if(!IsWindowVisible(h)||GetWindow(h,GW_OWNER))return TRUE;DWORD pid=0;GetWindowThreadProcessId(h,&pid);if(!s.browsers.contains(pid))return TRUE;
-        wchar_t text[512];int n=GetWindowTextW(h,text,512);if(n>0&&s.titles.size()<64)s.titles.emplace_back(text,n);return TRUE;},reinterpret_cast<LPARAM>(&search));
-    return std::string(matchService(search.titles,title,artist));
-}
 // AppUserModelID of an installed app found by its Start menu name (for example a
 // streaming service's Store app, Xbox or Armoury Crate). Read once and cached.
 inline std::wstring installedAppId(const std::wstring& name){

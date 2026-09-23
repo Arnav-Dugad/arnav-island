@@ -1,5 +1,6 @@
 #include "Renderer.h"
 #include <dxgi1_2.h>
+#include "Composition/DockGeometry.h"
 
 namespace nexus {
 void Renderer::initialize(HWND hwnd,float dpi) {
@@ -9,10 +10,11 @@ void Renderer::initialize(HWND hwnd,float dpi) {
     if(FAILED(hr)){software=true;check(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_WARP,nullptr,flags,nullptr,0,D3D11_SDK_VERSION,&d3d_,nullptr,nullptr));}
     check(d3d_.As(&dxgi_));check(DCompositionCreateDevice(dxgi_.Get(),__uuidof(IDCompositionDevice),reinterpret_cast<void**>(device_.GetAddressOf())));
     check(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,d2d_.GetAddressOf()));
-    check(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(write_.GetAddressOf())));
+    check(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(write_.GetAddressOf())));textParams_=sharpTextParams(write_.Get());
     check(device_->CreateTargetForHwnd(hwnd,TRUE,&target_));glass_.initialize(hwnd,scale_,canvasWidth,canvasHeight);
     for(auto* p:{std::addressof(root_),std::addressof(body_),std::addressof(inner_),std::addressof(header_),std::addressof(content_),std::addressof(bar_),std::addressof(art_),std::addressof(wingLeft_),std::addressof(wingRight_),std::addressof(pulseVisual_),std::addressof(hoverVisual_)})check(device_->CreateVisual(p->GetAddressOf()));
-    check(root_->AddVisual(wingLeft_.Get(),FALSE,nullptr));check(root_->AddVisual(wingRight_.Get(),FALSE,nullptr));check(device_->CreateVisual(&stage_));check(stage_->AddVisual(root_.Get(),FALSE,nullptr));check(target_->SetRoot(stage_.Get()));check(device_->CreateEffectGroup(&stageEffect_));check(stage_->SetEffect(stageEffect_.Get()));check(root_->AddVisual(body_.Get(),FALSE,nullptr));
+    check(root_->AddVisual(wingLeft_.Get(),FALSE,nullptr));check(root_->AddVisual(wingRight_.Get(),FALSE,nullptr));check(device_->CreateVisual(&stage_));// Soft borders antialias every rounded clip and bitmap edge below (body corners, artwork, pills).
+    check(stage_->SetBorderMode(DCOMPOSITION_BORDER_MODE_SOFT));check(stage_->AddVisual(root_.Get(),FALSE,nullptr));check(target_->SetRoot(stage_.Get()));check(device_->CreateEffectGroup(&stageEffect_));check(stage_->SetEffect(stageEffect_.Get()));check(root_->AddVisual(body_.Get(),FALSE,nullptr));
     for(auto* p:{std::addressof(inner_),std::addressof(header_),std::addressof(content_),std::addressof(bar_),std::addressof(art_),std::addressof(pulseVisual_),std::addressof(hoverVisual_)})check(body_->AddVisual(p->Get(),FALSE,nullptr));
     check(device_->CreateRectangleClip(&clip_));check(clip_->SetLeft(0.f));check(clip_->SetTop(0.f));check(body_->SetClip(clip_.Get()));
     check(device_->CreateRectangleClip(&innerClip_));check(innerClip_->SetLeft(0.f));check(innerClip_->SetTop(0.f));check(inner_->SetClip(innerClip_.Get()));
@@ -50,7 +52,9 @@ void Renderer::initialize(HWND hwnd,float dpi) {
     check(device_->CreateRectangleClip(&hudClip_));hudClip_->SetLeft(0.f);hudClip_->SetTop(0.f);hudClip_->SetBottom(4*scale_);hudFill_->SetClip(hudClip_.Get());for(auto* v:{hudTrack_.Get(),hudFill_.Get()})v->SetOffsetY(std::round(15*scale_));
     for(auto& bar:bars_){check(device_->CreateVisual(&bar.visual));check(device_->CreateScaleTransform(&bar.scale));bar.scale->SetCenterY(10*scale_);bar.visual->SetTransform(bar.scale.Get());spectrum_->AddVisual(bar.visual.Get(),FALSE,nullptr);bar.glide.p1=.15;}
     meterLayer_->SetOffsetX(std::round((20+156)*scale_));for(size_t i=0;i<meters_.size();++i){auto& m=meters_[i];check(device_->CreateVisual(&m.visual));check(device_->CreateScaleTransform(&m.scale));m.visual->SetTransform(m.scale.Get());m.visual->SetOffsetY(std::round((38+62+i*36+24)*scale_));meterLayer_->AddVisual(m.visual.Get(),FALSE,nullptr);}
-    for(auto* v:{std::addressof(tabPill_),std::addressof(cardIcon_),std::addressof(energy_)})check(device_->CreateVisual(v->GetAddressOf()));
+    for(auto* v:{std::addressof(tabPill_),std::addressof(cardIcon_),std::addressof(energy_),std::addressof(cardRing_)})check(device_->CreateVisual(v->GetAddressOf()));
+    // The card's level ring is wider than the content surface's origin allows, so it is its own layer that fades and moves with the content.
+    check(content_->AddVisual(cardRing_.Get(),FALSE,nullptr));cardRing_->SetOffsetX(std::round(-8*scale_));cardRing_->SetOffsetY(std::round(-8*scale_));
     body_->AddVisual(tabPill_.Get(),FALSE,content_.Get());body_->AddVisual(cardIcon_.Get(),TRUE,content_.Get());body_->AddVisual(energy_.Get(),TRUE,cardIcon_.Get());
     for(auto pair:{std::pair{std::addressof(tabEffect_),tabPill_.Get()},std::pair{std::addressof(cardIconEffect_),cardIcon_.Get()},std::pair{std::addressof(energyEffect_),energy_.Get()}}){check(device_->CreateEffectGroup(pair.first->GetAddressOf()));pair.second->SetEffect(pair.first->Get());pair.first->Get()->SetOpacity(0.f);}
     check(device_->CreateScaleTransform(&cardIconScale_));cardIconScale_->SetCenterX(28*scale_);cardIconScale_->SetCenterY(28*scale_);cardIcon_->SetTransform(cardIconScale_.Get());cardIcon_->SetOffsetX(std::round(20*scale_));cardIcon_->SetOffsetY(std::round(16*scale_));
@@ -66,12 +70,38 @@ void Renderer::surface(ComPtr<IDCompositionSurface>& s,int w,int h,std::function
         auto properties=D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),dpi_,dpi_);
         ComPtr<ID2D1RenderTarget> rt;check(d2d_->CreateDxgiSurfaceRenderTarget(dx.Get(),&properties,&rt));
         rt->BeginDraw();rt->SetTransform(D2D1::Matrix3x2F::Translation(offset.x/scale_,offset.y/scale_));
-        rt->PushAxisAlignedClip(D2D1::RectF(0,0,float(w),float(h)),D2D1_ANTIALIAS_MODE_ALIASED);rt->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);rt->Clear(D2D1::ColorF(0,0));draw(rt.Get());rt->PopAxisAlignedClip();check(rt->EndDraw());
+        rt->PushAxisAlignedClip(D2D1::RectF(0,0,float(w),float(h)),D2D1_ANTIALIAS_MODE_ALIASED);rt->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);if(textParams_)rt->SetTextRenderingParams(textParams_.Get());rt->Clear(D2D1::ColorF(0,0));draw(rt.Get());rt->PopAxisAlignedClip();check(rt->EndDraw());
     }catch(...){s->EndDraw();throw;}
     check(s->EndDraw());++redraws;
 }
+void Renderer::pixelSurface(ComPtr<IDCompositionSurface>& s,int w,int h,std::function<void(ID2D1RenderTarget*)> draw){
+    s.Reset();check(device_->CreateSurface(UINT(std::max(1,w)),UINT(std::max(1,h)),DXGI_FORMAT_B8G8R8A8_UNORM,DXGI_ALPHA_MODE_PREMULTIPLIED,&s));
+    ComPtr<IDXGISurface> dx;POINT offset{};check(s->BeginDraw(nullptr,__uuidof(IDXGISurface),reinterpret_cast<void**>(dx.GetAddressOf()),&offset));
+    try{auto properties=D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),96,96);
+        ComPtr<ID2D1RenderTarget> rt;check(d2d_->CreateDxgiSurfaceRenderTarget(dx.Get(),&properties,&rt));rt->BeginDraw();rt->SetTransform(D2D1::Matrix3x2F::Translation(float(offset.x),float(offset.y)));
+        rt->PushAxisAlignedClip(D2D1::RectF(0,0,float(w),float(h)),D2D1_ANTIALIAS_MODE_ALIASED);rt->Clear(D2D1::ColorF(0,0));draw(rt.Get());rt->PopAxisAlignedClip();check(rt->EndDraw());
+    }catch(...){s->EndDraw();throw;}
+    check(s->EndDraw());++redraws;
+}
+// Shoulders are drawn at the target radius in physical pixels, so at rest they
+// show 1:1; while the radius animates, a scale transform bridges the gap.
+void Renderer::wings(float radius){
+    wingRadius_=radius;const auto shape=shoulderShape(radius);
+    wingAlong_=std::max(1,int(std::lround(shape.width*scale_)));wingDepth_=std::max(1,int(std::lround(shape.depth*scale_)));
+    const float along=float(wingAlong_),depth=float(wingDepth_);
+    auto draw=[&](ComPtr<IDCompositionSurface>& target,bool right){
+        // Local frame: x along the edge (0 at the outer end), y away from the edge.
+        auto p=[&](float x,float y){if(right)x=along+1-x;return edge_?D2D1::Point2F(depth-y,x):D2D1::Point2F(x,y);};
+        pixelSurface(target,edge_?wingDepth_:wingAlong_+1,edge_?wingAlong_+1:wingDepth_,[&](ID2D1RenderTarget* rt){
+            ComPtr<ID2D1PathGeometry> path;check(d2d_->CreatePathGeometry(&path));ComPtr<ID2D1GeometrySink> sink;check(path->Open(&sink));
+            sink->BeginFigure(p(0,0),D2D1_FIGURE_BEGIN_FILLED);sink->AddLine(p(along+1,0));sink->AddLine(p(along+1,depth));sink->AddLine(p(along,depth));
+            sink->AddBezier({p(along,depth*float(shoulderSideControl)),p(along*float(shoulderEdgeControl),0),p(0,0)});sink->EndFigure(D2D1_FIGURE_END_CLOSED);check(sink->Close());
+            ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(baseColor_),&b);rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);rt->FillGeometry(path.Get(),b.Get());});};
+    draw(leftSurface_,false);draw(rightSurface_,true);
+    wingLeft_->SetContent(attached_&&material_==0?leftSurface_.Get():nullptr);wingRight_->SetContent(attached_&&material_==0?rightSurface_.Get():nullptr);
+}
 void Renderer::text(ID2D1RenderTarget* rt,const std::wstring& value,float x,float y,float w,float size,UINT32 color,DWRITE_FONT_WEIGHT weight,DWRITE_TEXT_ALIGNMENT alignment,float height) {
-    ComPtr<IDWriteTextFormat> f;check(write_->CreateTextFormat(L"Segoe UI Variable Text",nullptr,weight,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,size,L"en-us",&f));
+    ComPtr<IDWriteTextFormat> f;check(write_->CreateTextFormat(fontFamily(size),nullptr,weight,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,size,L"en-us",&f));
     f->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);f->SetTextAlignment(alignment);if(height>0)f->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     DWRITE_TRIMMING trim{DWRITE_TRIMMING_GRANULARITY_CHARACTER,0,0};ComPtr<IDWriteInlineObject> ellipsis;write_->CreateEllipsisTrimmingSign(f.Get(),&ellipsis);f->SetTrimming(&trim,ellipsis.Get());
     ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(color),&b));
@@ -90,13 +120,12 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         baseColor_=bg;accentColor_=accent;material_=int(glass);cachedEdge_=edge_;
         surface(baseSurface_,640,500,[&](auto* rt){rt->Clear(D2D1::ColorF(bg));});body_->SetContent(glass?nullptr:baseSurface_.Get());
         surface(innerSurface_,640,500,[&](auto* rt){rt->Clear(D2D1::ColorF(bg));});inner_->SetContent(glass?nullptr:innerSurface_.Get());
-        auto wing=[&](auto* rt,bool right){ComPtr<ID2D1PathGeometry> path;d2d_->CreatePathGeometry(&path);ComPtr<ID2D1GeometrySink> sink;path->Open(&sink);auto p=[&](float x,float y){if(right)x=32-x;return edge_?D2D1::Point2F(32-y,x):D2D1::Point2F(x,y);};sink->BeginFigure(p(0,0),D2D1_FIGURE_BEGIN_FILLED);sink->AddLine(p(32,0));sink->AddLine(p(32,32));sink->AddBezier({p(32,6.4f),p(25.6f,0),p(0,0)});sink->EndFigure(D2D1_FIGURE_END_CLOSED);sink->Close();ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(bg),&b);rt->FillGeometry(path.Get(),b.Get());};
-        surface(leftSurface_,32,32,[&](auto* rt){wing(rt,false);});surface(rightSurface_,32,32,[&](auto* rt){wing(rt,true);});
+        wings(wingRadius_>0?wingRadius_:17);
         surface(barSurface_,380,2,[&](auto* rt){rt->Clear(D2D1::ColorF(accent));});bar_->SetContent(barSurface_.Get());
         surface(navSurface_,47,44,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink,s.light?.055f:.055f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,47,44},12,12),b.Get());});nav_->SetContent(navSurface_.Get());
     }
     wingLeft_->SetContent(attached&&!glass?leftSurface_.Get():nullptr);wingRight_->SetContent(attached&&!glass?rightSurface_.Get():nullptr);barEffect_->SetOpacity(s.page==Page::Overview&&s.expanded&&!s.live?1.f:0.f);
-    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateCard(s,accent,solidRaised,ink);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio;updateTabs(s,0,stats?-2.f:30.f,stats?3:2,stats?s.statsTab:s.audioTab,stats||audio,s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
+    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateCard(s,track,accent,solidRaised,ink);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio;updateTabs(s,0,stats?-2.f:30.f,stats?3:2,stats?s.statsTab:s.audioTab,stats||audio,s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
     surface(headerSurface_,600,150,[&](auto* rt){
         if(s.expanded)return;
         if(edge_){text(rt,s.battery>=0?std::to_wstring(s.battery)+L"%":L"—",0,82,64,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_CENTER);text(rt,s.charging?L"Charging":L"Battery",0,105,64,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER);return;}
@@ -127,7 +156,6 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         auto value=[](double v,int precision=0){if(v<0)return std::wstring(L"—");wchar_t buf[48];swprintf(buf,48,precision?L"%.1f":L"%.0f",v);return std::wstring(buf);};
         if(s.card&&s.notice.kind){
             auto& n=s.notice;const bool power=n.kind>=3;const int percent=power?s.battery:n.device.battery;
-            drawRing(rt,d2d_.Get(),28,28,31,3,percent>=0?percent/100.:0,n.kind==3?0x5fd98a:accent,track);
             const bool holding=n.kind==3&&s.power.present&&!s.power.charging;std::wstring title=power?(n.kind==3?(holding?L"Plugged in":L"Charging"):L"On battery"):n.device.name,detail;
             if(n.kind==3){wchar_t w[32]{};if(!s.power.relative&&s.power.rateMw>0)swprintf(w,32,L"%.1f W",s.power.rateMw/1000.);detail=holding?L"Not charging right now":w[0]?std::wstring(w)+(s.toFull>=0?L"  ·  full in about "+durationText(s.toFull):L""):L"Power connected";}
             else if(n.kind==4)detail=s.remaining>=0?L"About "+durationText(s.remaining)+L" left":L"Running on battery power";
@@ -162,7 +190,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             text(rt,s.playback.available?s.playback.title:L"A quieter place for everything",80,48,252,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.available?s.playback.artist:L"Play something. Find your rhythm.",80,74,252,11,muted);iconButton(Action::Play,s.playback.playing?Icon::Pause:Icon::Play,340,58,40,40,true,s.playback.canToggle);targets.push_back({Action::Media,0,38,328,74});
             const Icon glyphs[]={Icon::Processor,Icon::Memory,Icon::Battery,Icon::Download,Icon::Upload,Icon::Disk,Icon::Clock};const wchar_t* names[]={L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime"};
             for(int i=0;i<3;++i){int metric=s.settings.homeMetrics[i];float x=i*130.f;box(x,126,120,68,raised,13);drawIcon(rt,d2d_.Get(),glyphs[metric],x+12,137,14,muted);text(rt,names[metric],x+33,136,77,10,muted);std::wstring number;switch(metric){case 0:number=value(s.system.cpu)+ (s.system.cpu>=0?L"%":L"");break;case 1:number=s.system.ramTotalGiB?value(s.system.ramPercent)+L"%":L"—";break;case 2:number=s.battery>=0?std::to_wstring(s.battery)+L"%":L"—";break;case 3:number=s.system.networkAvailable?rateText(s.system.download):L"—";break;case 4:number=s.system.networkAvailable?rateText(s.system.upload):L"—";break;case 5:number=s.system.diskTotalGiB?value(s.system.diskFreeGiB)+L" GB":L"—";break;default:number=clockText(double(s.system.uptime));break;}text(rt,number,x+12,156,100,metric>=3?18:23,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}
-            iconButton(Action::Mute,s.muted?Icon::Muted:Icon::Volume,0,200,28,28);b->SetColor(D2D1::ColorF(line,lineAlpha));rt->DrawLine({38,215},{322,215},b.Get(),2);text(rt,s.muted?L"Muted":std::to_wstring(s.volume)+L"%",264,199,58,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);iconButton(Action::Audio,Icon::Audio,346,200,34,28);targets.push_back({Action::VolumeSlider,38,201,284,26});
+            iconButton(Action::Mute,s.muted?Icon::Muted:Icon::Volume,0,200,28,28);b->SetColor(D2D1::ColorF(line,lineAlpha));rt->DrawLine({38,215},{300,215},b.Get(),2);text(rt,s.muted?L"Muted":std::to_wstring(s.volume)+L"%",306,207,36,10.5f,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,16);iconButton(Action::Audio,Icon::Audio,346,200,34,28);targets.push_back({Action::VolumeSlider,38,201,262,26});
         }else if(s.page==Page::Media){
             bool video=s.settings.mediaLayout==2||(s.settings.mediaLayout==0&&s.playback.kind==MediaKind::Video);float tx=video?166.f:118.f,tw=380-tx;
             if(!s.playback.artwork){box(0,video?30:44,video?148:100,video?148:100,raised,18);drawIcon(rt,d2d_.Get(),Icon::Music,video?56:34,video?85:77,32,muted);}
@@ -243,8 +271,14 @@ ComPtr<IDCompositionAnimation> Renderer::visibility(const MotionEngine& m,double
     ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(now)));double duration=0;auto curve=approximateCurve([&](double t){return m.visibility(t,compact);},[&](double t){return m.height.settled(t)&&m.reveal.settled(t);},now,duration);for(auto& c:curve)check(a->AddCubic(c.time,float(c.p),float(c.v),float(c.quadratic),float(c.cubic)));check(a->End(duration,float(m.visibility(now+10,compact).position)));return a;
 }
 void Renderer::animate(const MotionEngine& m,double now) {
-    auto w=animation(m.width,now,scale_),h=animation(m.height,now,scale_),r=animation(m.radius,now,scale_);check(clip_->SetRight(w.Get()));check(clip_->SetBottom(h.Get()));
-    auto iw=animation(m.width,now,scale_,-2),ih=animation(m.height,now,scale_,-2),ir=animation(m.radius,now,scale_,-1);check(innerClip_->SetRight(iw.Get()));check(innerClip_->SetBottom(ih.Get()));
+    // At rest the body sits on whole physical pixels, so its edges meet the shoulders exactly.
+    const bool rest=m.width.settled(now)&&m.height.settled(now)&&m.radius.settled(now);
+    const float restW=std::round(float(m.width.target()*scale_)),restH=std::round(float(m.height.target()*scale_));
+    const float restX=std::round(float((edge_?canvasWidth-m.width.target():(canvasWidth-m.width.target())/2)*scale_)),restY=edge_?std::round(float((canvasHeight-m.height.target())*scale_/2)):0.f;
+    auto w=animation(m.width,now,scale_),h=animation(m.height,now,scale_),r=animation(m.radius,now,scale_);
+    auto iw=animation(m.width,now,scale_,-2),ih=animation(m.height,now,scale_,-2),ir=animation(m.radius,now,scale_,-1);
+    if(rest){check(clip_->SetRight(restW));check(clip_->SetBottom(restH));check(innerClip_->SetRight(restW-2));check(innerClip_->SetBottom(restH-2));}
+    else{check(clip_->SetRight(w.Get()));check(clip_->SetBottom(h.Get()));check(innerClip_->SetRight(iw.Get()));check(innerClip_->SetBottom(ih.Get()));}
     bool tl=!attached_||edge_,tr=!attached_,bl=true,br=!attached_||!edge_;
 
     auto corners=[&](IDCompositionRectangleClip* clip,IDCompositionAnimation* radius){
@@ -253,14 +287,25 @@ void Renderer::animate(const MotionEngine& m,double now) {
         if(bl){clip->SetBottomLeftRadiusX(radius);clip->SetBottomLeftRadiusY(radius);}else{clip->SetBottomLeftRadiusX(0.f);clip->SetBottomLeftRadiusY(0.f);}
         if(br){clip->SetBottomRightRadiusX(radius);clip->SetBottomRightRadiusY(radius);}else{clip->SetBottomRightRadiusX(0.f);clip->SetBottomRightRadiusY(0.f);}
     };corners(clip_.Get(),r.Get());corners(innerClip_.Get(),ir.Get());
-    auto x=animation(m.width,now,edge_?-scale_:-scale_/2,canvasWidth*scale_/(edge_?1:2));if(m.width.settled(now))check(body_->SetOffsetX(std::round(float((edge_?canvasWidth-m.width.target():(canvasWidth-m.width.target())/2)*scale_))));else check(body_->SetOffsetX(x.Get()));
-    if(edge_){auto y=animation(m.height,now,-scale_/2,canvasHeight*scale_/2);if(m.height.settled(now))check(body_->SetOffsetY(std::round(float((canvasHeight-m.height.target())*scale_/2))));else check(body_->SetOffsetY(y.Get()));}else check(body_->SetOffsetY(0.f));
+    auto x=animation(m.width,now,edge_?-scale_:-scale_/2,canvasWidth*scale_/(edge_?1:2));if(m.width.settled(now))check(body_->SetOffsetX(restX));else check(body_->SetOffsetX(x.Get()));
+    if(edge_){auto y=animation(m.height,now,-scale_/2,canvasHeight*scale_/2);if(m.height.settled(now))check(body_->SetOffsetY(restY));else check(body_->SetOffsetY(y.Get()));}else check(body_->SetOffsetY(0.f));
     auto dx=animation(m.dragX,now,scale_),dy=animation(m.dragY,now,scale_);check(root_->SetOffsetX(dx.Get()));check(root_->SetOffsetY(dy.Get()));
-    auto shoulder=animation(m.radius,now,1.f/32);for(auto p:{leftScale_.Get(),rightScale_.Get()}){check(p->SetScaleX(shoulder.Get()));check(p->SetScaleY(shoulder.Get()));p->SetCenterX(edge_?32*scale_:0.f);p->SetCenterY(0.f);}
-    if(edge_){leftScale_->SetCenterY(32*scale_);wingLeft_->SetOffsetX((canvasWidth-32)*scale_);wingRight_->SetOffsetX((canvasWidth-32)*scale_);auto ly=animation(m.height,now,-scale_/2,(canvasHeight/2-32)*scale_),ry=animation(m.height,now,scale_/2,canvasHeight*scale_/2);wingLeft_->SetOffsetY(ly.Get());wingRight_->SetOffsetY(ry.Get());header_->SetOffsetX(expanded_?std::round(20*scale_):0.f);}
-    else{leftScale_->SetCenterX(32*scale_);auto lx=animation(m.width,now,-scale_/2,(canvasWidth/2-32)*scale_),rx=animation(m.width,now,scale_/2,canvasWidth*scale_/2);wingLeft_->SetOffsetX(lx.Get());wingRight_->SetOffsetX(rx.Get());wingLeft_->SetOffsetY(0.f);wingRight_->SetOffsetY(0.f);auto hx=animation(m.width,now,expanded_?0.f:scale_/2,expanded_?20*scale_:float(-m.compactWidth/2)*scale_);if(m.width.settled(now))header_->SetOffsetX(std::round(float(expanded_?20*scale_:(m.width.target()-m.compactWidth)*scale_/2)));else header_->SetOffsetX(hx.Get());}
+    // Shoulders: redrawn whenever the target radius changes; scaled only while it animates.
+    if(std::abs(float(m.radius.target())-wingRadius_)>1e-3f)wings(float(m.radius.target()));
+    const float along=float(wingAlong_),depth=float(wingDepth_);
+    auto shoulder=animation(m.radius,now,1.f/wingRadius_);for(auto p:{leftScale_.Get(),rightScale_.Get()}){if(m.radius.settled(now)){check(p->SetScaleX(1.f));check(p->SetScaleY(1.f));}else{check(p->SetScaleX(shoulder.Get()));check(p->SetScaleY(shoulder.Get()));}}
+    if(edge_){
+        // Anchored at the screen edge; the inner end of each wing meets the body's top or bottom.
+        leftScale_->SetCenterX(depth);leftScale_->SetCenterY(along);rightScale_->SetCenterX(depth);rightScale_->SetCenterY(1.f);
+        wingLeft_->SetOffsetX(canvasWidth*scale_-depth);wingRight_->SetOffsetX(canvasWidth*scale_-depth);
+        if(m.height.settled(now)){wingLeft_->SetOffsetY(restY-along);wingRight_->SetOffsetY(restY+restH-1);}
+        else{auto ly=animation(m.height,now,-scale_/2,canvasHeight*scale_/2-along),ry=animation(m.height,now,scale_/2,canvasHeight*scale_/2-1);wingLeft_->SetOffsetY(ly.Get());wingRight_->SetOffsetY(ry.Get());}
+        header_->SetOffsetX(expanded_?std::round(20*scale_):0.f);}
+    else{leftScale_->SetCenterX(along);leftScale_->SetCenterY(0.f);rightScale_->SetCenterX(1.f);rightScale_->SetCenterY(0.f);wingLeft_->SetOffsetY(0.f);wingRight_->SetOffsetY(0.f);
+        if(m.width.settled(now)){wingLeft_->SetOffsetX(restX-along);wingRight_->SetOffsetX(restX+restW-1);}
+        else{auto lx=animation(m.width,now,-scale_/2,canvasWidth*scale_/2-along),rx=animation(m.width,now,scale_/2,canvasWidth*scale_/2-1);wingLeft_->SetOffsetX(lx.Get());wingRight_->SetOffsetX(rx.Get());}auto hx=animation(m.width,now,expanded_?0.f:scale_/2,expanded_?20*scale_:float(-m.compactWidth/2)*scale_);if(m.width.settled(now))header_->SetOffsetX(std::round(float(expanded_?20*scale_:(m.width.target()-m.compactWidth)*scale_/2)));else header_->SetOffsetX(hx.Get());}
     auto opacity=visibility(m,now);auto headerOpacity=visibility(m,now,!expanded_);headerEffect_->SetOpacity(headerOpacity.Get());check(contentEffect_->SetOpacity(opacity.Get()));check(iconEffect_->SetOpacity(opacity.Get()));if(m.live)navEffect_->SetOpacity(0.f);else check(navEffect_->SetOpacity(opacity.Get()));auto shift=animation(m.contentShift,now,scale_,std::round((m.card?16:m.live?20:38)*scale_));check(content_->SetOffsetY(shift.Get()));auto iconsShift=animation(m.contentShift,now,scale_,m.live?-18*scale_:0.f);iconLayer_->SetOffsetY(iconsShift.Get());
-    auto barWidth=animation(m.volume,now,284*scale_);check(barClip_->SetRight(barWidth.Get()));
+    auto barWidth=animation(m.volume,now,262*scale_);check(barClip_->SetRight(barWidth.Get()));
     auto ax=animation(m.artX,now,scale_),ay=animation(m.artY,now,scale_),size=animation(m.artSize,now,1.f/256),ao=animation(m.artOpacity,now);art_->SetOffsetX(ax.Get());art_->SetOffsetY(ay.Get());artScale_->SetScaleX(size.Get());artScale_->SetScaleY(size.Get());artEffect_->SetOpacity(ao.Get());
     auto blend=animation(handoff_.mix,now);incomingEffect_->SetOpacity(blend.Get());
     auto fx=animation(m.artX,now,scale_),fy=animation(m.artY,now,scale_),corner=animation(m.artSize,now,scale_,-15*scale_);artFrame_->SetOffsetX(fx.Get());artFrame_->SetOffsetY(fy.Get());badge_->SetOffsetX(corner.Get());badge_->SetOffsetY(corner.Get());

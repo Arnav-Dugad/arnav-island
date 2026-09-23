@@ -7,12 +7,14 @@ namespace nexus {
 void IslandWindow::updateSessions(){
     auto list=media_->sessions();int current=-1;
     for(size_t i=0;i<list.size();++i)if(list[i].current)current=int(i);
-    std::wstring system=current>=0?list[current].source:std::wstring{};
-    if(settings_.followSession&&!system.empty()&&system!=followedSource_)selectedSource_=system;followedSource_=system;
-    int index=-1;for(size_t i=0;i<list.size();++i)if(list[i].source==selectedSource_&&list[i].available)index=int(i);
+    // Sessions are told apart by id: every tab of one browser shares an app ID.
+    const uint64_t system=current>=0?list[current].id:0;
+    if(settings_.followSession&&system&&system!=followedId_)selectedId_=system;followedId_=system;
+    int index=-1;for(size_t i=0;i<list.size()&&index<0;++i)if(list[i].id==selectedId_&&list[i].available)index=int(i);
+    for(size_t i=0;i<list.size()&&index<0;++i)if(list[i].source==selectedSource_&&list[i].available)index=int(i);
     if(index<0)index=current>=0?current:0;
-    MediaSnapshot s=list.empty()?MediaSnapshot{}:list[index];if(!list.empty())selectedSource_=list[index].source;
-    if(content_.scrub.active&&(s.source!=content_.playback.source||s.title!=content_.playback.title||!s.canSeek))endScrub(false);
+    MediaSnapshot s=list.empty()?MediaSnapshot{}:list[index];if(!list.empty()){selectedSource_=list[index].source;selectedId_=list[index].id;}
+    if(content_.scrub.active&&(s.id!=content_.playback.id||s.title!=content_.playback.title||!s.canSeek))endScrub(false);
     content_.playback=s;content_.sessions=std::move(list);content_.session=content_.sessions.empty()?0:index;clockTimer();
     bool changed=s.title!=content_.media;content_.media=s.title;content_.artist=s.artist;
     if(s.available&&changed){events_.publish({ActivityKind::Media,"media",20,0,.8,4},seconds());presentActivity();}else{refresh();animate();}
@@ -21,7 +23,7 @@ void IslandWindow::updateSessions(){
 void IslandWindow::switchSession(int delta,bool absolute){
     int n=int(content_.sessions.size());if(n<1)return;int index=absolute?std::clamp(delta,0,n-1):((content_.session+delta)%n+n)%n;if(index==content_.session&&!absolute)return;
     int direction=absolute?(index>content_.session?1:-1):delta;if(content_.scrub.active)endScrub(false);
-    selectedSource_=content_.sessions[index].source;content_.session=index;content_.playback=content_.sessions[index];content_.media=content_.playback.title;content_.artist=content_.playback.artist;
+    selectedSource_=content_.sessions[index].source;selectedId_=content_.sessions[index].id;content_.session=index;content_.playback=content_.sessions[index];content_.media=content_.playback.title;content_.artist=content_.playback.artist;
     double now=seconds();if(!motion_.reduced){motion_.swipe.reset(direction*26.,now);motion_.swipe.retarget(0,now,MotionTokens::content);}
     store_.log("Info","media_session_selected");clockTimer();refresh();animate();
 }
@@ -33,6 +35,11 @@ void IslandWindow::updateProviders(){
     if(delivering!=content_.waveform){content_.waveform=delivering;if(renderer_)refresh();}
     if(mixer_)mixer_->setMetering(visible&&state_!=IslandState::Compact&&!content_.live&&content_.page==Page::Audio&&content_.audioTab==0);
 }
+// The pointer has moved onto the island body, clear of the edge rows that reveal it.
+bool IslandWindow::pointerOffEdge(){
+    POINT c{};GetCursorPos(&c);MONITORINFO mi{sizeof(mi)};GetMonitorInfoW(MonitorFromWindow(window_,MONITOR_DEFAULTTONEAREST),&mi);const double band=10*dpi_/96;
+    return settings_.edge?mi.rcMonitor.right-1-c.x>band:c.y-mi.rcMonitor.top>band;
+}
 void IslandWindow::autoHideTick(){
     if(!renderer_||!IsWindowVisible(window_))return;double now=seconds(),s=dpi_/96;POINT c{};GetCursorPos(&c);MONITORINFO mi{sizeof(mi)};GetMonitorInfoW(MonitorFromWindow(window_,MONITOR_DEFAULTTONEAREST),&mi);RECT w{};GetWindowRect(window_,&w);
     // Resting geometry, not the animated pose, so the trigger never drifts.
@@ -41,7 +48,7 @@ void IslandWindow::autoHideTick(){
     const double center=settings_.edge?(top+bottom)/2:(left+right)/2,half=(settings_.edge?bh:bw)*s/2+56*s;
     bool atEdge=atIslandEdge(c.x,c.y,mi.rcMonitor.left,mi.rcMonitor.top,mi.rcMonitor.right,mi.rcMonitor.bottom,settings_.edge,center,half);
     bool over=settings_.edge?(c.x>=left-8*s&&c.y>=top-8*s&&c.y<=bottom+8*s):(c.x>=left-8*s&&c.x<=right+8*s&&c.y>=mi.rcMonitor.top&&c.y<=bottom+8*s);
-    bool engaged=state_!=IslandState::Compact||content_.pinned||interaction_!=InteractionState::Rest||content_.dropHover||content_.scrub.active||(settings_.alertsReveal&&events_.active().has_value());
+    bool engaged=state_!=IslandState::Compact||content_.pinned||interaction_!=InteractionState::Rest||content_.dropHover||content_.scrub.active||(settings_.alertsReveal&&events_.active().has_value()&&events_.active()->kind!=ActivityKind::Media);
     bool before=autoHide_.hidden,hidden=autoHide_.update(settings_.autoHide,engaged,atEdge,over,now,settings_.collapseDelay/1000.);
     if(hidden==before)return;
     if(hidden){KillTimer(window_,7);KillTimer(window_,19);content_.hovered=Action::None;}

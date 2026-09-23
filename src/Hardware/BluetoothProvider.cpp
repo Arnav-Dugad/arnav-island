@@ -42,7 +42,9 @@ std::vector<BluetoothDevice> BluetoothProvider::enumerate(){
     for(auto enumerator:{L"BTHENUM",L"BTHLEDEVICE"})each(nullptr,enumerator,[&](HDEVINFO set,SP_DEVINFO_DATA& d,const std::wstring& id){auto u=upper(id);std::wstring match;for(auto& [a,n]:nameOf)if(u.find(a)!=std::wstring::npos){match=n;break;}if(match.empty())return;auto& dev=byName[match];
         if(u.find(L"{0000110B-")!=std::wstring::npos||u.find(L"{0000111E-")!=std::wstring::npos)dev.audio=true;if(!dev.vid)vendor(id,dev.vid,dev.vidSource);
         BYTE battery=0;if(property(set,d,batteryKey,battery)&&battery<=100)dev.battery=std::max(dev.battery,int(battery));});
-    std::vector<BluetoothDevice> result;for(auto& [k,dev]:byName){dev.kind=deviceKind(dev.cod,dev.name);dev.brand=std::string(deviceBrand(dev.name,dev.vid,dev.vidSource));if(dev.kind==DeviceKind::Headphones||dev.kind==DeviceKind::Earbuds||dev.kind==DeviceKind::Speaker)dev.audio=true;result.push_back(std::move(dev));}
+    std::vector<BluetoothDevice> result;for(auto& [k,dev]:byName){dev.kind=deviceKind(dev.cod,dev.name);dev.brand=std::string(deviceBrand(dev.name,dev.vid,dev.vidSource));
+        // Controller makers: a device with no class of device from PowerA, Xbox or Nintendo is a controller.
+        if(dev.kind==DeviceKind::Other&&(dev.brand=="powera"||dev.brand=="xbox"||dev.brand=="nintendo"))dev.kind=DeviceKind::Gamepad;if(dev.kind==DeviceKind::Headphones||dev.kind==DeviceKind::Earbuds||dev.kind==DeviceKind::Speaker)dev.audio=true;result.push_back(std::move(dev));}
     std::stable_sort(result.begin(),result.end(),[](auto& a,auto& b){if(a.connected!=b.connected)return a.connected;return _wcsicmp(a.name.c_str(),b.name.c_str())<0;});return result;
 }
 HRESULT BluetoothProvider::audioConnection(const std::wstring& name,bool connect,bool probeOnly){
