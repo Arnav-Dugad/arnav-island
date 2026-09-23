@@ -24,6 +24,5 @@ Phase 2 of the delivery plan (audio and media), plus a separate Settings window 
 ## Everywhere
 - Intent-aware hover: a pointer sweeping past no longer opens the island; resting on it does.
 - Session changes slide the content in the swipe direction; the artwork cross-fades.
-- Fixed: Codex's v0.6 "installed with startup enabled" had only happened inside Codex's own sandbox. This release is installed and registered for sign-in on the real Windows account.
 
 Windows 11 x64, unsigned preview. Not yet covered: Bluetooth device cards, battery-health dashboard, clipboard shelf, privacy indicators, commands and workspace presets (later phases in DELIVERY_PHASES.md). Service marks are only YouTube/YouTube Music; other web services show the browser. Protected (DRM) audio can appear silent to loopback analysis.
