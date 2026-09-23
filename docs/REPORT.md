@@ -75,3 +75,7 @@ Screenshots in `evidence/v0.9` use illustrative clipboard, privacy and device co
 - Workspaces do not restore browser tabs or window positions.
 - Text on the transparent island is grayscale-antialiased.
 - Unsigned preview. No UI Automation tree for screen readers yet.
+
+## Publication and installation — 2026-09-23
+
+Published [v0.9.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.9.0-preview.1) from source commit `c039863`; public documentation commit `1f9faee`. The anonymously downloaded ZIP and its executable match the tested build. It replaced the copy in `Desktop\Arnav Islandpp`; the sign-in entry already pointed there. Your preferences, display memory and charge history were kept, and test files were removed. Hashes are in `evidence/v0.9/public-verification.json`.
