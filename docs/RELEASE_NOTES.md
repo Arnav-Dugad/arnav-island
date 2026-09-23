@@ -1,56 +1,42 @@
-# Arnav Island 0.9.0-preview.1 — Type it, copy it, see who's listening
+# Arnav Island 0.10.0-preview.1 — Glass, a lab and a waveform
 
-Phase 4 of the delivery plan (productivity and privacy), plus fixes to media sessions, the edge reveal, sharper rendering and many more real logos.
+The first part of Phase 5 (motion and materials), plus the fixes you asked for.
 
-## Command bar
-- **Alt+Shift+Space** opens a command bar on the island from anywhere. You can also use the search button on Home. Type, see exactly what will happen, press Enter.
-- It understands:
-  - volume ("volume 30", "mute")
-  - playback ("next", "pause")
-  - timers ("focus 25", "timer 10 min", "stopwatch")
-  - installed apps ("open spotify", or just "edge"; initials like "vsc" work)
-  - file search ("find budget pdfs from last month", which opens File Explorer search in your user folder with date and type filters)
-  - Windows Settings pages ("bluetooth settings")
-  - workspaces, the clipboard history, and "lock".
-- Nothing you type is ever run as a shell command. Every result is one of a fixed set of actions.
-- The bar grows and shrinks with its results. The caret glides and blinks in the compositor, and the highlight follows your arrow keys or pointer. Esc returns you to where you were.
-- The shortcut can be changed or turned off in Settings → Privacy & productivity (Off, Alt+Shift+Space, Ctrl+Alt+Space, Win+Alt+Space). If another app already owns it, Settings says so. For example, Claude's desktop app uses Ctrl+Alt+Space.
+## Frosted and Clear glass are different now
+- **Frosted glass** blurs what's behind the island when Windows transparency effects are on. When they're off, it becomes a soft, translucent frost. It used to fall back to a flat opaque fill that looked the same as Solid.
+- **Clear glass never blurs.** It lets the desktop show through with only a light tint, and has a brighter rim and sheen, so the two materials are easy to tell apart.
+- Text on glass gets a faint halo, so it stays readable over busy or bright backgrounds.
+- A soft light follows your pointer across the island. It's strongest on glass, very faint on the dark solid island, and off on the light solid island and with Reduce motion.
 
-## Workspaces
-- "save workspace study" remembers the apps you have open. Later, "study" (or "workspace study") lists them, and a second Enter opens the ones that aren't running. Nothing is ever closed.
-- Up to 8 workspaces of up to 12 apps each, stored only on this PC. You can remove them in Settings.
+## The Animation Lab moved into Settings
+Settings → Motion now contains the whole lab:
+- **Live preview:** a small island opens and closes with your spring, next to its curve. It shows how long the motion takes to settle and how much it overshoots. Click it to replay.
+- **Motion character:** Balanced, Fluid, Playful, Snappy, Calm, or **Custom**. The Stiffness, Damping and Weight sliders show the chosen preset's values. Moving any slider makes it Custom, and the island uses the change immediately.
+- **Slow motion (1×, ½×, ¼×)** slows the island down so you can study it. It's never saved, so the island is back to normal speed next time.
+- **Try it on the island:** Expand, Collapse, Interrupt (reverses mid-flight) and Card. The readout then shows your display's refresh rate, the frames Windows actually composed while the island moved (for example "59 fps" on a 60 Hz screen), and the app's memory. If the island was already in that state, it says so instead of showing a number.
+- The separate Animation Lab window and its HUD are gone. The tray menu, `--lab` and the old shortcut all open this page.
 
-## Clipboard history
-- **Off until you turn it on** (Shelf → Clipboard, or Settings). It keeps your last 24 copies in memory only: text, links, images and files. Click one to put it back on the clipboard.
-- Copies that apps mark as private (password managers, one-time codes) are never kept. Neither is anything from KeePass, 1Password, Bitwarden and similar apps. Pause and Clear are one click away. Turning history off forgets everything.
-- The island briefly shows "Copied link", "Copied image" and so on. You can turn that off.
+## A waveform timeline for media
+- On the Media page, the timeline is a waveform of the track you're listening to. It is learned from the audio actually playing, so it is never a made-up shape.
+- Stretches you haven't heard yet are quiet dots, and they fill in as the song plays. Heard bars rise in as they arrive.
+- The bars you've passed are lit in the accent colour. A capsule playhead moves smoothly with playback, and the waveform swells while you drag to seek.
+- The island remembers the waveforms of your last 32 tracks while it runs, in memory only, so a replay starts complete.
+- Turn it off in Settings → Media & sound → *Waveform timeline* to get the plain line back.
 
-## Privacy indicators
-- Small dots at the end of the island show when an app is using the **camera** (green), **microphone** (orange) or **location** (blue). The source is Windows' own privacy records, checked against apps that are actually running.
-- Open pages show which app it is. A card appears when an app starts using the camera or microphone.
+## Motion
+- **Liquid morph:** when the island opens, the width leads and the height follows on a softer spring, and the reverse when it closes. The shape flows instead of scaling uniformly.
+- **Staggered rows:** when a page, tab or session changes, its rows rise and fade in one after another, 28 ms apart, timed by the compositor.
+- **Icon pops:** when a button's icon changes in place, such as play to pause or mute to volume, the new icon springs in.
 
-## Media fixes
-- **Two browser tabs no longer show up as the same thing.** Every tab of a browser shares one app ID, and the island used that ID to pick sessions and send play/pause. It now tracks each session separately, so switching between a YouTube tab and a JioHotstar tab shows each one, and play/pause reaches the right tab.
-- **Sites are identified from every open tab**, not just the visible window title. Each tab can label only one session. A background tab is recognised, and one YouTube tab never labels a second session.
-- A session without artwork shows its service or app logo in the artwork square.
+## Colour
+- **Wallpaper accent:** the fifth accent swatch takes a soft colour from your desktop wallpaper, and updates when you change the wallpaper. Grey or black-and-white wallpapers give a neutral accent.
 
-## Edge reveal
-- Touching the screen edge now shows the **compact island only**. It opens when you move onto it and rest, as before.
-- The "new media" notice no longer counts as an alert that keeps the island out while hidden.
+## Fixed and removed
+- "Your day at a glance" no longer appears on the Home page.
+- Settings → Appearance explains what each material does and what happens when Windows transparency is off.
 
-## Sharper, smoother
-- **Bigger, flowing shoulder curves.** The island now sweeps out of the screen edge. The curves are drawn at the exact pixel size of every shape, and all rounded corners are antialiased. The previous curves were a scaled bitmap and the corners were hard-edged.
-- **Sharper text:** grid-fitted, higher-contrast rendering and Segoe UI Variable's optical sizes (Small for captions).
-- The hover highlight keeps true rounded corners at any size.
-- New content eases in when you change page, tab or session, and tabs slide toward the one you picked. The compact label eases in when it changes.
-- Fixed: the device card's level ring was clipped; glance rings floated alone above expanded pages; the Home volume percentage sat above its slider.
-
-## Logos
-- **180 brand marks** (from 88), including Xbox, AULA, Philips, PowerA, Marshall, Jabra, Logitech, Nintendo, Microsoft, JioHotstar, Gmail, F1, Gemini, OpenAI, Claude, GitHub, Cloudflare, Prime Video, Hulu, Minecraft, Riot, Ubisoft and many more.
-- Devices are recognised by name, Bluetooth company ID or USB vendor ID. For example: AULA keyboards, Xbox and PowerA controllers, Philips speakers (including model-only names such as "TAS2400"), Logitech mice and keyboards, and Nintendo Pro Controllers.
-
-Windows 11 x64, unsigned preview. Settings move to version 8; existing preferences are kept. The command bar has no text-selection or IME support yet.
+Windows 11 x64, unsigned preview. Settings move to version 9; existing preferences are kept.
 
 ---
 
-Previous release: [0.8.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.8.0-preview.1): edge reveal, Bluetooth and battery cards, 88 logos.
+Previous release: [0.9.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.9.0-preview.1): command bar, clipboard history, privacy dots and workspaces.

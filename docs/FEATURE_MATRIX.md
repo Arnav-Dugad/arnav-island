@@ -1,4 +1,4 @@
-# Feature status — v0.9 preview
+# Feature status — v0.10 preview
 
 | Area | Implemented | Limits |
 |---|---|---|
@@ -16,7 +16,7 @@
 | Focus | Timer/break/stopwatch; pause/reset and completion activity | No persistence through restart, calendar or reminders |
 | Preferences | Ten groups, reorderable navigation, chosen Home metrics, v5 settings migration, independent layout reset, launch-at-sign-in | Startup uses current exe path; no settings import/export UI, profile import/export or full geometry editor |
 | Native behavior | Per-monitor DPI v2, input region, selected monitor, fullscreen hide, configurable app-switch collapse and protected drags, decorated/maximized browser exclusion, no taskbar button | Mixed-DPI/hot-plug/high-refresh hardware acceptance unfinished |
-| Diagnostics | Animation Lab, basic HUD, app-only captures, process-counter benchmark | No fabricated FPS/GPU metrics |
+| Diagnostics | Animation Lab in Settings → Motion with compositor frame counts, app-only captures, process-counter benchmark | No fabricated FPS/GPU metrics; frame counts are system-wide composition, not per-window presentation |
 | Accessibility | Keyboard controls, OS reduced motion, opaque fallback under high contrast | Full screen-reader tree, text scaling and complete high-contrast palette unfinished |
 | Safety | No injection, drivers, cloud, Explorer patching or arbitrary plugins | Provider recovery and GPU device-loss restoration unfinished |
 
@@ -69,3 +69,12 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Media identity | Sessions keyed per session, not per app ID; sites assigned jointly from all tab titles (UI Automation, tab strip only) | A site whose tab title has neither the playing title nor its name stays unidentified |
 | Rendering | Shoulders drawn 1:1 at each radius, pixel-snapped at rest; soft (antialiased) clip borders; grid-fitted high-contrast text with optical sizes; rounded-clip hover highlight; content entrances | Text on transparent layers is grayscale-antialiased (ClearType needs an opaque target) |
 | Brand marks | 180 marks; device makers by name, Bluetooth company ID and USB vendor ID | Wordmark logos read small in round tiles |
+
+| v0.10 feature | Implemented | Limits |
+|---|---|---|
+| Glass materials | Frosted: host backdrop blur, or a translucent frost when Windows transparency is off. Clear: never blurred, light tint, stronger rim and sheen, depth gradient. Faint text halo on unblurred glass | Clear glass over very bright, busy backgrounds trades contrast for transparency; Glass tint adds contrast |
+| Pointer light | 260-DIP radial light on spring-driven offsets and opacity; glass and dark solid only | Off with Reduce motion and on the light solid island |
+| Animation Lab | Preset or Custom spring, live preview with settle time and overshoot, slow motion (not saved), Expand/Collapse/Interrupt/Card on the real island, refresh rate from the island's monitor, composed frames per second, memory | Frames are counted system-wide; another app animating at the same time is counted too |
+| Waveform timeline | 64 bars of mean loopback level per stretch of the track, normalised to the loudest stretch heard; unheard stretches drawn as dots; played part in the accent; capsule playhead; seek swell; last 32 tracks remembered in memory | Only what has actually played is known, so a new track fills in as it plays; protected audio can read as silence; needs a session with a known duration |
+| Motion | Liquid morph, staggered row entrances, icon swap pops | Odometer digits and shared-element artwork morphs are not implemented |
+| Wallpaper accent | 48 × 48 WIC decode of the wallpaper, saturation-weighted, softened to a legible pastel; refreshed on wallpaper change | Slideshows update when Windows reports the change; solid-colour backgrounds fall back to Mint |

@@ -1,5 +1,6 @@
 #pragma once
 #include "Persistence/Settings.h"
+#include "Animation/MotionEngine.h"
 #include <functional>
 #include <string>
 #include <vector>
@@ -7,8 +8,9 @@ namespace nexus {
 // One declarative table describes every preference. The Settings window renders
 // it, the island applies it, and tests walk it to prove each value is reachable,
 // persisted and bounded. Keys match the names written by Settings::write.
-enum class SettingControl { Toggle,Slider,Choice,Stepper,Swatch,Button,Order,Note };
-enum class SettingAction { None,OpenLab,ResetAll,OpenLogs,ClearLogs,TransparencySettings,ResetLayout,DisplaySettings,SoundSettings,BluetoothSettings,PowerSettings,OpenArmoury,ClearClipboard,PrivacySettings,ClearWorkspaces,OpenCommand };
+// Preview is the Animation Lab's live spring; Actions is a row of one-shot buttons.
+enum class SettingControl { Toggle,Slider,Choice,Stepper,Swatch,Button,Order,Note,Preview,Actions };
+enum class SettingAction { None,OpenLab,ResetAll,OpenLogs,ClearLogs,TransparencySettings,ResetLayout,DisplaySettings,SoundSettings,BluetoothSettings,PowerSettings,OpenArmoury,ClearClipboard,PrivacySettings,ClearWorkspaces,OpenCommand,LabPlay };
 struct SettingItem {
     int section=0;std::wstring title,detail;SettingControl control=SettingControl::Toggle;std::string key;
     int lo=0,hi=1,step=1;std::vector<std::wstring> options;std::wstring unit;SettingAction action=SettingAction::None;
@@ -16,6 +18,12 @@ struct SettingItem {
     int clamp(int v)const{return std::clamp(v,lo,hi);}
 };
 inline const std::vector<std::wstring>& settingSections(){static const std::vector<std::wstring> names{L"General",L"Island",L"Appearance",L"Motion",L"Compact",L"Media & sound",L"Devices & power",L"Home & navigation",L"Privacy & productivity",L"About"};return names;}
+// The island's shape spring: a named preset or the custom one, slowed for study when asked.
+inline SpringSpec bodySpring(const Settings& s){
+    SpringSpec spec=s.preset==5?SpringSpec{s.springMass/100.,double(s.springStiffness),double(s.springDamping)}:preset(MotionPreset(std::clamp(s.preset,0,4)));
+    // Slowing by k keeps the shape of the motion: stiffness / k squared, damping / k.
+    const double k=s.labSpeed==2?4:s.labSpeed==1?2:1;spec.stiffness/=k*k;spec.damping/=k;return spec;
+}
 inline const std::vector<std::wstring>& pageNames(){static const std::vector<std::wstring> names{L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio"};return names;}
 inline const std::vector<std::wstring>& metricNames(){static const std::vector<std::wstring> names{L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime"};return names;}
 inline void assignMetric(std::array<int,3>& metrics,int slot,int value){value=std::clamp(value,0,6);for(int i=0;i<3;++i)if(i!=slot&&metrics[i]==value)metrics[i]=metrics[slot];metrics[slot]=value;}
@@ -44,17 +52,27 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     number(1,C::Slider,L"Scale",L"Size relative to your display scaling","scale",&Settings::scale,80,120,5,{},L"%");
     number(1,C::Slider,L"Corner radius",L"Roundness of the expanded island","corner",&Settings::corner,14,28,1,{},L" px");
     number(2,C::Choice,L"Theme",L"Colors for the island and this window","theme",&Settings::theme,0,2,1,{L"Dark",L"Light",L"System"});
-    number(2,C::Choice,L"Material",L"Glass blurs what is behind the island","material",&Settings::material,0,2,1,{L"Solid",L"Frosted glass",L"Clear glass"});
+    number(2,C::Choice,L"Material",L"Frosted softens what is behind the island; Clear lets it show through","material",&Settings::material,0,2,1,{L"Solid",L"Frosted glass",L"Clear glass"});
     number(2,C::Slider,L"Glass tint",L"More tint improves text contrast","glassTint",&Settings::glassTint,0,100,1,{},L"%");
-    button(2,L"Windows transparency effects",L"Blur needs Transparency effects turned on in Windows",L"Open Windows settings",SettingAction::TransparencySettings);
-    number(2,C::Swatch,L"Accent",L"Used when artwork colors are off","accent",&Settings::accent,0,3,1,{L"Mint",L"Sky",L"Lilac",L"Peach"});
+    button(2,L"Windows transparency effects",L"Lets Frosted glass blur what is behind it",L"Open Windows settings",SettingAction::TransparencySettings);
+    number(2,C::Swatch,L"Accent",L"Used when artwork colors are off \u00b7 the last one follows your wallpaper","accent",&Settings::accent,0,4,1,{L"Mint",L"Sky",L"Lilac",L"Peach",L"Wallpaper"});
     toggle(2,L"Artwork colors",L"Tint controls and a soft glow from the current cover","albumAccents",&Settings::albumAccents);
-    number(3,C::Choice,L"Motion character",L"The spring used for every change of shape","preset",&Settings::preset,0,4,1,{L"Balanced",L"Fluid",L"Playful",L"Snappy",L"Calm"});
+    number(3,C::Choice,L"Motion character",L"","preset",&Settings::preset,0,5,1,{L"Balanced",L"Fluid",L"Playful",L"Snappy",L"Calm",L"Custom"});
+    // Choosing a preset shows its values on the sliders below; moving a slider makes the spring Custom.
+    v.back().set=[](Settings& s,int x){s.preset=std::clamp(x,0,5);if(s.preset<5){auto p=preset(MotionPreset(s.preset));s.springStiffness=int(std::lround(p.stiffness));s.springDamping=int(std::lround(p.damping));s.springMass=int(std::lround(p.mass*100));}};
+    {SettingItem i;i.section=3;i.control=SettingControl::Preview;i.title=L"Live preview";i.detail=L"Click to replay";v.push_back(std::move(i));}
+    number(3,C::Slider,L"Stiffness",L"How strongly the shape pulls toward its target","springStiffness",&Settings::springStiffness,150,900,10);
+    number(3,C::Slider,L"Damping",L"Lower bounces more, higher settles sooner","springDamping",&Settings::springDamping,12,90,1);
+    number(3,C::Slider,L"Weight",L"Heavier feels slower and more deliberate","springMass",&Settings::springMass,50,200,5,{},L"%");
+    for(size_t k=v.size()-3;k<v.size();++k){auto field=k==v.size()-3?&Settings::springStiffness:k==v.size()-2?&Settings::springDamping:&Settings::springMass;auto& item=v[k];int lo=item.lo,hi=item.hi;item.set=[field,lo,hi](Settings& s,int x){if(s.preset<5){auto p=preset(MotionPreset(std::clamp(s.preset,0,4)));s.springStiffness=int(std::lround(p.stiffness));s.springDamping=int(std::lround(p.damping));s.springMass=int(std::lround(p.mass*100));}s.*field=std::clamp(x,lo,hi);s.preset=5;};
+        // A named preset shows its own numbers; Custom shows the saved ones.
+        item.get=[field](const Settings& s){if(s.preset>=5)return s.*field;auto p=preset(MotionPreset(std::clamp(s.preset,0,4)));return field==&Settings::springStiffness?int(std::lround(p.stiffness)):field==&Settings::springDamping?int(std::lround(p.damping)):int(std::lround(p.mass*100));};}
+    number(3,C::Choice,L"Slow motion",L"Study the island's shape changes \u00b7 not saved","labSpeed",&Settings::labSpeed,0,2,1,{L"1\u00d7",L"\u00bd\u00d7",L"\u00bc\u00d7"});
+    {SettingItem i;i.section=3;i.control=SettingControl::Actions;i.title=L"Try it on the island";i.options={L"Expand",L"Collapse",L"Interrupt",L"Card"};i.action=SettingAction::LabPlay;v.push_back(std::move(i));}
     toggle(3,L"Reduce motion",L"Change instantly instead of moving","reduceMotion",&Settings::reduceMotion);
     toggle(3,L"Magnetic buttons",L"Highlights lean toward the pointer","magnetic",&Settings::magnetic);
     toggle(3,L"Animated icons",L"Icons lift and press physically","animatedIcons",&Settings::animatedIcons);
     toggle(3,L"Track handoff",L"Blend album covers between tracks","trackHandoff",&Settings::trackHandoff);
-    button(3,L"Animation Lab",L"Tune stiffness, damping and mass live",L"Open",SettingAction::OpenLab);
     toggle(4,L"Media",L"Artwork and title of what is playing","compactMedia",&Settings::compactMedia);
     toggle(4,L"Live waveform",L"Bars that move with the real system audio","waveform",&Settings::waveform);
     toggle(4,L"Volume",L"Current output level","compactVolume",&Settings::compactVolume);
@@ -64,6 +82,7 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     number(4,C::Choice,L"Glance rings",L"Progress rings at the end of the island","glanceRings",&Settings::glanceRings,0,3,1,{L"Off",L"Battery",L"Timer",L"Both"});
     toggle(4,L"Volume and brightness indicator",L"The island grows to show level changes","hud",&Settings::hud);
     number(5,C::Choice,L"Media layout",L"Artwork size on the Media page","mediaLayout",&Settings::mediaLayout,0,2,1,{L"Auto",L"Music",L"Video"});
+    toggle(5,L"Waveform timeline",L"The Media timeline draws the track\u2019s loudness, filling in as it plays","waveTimeline",&Settings::waveTimeline);
     toggle(5,L"App logos",L"Show the real icon of the app that is playing","appIcons",&Settings::appIcons);
     toggle(5,L"Follow the active player",L"Switch to whichever app Windows marks as current","followSession",&Settings::followSession);
     toggle(5,L"Direct output switching",L"Change the default output from the island","directAudio",&Settings::directAudio);

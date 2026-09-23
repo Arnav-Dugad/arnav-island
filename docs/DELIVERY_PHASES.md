@@ -81,3 +81,20 @@ Also delivered at the user's request:
 - Content entrance motion.
 
 Next recommended work: UI Automation for the island and Settings controls (screen readers); IME and text selection in the command bar; and correlating headphone cards with the default audio endpoint.
+
+## Status after v0.10 — Phase 5A, motion and materials — 2026-09-23
+
+Shipped:
+- **Materials:** Frosted and Clear glass reworked so they differ, with or without Windows transparency; a text halo on unblurred glass; a pointer-following light.
+- **Liquid morph**, **staggered row entrances** and **icon swap pops**.
+- **Refresh-rate proof:** the Animation Lab, now inside Settings → Motion, plays real transitions and reports frames counted with `DCompositionGetFrameId`, next to the island monitor's refresh rate.
+- **Accent from the wallpaper** as a fifth swatch; the artwork accent already existed.
+- **Waveform timeline** on the Media page, learned from loopback levels.
+- Removed "Your day at a glance" from Home.
+
+Not done in 5A, each deliberately:
+- **Odometer numbers.** Digits rolling on change need per-digit surfaces and clipping in several text layouts; deferred rather than faked with a fade.
+- **Shared-element transitions.** The artwork already moves and scales between compact, Live and Media on retained springs; a true shared-element morph between arbitrary elements is not implemented.
+- The DWM timing counters were found not to track composition on this Windows build (they advance by one per query), so they are no longer used for any number shown.
+
+Next recommended work: the rest of Phase 5, then UI Automation for screen readers and IME in the command bar.

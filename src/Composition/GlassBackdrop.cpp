@@ -21,9 +21,9 @@ ComPtr<IInspectable> dispatcherController(){
 }
 struct GlassBackdrop::Impl {
     ComPtr<IInspectable> queue;ComPtr<wuc::ICompositor> compositor;ComPtr<IInspectable> target;
-    ComPtr<wuc::IContainerVisual> root,glass;ComPtr<wuc::ISpriteVisual> backdrop,tint,sheen;ComPtr<IInspectable> rim,geometry,rimShape;
-    ComPtr<wuc::ICompositionColorBrush> tintBrush;ComPtr<IInspectable> sheenBrush,rimBrush;ComPtr<wuc::ICompositionPropertySet> properties;
-    std::array<ComPtr<IInspectable>,6> stops;float scale=1,canvasWidth=600,canvasHeight=500;int edge=-1;GlassStyle current;bool styled=false;
+    ComPtr<wuc::IContainerVisual> root,glass;ComPtr<wuc::ISpriteVisual> backdrop,tint,depth,sheen;ComPtr<IInspectable> rim,geometry,rimShape;
+    ComPtr<wuc::ICompositionColorBrush> tintBrush;ComPtr<IInspectable> sheenBrush,rimBrush,depthBrush;ComPtr<wuc::ICompositionPropertySet> properties;
+    std::array<ComPtr<IInspectable>,9> stops;float scale=1,canvasWidth=600,canvasHeight=500;int edge=-1;GlassStyle current;bool styled=false;
     ComPtr<wuc::IVisual> visual(const ComPtr<IInspectable>& v){return as<wuc::IVisual>(v);}
     void fill(const ComPtr<IInspectable>& v){check(as<Visual2>(v)->put_RelativeSizeAdjustment({1,1}));}
     ComPtr<wuc::IExpressionAnimation> expression(const std::wstring& text){ComPtr<wuc::IExpressionAnimation> a;String s(text.c_str());check(compositor->CreateExpressionAnimationWithExpression(s,&a));String p(L"p");check(as<wuc::ICompositionAnimation>(a)->SetReferenceParameter(p,as<wuc::ICompositionObject>(properties).Get()));return a;}
@@ -56,7 +56,7 @@ bool GlassBackdrop::initialize(HWND window,float scale,float canvasWidth,float c
         ComPtr<wuc::IVisualCollection> rootChildren;check(impl->root->get_Children(&rootChildren));check(rootChildren->InsertAtTop(impl->visual(impl->glass).Get()));
         check(impl->visual(impl->root)->put_Size({canvasWidth*scale,canvasHeight*scale}));
         ComPtr<IInspectable> hostBrush;check(as<Compositor3>(c)->CreateHostBackdropBrush(&hostBrush));
-        for(auto* sprite:{std::addressof(impl->backdrop),std::addressof(impl->tint),std::addressof(impl->sheen)})check(c->CreateSpriteVisual(sprite->GetAddressOf()));
+        for(auto* sprite:{std::addressof(impl->backdrop),std::addressof(impl->tint),std::addressof(impl->depth),std::addressof(impl->sheen)})check(c->CreateSpriteVisual(sprite->GetAddressOf()));
         check(impl->backdrop->put_Brush(as<wuc::ICompositionBrush>(hostBrush).Get()));
         check(c->CreateColorBrushWithColor(color(0x0c0d11,.55f),&impl->tintBrush));check(impl->tint->put_Brush(as<wuc::ICompositionBrush>(impl->tintBrush).Get()));
         check(as<Compositor5>(c)->CreateRoundedRectangleGeometry(&impl->geometry));ComPtr<IInspectable> clip;check(as<Compositor6>(c)->CreateGeometricClipWithGeometry(impl->geometry.Get(),&clip));
@@ -65,7 +65,7 @@ bool GlassBackdrop::initialize(HWND window,float scale,float canvasWidth,float c
         ComPtr<IInspectable> shapes;check(as<ShapeVisual>(impl->rim)->get_Shapes(&shapes));check(vector(shapes,shapeVector)->Append(impl->rimShape.Get()));
         check(as<SpriteShape>(impl->rimShape)->put_StrokeThickness(2*scale));
         ComPtr<wuc::IVisualCollection> children;check(impl->glass->get_Children(&children));
-        for(auto& v:{ComPtr<IInspectable>(impl->backdrop),ComPtr<IInspectable>(impl->tint),ComPtr<IInspectable>(impl->sheen),impl->rim}){impl->fill(v);check(children->InsertAtTop(impl->visual(v).Get()));}
+        for(auto& v:{ComPtr<IInspectable>(impl->backdrop),ComPtr<IInspectable>(impl->tint),ComPtr<IInspectable>(impl->depth),ComPtr<IInspectable>(impl->sheen),impl->rim}){impl->fill(v);check(children->InsertAtTop(impl->visual(v).Get()));}
         check(c->CreatePropertySet(&impl->properties));for(auto key:{L"t",L"w",L"h",L"r",L"dx",L"dy",L"s"}){String k(key);check(impl->properties->InsertScalar(k,0.f));}
         check(impl->visual(impl->glass)->put_IsVisible(false));
         impl_=impl.release();available_=true;
@@ -78,15 +78,25 @@ void GlassBackdrop::style(const GlassStyle& s){
         check(i.visual(i.glass)->put_IsVisible(s.visible));if(!s.visible){i.current.visible=false;return;}
         if(i.styled&&i.current.light==s.light&&i.current.blur==s.blur&&i.current.material==s.material&&std::abs(i.current.tint-s.tint)<.001f&&i.current.accent==s.accent){i.current=s;return;}
         i.current=s;i.styled=true;
-        // Frosted keeps text contrast on busy wallpapers; Clear favors the backdrop.
-        float base=s.material==2?(s.light?.32f:.24f):(s.light?.54f:.44f),alpha=s.blur?std::clamp(base*(.55f+s.tint*.9f),.12f,.9f):.92f;
+        // Frosted: Windows' blurred backdrop when it allows one, otherwise a dense
+        // translucent frost. Clear: never blurred, a light tint you see through.
+        // Neither ever falls back to an opaque fill.
+        const bool clear=s.material==2,blurred=!clear&&s.blur;
+        check(i.visual(i.backdrop)->put_IsVisible(blurred));
+        const float tint=std::clamp(s.tint,0.f,1.f);
+        float alpha=clear?(s.light?.22f:.30f)*(.55f+tint*1.1f):blurred?(s.light?.54f:.44f)*(.55f+tint*.9f):(s.light?.74f:.68f)*(.8f+tint*.35f);
+        alpha=std::clamp(alpha,clear?.08f:.12f,clear?.62f:.92f);
         uint32_t ink=s.light?0xf6f7f9:0x0b0c10;
         if(s.accent&&!s.light){auto mix=[&](int shift){return uint32_t(((ink>>shift)&255)*.88+((s.accent>>shift)&255)*.12)<<shift;};ink=mix(16)|mix(8)|mix(0);}
         check(i.tintBrush->put_Color(color(ink,alpha)));
-        auto top=color(0xffffff,s.light?.42f:.10f),clear=color(0xffffff,0);
-        i.sheenBrush=i.gradient({0,0},{0,1},{{0,top},{.46f,clear},{1,clear}},0);check(i.sheen->put_Brush(as<wuc::ICompositionBrush>(i.sheenBrush).Get()));
-        auto rimTop=color(0xffffff,s.light?.85f:.30f),rimBottom=s.light?color(0x000000,.08f):color(0xffffff,.07f);
-        i.rimBrush=i.gradient({0,0},{0,1},{{0,rimTop},{.5f,s.light?color(0xffffff,.25f):color(0xffffff,.11f)},{1,rimBottom}},3);check(as<SpriteShape>(i.rimShape)->put_StrokeBrush(as<wuc::ICompositionBrush>(i.rimBrush).Get()));
+        // Depth: glass darkens slightly toward its lower edge, as thick glass does.
+        auto shade=s.light?color(0x000000,clear?.07f:.035f):color(0x000000,clear?.22f:.12f),none=color(0x000000,0);
+        i.depthBrush=i.gradient({0,0},{0,1},{{0,none},{.55f,none},{1,shade}},6);check(i.depth->put_Brush(as<wuc::ICompositionBrush>(i.depthBrush).Get()));
+        auto top=color(0xffffff,clear?(s.light?.55f:.16f):(s.light?.42f:.10f)),transparent=color(0xffffff,0);
+        i.sheenBrush=i.gradient({0,0},{0,1},{{0,top},{clear?.38f:.46f,transparent},{1,transparent}},0);check(i.sheen->put_Brush(as<wuc::ICompositionBrush>(i.sheenBrush).Get()));
+        // The rim catches light at the top and fades underneath; stronger on clear glass, which has no blur to separate it.
+        auto rimTop=color(0xffffff,s.light?.9f:clear?.42f:.30f),rimBottom=s.light?color(0x000000,clear?.14f:.08f):color(0xffffff,clear?.10f:.07f);
+        i.rimBrush=i.gradient({0,0},{0,1},{{0,rimTop},{.5f,s.light?color(0xffffff,clear?.35f:.25f):color(0xffffff,clear?.16f:.11f)},{1,rimBottom}},3);check(as<SpriteShape>(i.rimShape)->put_StrokeBrush(as<wuc::ICompositionBrush>(i.rimBrush).Get()));
     }catch(...){}
 }
 void GlassBackdrop::animate(const MotionEngine& m,double now,int edge){

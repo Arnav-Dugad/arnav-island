@@ -31,6 +31,8 @@ void IslandWindow::switchSession(int delta,bool absolute){
 void IslandWindow::updateProviders(){
     bool visible=IsWindowVisible(window_)!=FALSE;
     bool bars=settings_.waveform&&visible&&content_.playback.playing&&content_.hud==0&&(state_==IslandState::Compact?settings_.edge==0&&settings_.compactMedia:(content_.live||content_.page==Page::Media));
+    // The waveform timeline needs the same real audio while the Media page shows it.
+    bars=bars||(settings_.waveTimeline&&visible&&content_.playback.playing&&state_!=IslandState::Compact&&!content_.live&&content_.page==Page::Media);
     if(analyzer_)analyzer_->setActive(bars);bool delivering=bars&&analyzer_&&analyzer_->available.load();if(!analyzer_&&testing_)delivering=content_.waveform;
     if(delivering!=content_.waveform){content_.waveform=delivering;if(renderer_)refresh();}
     if(mixer_)mixer_->setMetering(visible&&state_!=IslandState::Compact&&!content_.live&&content_.page==Page::Audio&&content_.audioTab==0);

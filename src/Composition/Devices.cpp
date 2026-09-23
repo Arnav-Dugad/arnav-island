@@ -93,4 +93,28 @@ void Renderer::updatePrivacyBand(const ContentSnapshot& s,UINT32 ink,UINT32 mute
         text(rt,line,dx+3,0,textWidth+2,10.5f,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,24);(void)muted;});
     privacyBand_->SetContent(privacySurface_.Get());
 }
+// Rows cascade in: each band of the content rises 6 DIPs and brightens, 28 ms after
+// the one above it, on compositor time.
+void Renderer::cascade(double start){
+    // Every band's animation begins now and holds its starting value until its turn,
+    // so no row shows early and then blinks.
+    auto build=[&](double delay,float from,float to,double duration){ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(start)));
+        const float span=to-from;const double d=duration;if(delay>0)check(a->AddCubic(0,from,0,0,0));
+        check(a->AddCubic(delay,from,float(3*span/d),float(-3*span/(d*d)),float(span/(d*d*d))));check(a->End(delay+d,to));return a;};
+    for(size_t k=0;k<bands_.size();++k){const double delay=double(k)*.028;auto fade=build(delay,.15f,1.f,.22),rise=build(delay,6*scale_,0.f,.26);
+        bands_[k].effect->SetOpacity(fade.Get());bands_[k].visual->SetOffsetY(rise.Get());}
+    commit();
+}
+// A soft light that follows the pointer: brightest on glass, a whisper on dark solid,
+// none on light solid (it would read as a smudge).
+void Renderer::pointer(float x,float y,bool inside,bool reduced){
+    if(!sheen_||sheenStrength_<=0){if(sheenEffect_)sheenEffect_->SetOpacity(0.f);return;}
+    const double now=seconds();const double target=inside?1:0;
+    auto aim=[&](Spring& spring,double value,SpringSpec spec,bool jump){if(reduced||jump)spring.reset(value,now);else if(std::abs(spring.target()-value)>.2)spring.retarget(value,now,spec);};
+    const bool appearing=inside&&sheenOpacity_.sample(now).position<.02;
+    aim(sheenX_,x-130,{1,260,32},appearing);aim(sheenY_,y-130,{1,260,32},appearing);
+    if(std::abs(sheenOpacity_.target()-target)>.01){if(reduced)sheenOpacity_.reset(target,now);else sheenOpacity_.retarget(target,now,{1,120,22});}
+    auto ox=animation(sheenX_,now,scale_),oy=animation(sheenY_,now,scale_),o=animation(sheenOpacity_,now,sheenStrength_);
+    sheen_->SetOffsetX(ox.Get());sheen_->SetOffsetY(oy.Get());sheenEffect_->SetOpacity(o.Get());commit();
+}
 }

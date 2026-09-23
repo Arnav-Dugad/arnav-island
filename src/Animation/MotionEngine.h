@@ -164,8 +164,12 @@ struct MotionEngine {
         auto g=geometry(state);if(state==IslandState::Compact)g=edge?Geometry{64,150,22}:Geometry{compactWidth,34,17};else if(state==IslandState::Expanded||state==IslandState::Dashboard)g={420,334,corner};else if(state==IslandState::Command)g.height=commandHeight;
         if(reduced){width.reset(g.width,now);height.reset(g.height,now);radius.reset(g.radius,now);reveal.retarget(state!=IslandState::Compact&&g.height>80?1:0,now,{1,1800,85});return;}
         auto s=reduced?SpringSpec{1,1800,85}:body;
-        width.retarget(g.width+(hover?4:0)-(pressed?5:0),now,s);
-        height.retarget(g.height-(pressed?2:0),now,s);
+        // Liquid morph: the growing dimension leads on a stiffer spring and the other follows
+        // on a softer one with a touch more give, so the shape flows instead of scaling.
+        const bool opening=g.height>height.target()+1,closing=g.height<height.target()-1;
+        const SpringSpec lead{s.mass,s.stiffness*1.3,s.damping*1.14},lag{s.mass,s.stiffness*.8,s.damping*.86};
+        width.retarget(g.width+(hover?4:0)-(pressed?5:0),now,opening?lead:closing?lag:s);
+        height.retarget(g.height-(pressed?2:0),now,opening?lag:closing?lead:s);
         radius.retarget(g.radius,now,s);
         reveal.retarget(state!=IslandState::Compact&&g.height>80?1:0,now,{1,320,36});
     }

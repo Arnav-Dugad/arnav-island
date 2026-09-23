@@ -70,3 +70,10 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **Command bar:** what you type stays in memory and is parsed locally. File searches open File Explorer's own search in your user folder. Nothing is sent anywhere.
 - **Workspaces** store app names and their Start menu IDs or program paths in `workspaces.nexus`, on this PC only. Settings → Privacy & productivity removes them.
 - Public screenshots of these features use illustrative content (`--qa-clipboard`, `--qa-privacy`, `--qa-command`).
+
+## v0.10 waveform, lab and wallpaper
+
+- **Waveform timeline:** when it is on and a session plays, the loopback analyzer's overall level (while the analyzer runs for the compact bars or the Media page) is averaged into 64 buckets per track. Only these 64 numbers are kept, for at most 32 tracks, in memory; they are keyed by title, artist and length and forgotten when the island quits. No audio is recorded and nothing is written to disk or logged.
+- **Wallpaper accent:** the wallpaper file named by Windows is decoded locally at 48 × 48 to compute one colour. The picture and its path are not stored, logged or sent.
+- **Animation Lab:** reads the display refresh rate, Windows' compositor frame counter and the app's own memory use. Slow motion is never saved.
+- Public screenshots use the synthetic showcase session over an app-owned matte or colour pattern (`--qa-showcase`, `--qa-pattern`).

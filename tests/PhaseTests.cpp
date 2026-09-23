@@ -11,6 +11,8 @@
 #include "Productivity/ClipboardModel.h"
 #include "Productivity/Workspaces.h"
 #include "Productivity/Privacy.h"
+#include "Audio/Waveform.h"
+#include "Design/Accent.h"
 #include <iostream>
 #include <random>
 #include <set>
@@ -61,8 +63,9 @@ int main(){try{
     Settings defaults;std::stringstream written;defaults.write(written);std::set<std::string> keys;std::string key;double value;while(written>>key>>value)if(key!="version")keys.insert(key);
     auto items=settingItems(2);std::set<std::string> covered;for(auto& i:items)if(!i.key.empty())covered.insert(i.key);
     for(auto& k:keys)test(covered.contains(k),"settings window exposes every persisted preference");
-    for(auto& item:items){if(item.control==SettingControl::Button||item.control==SettingControl::Note||item.control==SettingControl::Order)continue;
-        for(int v=item.lo;v<=item.hi;v+=std::max(1,(item.hi-item.lo)/12)){Settings s;item.set(s,v);std::stringstream io;s.write(io);auto back=Settings::parse(io);test(item.get(back)==item.get(s),"each control value round-trips through the settings file");}
+    for(auto& item:items){if(item.control==SettingControl::Button||item.control==SettingControl::Note||item.control==SettingControl::Order||item.control==SettingControl::Preview||item.control==SettingControl::Actions)continue;
+        // Slow motion is a study aid and is deliberately never saved.
+        if(item.key!="labSpeed")for(int v=item.lo;v<=item.hi;v+=std::max(1,(item.hi-item.lo)/12)){Settings s;item.set(s,v);std::stringstream io;s.write(io);auto back=Settings::parse(io);test(item.get(back)==item.get(s),"each control value round-trips through the settings file");}
         if(item.control==SettingControl::Slider||item.control==SettingControl::Choice||item.control==SettingControl::Swatch){Settings s;item.set(s,item.hi+1000);test(item.get(s)<=item.hi,"controls clamp above range");item.set(s,item.lo-1000);test(item.get(s)>=item.lo,"controls clamp below range");}}
     for(int a=0;a<7;++a)for(int slot=0;slot<3;++slot){auto metrics=defaultMetrics;assignMetric(metrics,slot,a);test(metrics[slot]==a&&metrics[0]!=metrics[1]&&metrics[1]!=metrics[2]&&metrics[0]!=metrics[2],"statistics stay unique when assigned");}
     {Settings s;for(auto& item:items)if(item.control==SettingControl::Order)for(int d:{1,-1,1,1,-1}){item.set(s,d);test(validNavigation(s.navigation),"navigation order stays a permutation");}}
@@ -197,5 +200,33 @@ int main(){try{
     // ---- Phase 4: settings v8 --------------------------------------------------------
     {std::stringstream v7("version 7\nautoHide 1\n");auto old=Settings::parse(v7);test(!old.clipboardHistory&&old.privacyDots&&old.privacyCards&&old.commandShortcut==1&&old.clipboardConfirm,"v7 files get the v8 defaults (clipboard history off)");
     Settings changed;changed.clipboardHistory=true;changed.commandShortcut=3;std::stringstream out;changed.write(out);auto again=Settings::parse(out);test(again==changed,"v8 round trip");}
-    std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery, auto-hide, command, clipboard, workspace and privacy checks\n";return 0;
+    // ---- Phase 5: learned waveform -------------------------------------------------------
+    {TrackWaveform w;test(w.heard()==0&&w.heights()[0]==-1.f,"nothing heard is unknown, never invented");
+    test(w.hear(-1,100,.5f)==-1&&w.hear(101,100,.5f)==-1&&w.hear(10,0,.5f)==-1&&w.hear(std::nan(""),100,.5f)==-1&&w.hear(10,100,std::nanf(""))==-1,"bad samples ignored");
+    test(w.hear(0,100,.5f)==0&&w.hear(100,100,.5f)==TrackWaveform::bars-1&&w.hear(50,100,.25f)==32,"positions map to bars");
+    w.hear(50,100,.75f);auto h=w.heights();test(std::abs(h[0]-1)<1e-5f&&std::abs(h[32]-1)<1e-5f&&h[1]==-1.f&&w.heard()==3,"heights normalise to the loudest mean");
+    TrackWaveform quiet;quiet.hear(0,10,.05f);test(std::abs(quiet.heights()[0]-.25f)<1e-5f,"a near-silent track is not blown up to full height");
+    TrackWaveform loud;loud.hear(0,10,7.f);test(loud.heights()[0]==1.f,"levels clamp");
+    auto k=WaveformLibrary::key(L"Song",L"Artist",200.4);test(k==WaveformLibrary::key(L"Song",L"Artist",199.6)&&k!=WaveformLibrary::key(L"Song",L"Other",200),"track keys");
+    WaveformLibrary lib;lib.track(k).hear(1,200,.5f);for(size_t i=0;i<WaveformLibrary::limit-1;++i)lib.track(L"t"+std::to_wstring(i));lib.track(k);lib.track(L"one more");
+    test(lib.find(k)&&lib.find(k)->heard()==1&&!lib.find(L"t0")&&lib.find(L"t1"),"recently used tracks are kept; the oldest is forgotten");}
+    // ---- Phase 5: motion lab springs -----------------------------------------------------
+    {Settings s;for(int p=0;p<5;++p){s.preset=p;auto a=bodySpring(s),b=preset(MotionPreset(p));test(a.mass==b.mass&&a.stiffness==b.stiffness&&a.damping==b.damping,"named presets unchanged");}
+    s.preset=5;s.springMass=80;s.springStiffness=700;s.springDamping=50;auto c=bodySpring(s);test(c.mass==.8&&c.stiffness==700&&c.damping==50,"custom spring");
+    s.labSpeed=2;auto slow=bodySpring(s);test(slow.stiffness==700./16&&slow.damping==50./4&&slow.mass==.8,"slow motion keeps the curve's shape");
+    auto items=settingItems();auto find=[&](const char* key)->const SettingItem&{for(auto& i:items)if(i.key==key)return i;throw std::runtime_error(key);};
+    Settings t;find("preset").set(t,1);test(find("springStiffness").get(t)==360&&find("springDamping").get(t)==35&&find("springMass").get(t)==115,"sliders show the chosen preset");
+    find("springDamping").set(t,20);test(t.preset==5&&t.springDamping==20&&t.springStiffness==360&&t.springMass==115,"moving a slider makes a custom spring from the preset");}
+    // ---- Phase 5: wallpaper accent ----------------------------------------------------------
+    {auto channel=[](uint32_t c,int k){return int((c>>(16-8*k))&255);};
+    auto grey=pastelAccent(.5,.5,.5);test(channel(grey,0)==channel(grey,1)&&channel(grey,1)==channel(grey,2),"grey wallpapers give a neutral accent");
+    auto red=pastelAccent(1,0,0),blue=pastelAccent(.1,.3,.9);test(channel(red,0)>channel(red,1)+40&&channel(blue,2)>channel(blue,0)+40,"hue is kept");
+    for(auto c:{red,blue,grey,pastelAccent(0,0,0),pastelAccent(1,1,1)})test(channel(c,0)+channel(c,1)+channel(c,2)>3*150,"always light enough to read on the dark island");
+    test(islandAccent(4,false,0x123456,nullptr,false)==0x123456&&islandAccent(4,false,0,nullptr,false)==0xa4deca&&islandAccent(9,false,0,nullptr,false)==0xefc7a6&&islandAccent(4,true,0x123456,nullptr,false)==0x487467,"accent swatches");}
+    // ---- Phase 5: settings v9 ------------------------------------------------------------
+    {std::stringstream v8("version 8\npreset 3\n");auto old=Settings::parse(v8);test(old.version==Settings::currentVersion&&old.preset==3&&old.waveTimeline&&old.springStiffness==390&&old.labSpeed==0,"v8 files get the v9 defaults");
+    Settings changed;changed.preset=5;changed.springStiffness=820;changed.springDamping=14;changed.springMass=60;changed.waveTimeline=false;changed.accent=4;std::stringstream out;changed.write(out);auto again=Settings::parse(out);test(again==changed,"v9 round trip");
+    changed.labSpeed=2;std::stringstream out2;changed.write(out2);test(Settings::parse(out2).labSpeed==0,"slow motion is never saved");
+    std::stringstream wild("version 9\nspringStiffness 5000\nspringDamping 1\naccent 7\n");auto w=Settings::parse(wild);test(w.springStiffness==900&&w.springDamping==12&&w.accent==4,"v9 values are bounded");}
+    std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery, auto-hide, command, clipboard, workspace, privacy, waveform, lab and accent checks\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

@@ -8,7 +8,10 @@ Action Renderer::hit(float x,float y)const {
 void Renderer::icon(Action action,Icon glyph,float x,float y,float size,UINT32 color,int stableSlot){
     if(drawingContent_){iconRequests_.push_back({action,glyph,x,y,size,color,stableSlot});return;}
     size_t slot=stableSlot>=0?size_t(stableSlot):iconCursor_++;if(slot>=icons_.size())return;auto& item=icons_[slot];double now=seconds();bool initial=item.key<0||item.action!=action;item.used=true;item.action=action;int key=(int(glyph)<<24)|int(color);
+    // A new glyph in the same place (play to pause, mute to volume) pops in on a spring.
+    const bool swapped=!initial&&item.key>=0&&(item.key>>24)!=int(glyph)&&iconMotion_;
     if(item.key!=key||item.drawnSize!=size){surface(item.surface,32,32,[&](auto* rt){drawIcon(rt,d2d_.Get(),glyph,16-size/2,16-size/2,size,color);});item.visual->SetContent(item.surface.Get());item.key=key;item.drawnSize=size;}
+    if(swapped){item.zoom.reset(.55,now);item.zoom.retarget(1,now,{1,560,22});}
     float px=std::round((20+x+size/2-16)*scale_)/scale_,py=std::round((38+y+size/2-16)*scale_)/scale_;item.baseY=py;double dy=py+(iconMotion_&&action!=Action::None&&hoverAction_==action?-1.25:0);
     auto aim=[&](Spring& spring,double target){if(initial||!iconMotion_)spring.reset(target,now);else if(std::abs(spring.target()-target)>.01)spring.retarget(target,now,MotionTokens::iconPosition);};aim(item.x,px);aim(item.y,dy);
     if(initial)item.zoom.reset(1,now);item.effect->SetOpacity(1.f);
@@ -33,13 +36,44 @@ void Renderer::updateRings(const ContentSnapshot& s,UINT32 accent,UINT32 muted,U
 }
 namespace nexus {
 void Renderer::drawPreview(ID2D1RenderTarget* rt,const Artwork& art,float x,float y,float w,float h){if(!art.width||!art.height||art.pixels.size()<size_t(art.width)*art.height*4)return;ComPtr<ID2D1Bitmap> b;auto p=D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED));if(FAILED(rt->CreateBitmap({art.width,art.height},art.pixels.data(),art.width*4,p,&b)))return;float factor=std::min(w/art.width,h/art.height),dw=art.width*factor,dh=art.height*factor;rt->DrawBitmap(b.Get(),{x+(w-dw)/2,y+(h-dh)/2,x+(w+dw)/2,y+(h+dh)/2},1,D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);}
+void Renderer::ensureWave(){
+    if(wave_)return;
+    for(auto* v:{std::addressof(wave_),std::addressof(waveBase_),std::addressof(waveFill_)})check(device_->CreateVisual(v->GetAddressOf()));
+    check(timeline_->AddVisual(wave_.Get(),FALSE,nullptr));check(wave_->AddVisual(waveBase_.Get(),FALSE,nullptr));check(wave_->AddVisual(waveFill_.Get(),FALSE,nullptr));
+    // The playhead stays above the bars.
+    check(timeline_->RemoveVisual(seekThumb_.Get()));check(timeline_->AddVisual(seekThumb_.Get(),FALSE,nullptr));
+    check(device_->CreateEffectGroup(&waveEffect_));wave_->SetEffect(waveEffect_.Get());check(device_->CreateScaleTransform(&waveScale_));wave_->SetTransform(waveScale_.Get());
+    check(device_->CreateRectangleClip(&waveClip_));waveClip_->SetLeft(0.f);waveClip_->SetTop(-16*scale_);waveClip_->SetBottom(16*scale_);waveClip_->SetRight(0.f);waveFill_->SetClip(waveClip_.Get());
+    const float pitch=(380-3)/63.f;
+    for(size_t i=0;i<waveBars_.size();++i){auto& b=waveBars_[i];for(auto* v:{std::addressof(b.base),std::addressof(b.fill)})check(device_->CreateVisual(v->GetAddressOf()));
+        check(device_->CreateScaleTransform(&b.baseScale));check(device_->CreateScaleTransform(&b.fillScale));
+        for(auto [v,t]:{std::pair{b.base.Get(),b.baseScale.Get()},std::pair{b.fill.Get(),b.fillScale.Get()}}){t->SetCenterY(10*scale_);v->SetTransform(t);v->SetOffsetX(std::round(float(i)*pitch*scale_));v->SetOffsetY(std::round(-10*scale_));t->SetScaleY(.14f);}
+        check(waveBase_->AddVisual(b.base.Get(),FALSE,nullptr));check(waveFill_->AddVisual(b.fill.Get(),FALSE,nullptr));}
+}
 void Renderer::updateTimeline(const ContentSnapshot& s,UINT32 accent,UINT32 track){
     bool visible=s.expanded&&!s.live&&s.page==Page::Media&&s.playback.duration>0;timelineEffect_->SetOpacity(visible?1.f:0.f);if(!visible)return;
-    if(seekColor_!=accent||!seekTrackSurface_){seekColor_=accent;auto solid=[&](auto& surface_,UINT32 color){surface(surface_,380,4,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(color),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,380,4},2,2),b.Get());});};solid(seekTrackSurface_,track);solid(seekFillSurface_,accent);seekTrack_->SetContent(seekTrackSurface_.Get());seekFill_->SetContent(seekFillSurface_.Get());surface(seekThumbSurface_,16,16,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(accent),&b);rt->FillEllipse({{8,8},6,6},b.Get());});seekThumb_->SetContent(seekThumbSurface_.Get());}
+    const bool wave=s.settings.waveTimeline;ensureWave();
+    if(seekColor_!=accent||!seekTrackSurface_||seekStyle_!=int(wave)){seekColor_=accent;seekStyle_=int(wave);
+        auto solid=[&](auto& surface_,UINT32 color){surface(surface_,380,4,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(color),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,380,4},2,2),b.Get());});};
+        solid(seekTrackSurface_,track);solid(seekFillSurface_,accent);
+        // Waveform mode: a slim capsule playhead; line mode: the familiar dot.
+        seekThumbSurface_.Reset();if(wave)surface(seekThumbSurface_,4,28,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(accent),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,4,28},2,2),b.Get());});
+        else surface(seekThumbSurface_,16,16,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(accent),&b);rt->FillEllipse({{8,8},6,6},b.Get());});
+        seekThumb_->SetContent(seekThumbSurface_.Get());seekThumbScale_->SetCenterX((wave?2:8)*scale_);seekThumbScale_->SetCenterY((wave?14:8)*scale_);}
+    if(waveColors_[0]!=track||waveColors_[1]!=accent){waveColors_[0]=track;waveColors_[1]=accent;
+        auto bar=[&](auto& target,UINT32 color){surface(target,3,20,[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(color),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,3,20},1.5f,1.5f),b.Get());});};
+        bar(waveBaseSurface_,track);bar(waveFillSurface_,accent);for(auto& b:waveBars_){b.base->SetContent(waveBaseSurface_.Get());b.fill->SetContent(waveFillSurface_.Get());}}
+    seekTrack_->SetContent(wave?nullptr:seekTrackSurface_.Get());seekFill_->SetContent(wave?nullptr:seekFillSurface_.Get());waveEffect_->SetOpacity(wave?1.f:0.f);
     double now=seconds();bool emphasis=s.scrub.active||s.hovered==Action::Seek;double target=emphasis?2.5:1;
     if(seekEmphasis_.target()!=target){if(s.reducedMotion)seekEmphasis_.reset(target,now);else seekEmphasis_.retarget(target,now,MotionTokens::icon);}
     double position=s.scrub.active?s.scrub.value:s.playback.position+(s.playback.playing?std::max(0.,now-s.playback.sampledAt):0.);float fraction=float(normalizedProgress(position,s.playback.duration));
-    timeline_->SetOffsetX(20*scale_);timeline_->SetOffsetY(227*scale_);auto grow=animation(seekEmphasis_,now);seekTrackScale_->SetScaleY(grow.Get());seekFillScale_->SetScaleY(grow.Get());seekFillScale_->SetScaleX(std::max(.0001f,fraction));seekThumb_->SetOffsetX((fraction*380-8)*scale_);seekThumb_->SetOffsetY(-6*scale_);if(s.playback.playing&&!s.scrub.active&&position<s.playback.duration){auto linear=[&](float factor,float bias){ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));a->SetAbsoluteBeginTime(ticks(now));a->AddCubic(0,fraction*factor+bias,factor/float(s.playback.duration),0,0);a->End(s.playback.duration-position,factor+bias);return a;};auto fill=linear(1,0),marker=linear(380*scale_,-8*scale_);seekFillScale_->SetScaleX(fill.Get());seekThumb_->SetOffsetX(marker.Get());}auto thumb=animation(seekEmphasis_,now,.3f,.3f);seekThumbScale_->SetScaleX(thumb.Get());seekThumbScale_->SetScaleY(thumb.Get());
+    timeline_->SetOffsetX(20*scale_);timeline_->SetOffsetY(227*scale_);auto grow=animation(seekEmphasis_,now);seekTrackScale_->SetScaleY(grow.Get());seekFillScale_->SetScaleY(grow.Get());
+    // The waveform swells a little on hover and while scrubbing.
+    auto swell=animation(seekEmphasis_,now,.2f,.8f);waveScale_->SetScaleY(swell.Get());
+    const float thumbBias=wave?-2*scale_:-8*scale_;seekFillScale_->SetScaleX(std::max(.0001f,fraction));seekThumb_->SetOffsetX(fraction*380*scale_+thumbBias);seekThumb_->SetOffsetY((wave?-14:-6)*scale_);waveClip_->SetRight(fraction*380*scale_);
+    if(s.playback.playing&&!s.scrub.active&&position<s.playback.duration){auto linear=[&](float factor,float bias){ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));a->SetAbsoluteBeginTime(ticks(now));a->AddCubic(0,fraction*factor+bias,factor/float(s.playback.duration),0,0);a->End(s.playback.duration-position,factor+bias);return a;};
+        auto fill=linear(1,0),marker=linear(380*scale_,thumbBias),reveal=linear(380*scale_,0);seekFillScale_->SetScaleX(fill.Get());seekThumb_->SetOffsetX(marker.Get());waveClip_->SetRight(reveal.Get());}
+    auto thumb=wave?animation(seekEmphasis_,now,.12f,.88f):animation(seekEmphasis_,now,.3f,.3f);seekThumbScale_->SetScaleX(wave?1.f:0.f);if(!wave)seekThumbScale_->SetScaleX(thumb.Get());seekThumbScale_->SetScaleY(thumb.Get());
 }
 void Renderer::absorb(const std::shared_ptr<const Artwork>& preview,float x,float y,float tx,float ty,bool reduced){
     if(reduced)return;surface(dropSurface_,64,64,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(0x20252d,.96f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,64,64},14,14),b.Get());if(preview)drawPreview(rt,*preview,6,6,52,52);else drawIcon(rt,d2d_.Get(),Icon::File,17,17,30,0xb8dfd1);});dropGhost_->SetContent(dropSurface_.Get());double now=seconds();Spring sx{x-32},sy{y-32},zoom{1},opacity{1};sx.reset(x-32,now);sy.reset(y-32,now);zoom.reset(1,now);opacity.reset(1,now);sx.retarget(tx-12,now,MotionTokens::drop);sy.retarget(ty-12,now,MotionTokens::drop);zoom.retarget(.375,now,MotionTokens::drop);opacity.retarget(0,now,MotionTokens::dropFade);auto ax=animation(sx,now,scale_),ay=animation(sy,now,scale_),z=animation(zoom,now),fade=animation(opacity,now);dropGhost_->SetOffsetX(ax.Get());dropGhost_->SetOffsetY(ay.Get());dropScale_->SetScaleX(z.Get());dropScale_->SetScaleY(z.Get());dropEffect_->SetOpacity(fade.Get());commit();

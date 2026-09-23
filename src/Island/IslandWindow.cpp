@@ -1,5 +1,6 @@
 #include "Common/Capture.h"
 #include "IslandWindow.h"
+#include "Design/Wallpaper.h"
 #include <windowsx.h>
 #include <dwmapi.h>
 #include <uxtheme.h>
@@ -30,7 +31,7 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     window_=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_TOPMOST|WS_EX_NOREDIRECTIONBITMAP|WS_EX_NOACTIVATE,wc.lpszClassName,L"Arnav Island",WS_POPUP,0,0,760,480,nullptr,nullptr,instance,this);
     if(!window_)throw std::runtime_error("Island window creation failed");
     position();renderer_=std::make_unique<Renderer>();renderer_->initialize(window_,dpi_);power(false);applySettings();if(!testing_){displays_.remember(currentDisplay_,settings_);saveDisplays();}
-    audio_=std::make_unique<AudioProvider>(window_);if(cmd.find(L"--capture-safe")==std::wstring::npos)media_=std::make_unique<MediaProvider>(window_);system_=std::make_unique<SystemProvider>(window_);if(cmd.find(L"--capture-safe")==std::wstring::npos){analyzer_=std::make_unique<LoopbackAnalyzer>(window_);mixer_=std::make_unique<SessionMixer>(window_);brightness_=std::make_unique<BrightnessProvider>(window_);if(!(testing_&&cmd.find(L"--qa-sample")!=std::wstring::npos))bluetooth_=std::make_unique<BluetoothProvider>(window_);powerMode_=std::make_unique<PowerModeWatcher>(window_);}battery_=std::make_unique<BatteryProvider>(window_,testing_?std::filesystem::path{}:store_.directory/L"battery-history.nexus",settings_.batteryHistory);if(!testing_){std::ifstream saved(store_.directory/L"workspaces.nexus",std::ios::binary);if(saved)workspaces_=WorkspaceStore::read(saved);}if(cmd.find(L"--capture-safe")==std::wstring::npos)syncProductivity();platformThread_=std::thread([w=window_]{CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);auto info=new PlatformInfo(platformInfo());if(!PostMessageW(w,PlatformMessage,0,reinterpret_cast<LPARAM>(info)))delete info;CoUninitialize();});content_.settings=settings_;
+    audio_=std::make_unique<AudioProvider>(window_);if(cmd.find(L"--capture-safe")==std::wstring::npos)media_=std::make_unique<MediaProvider>(window_);system_=std::make_unique<SystemProvider>(window_);if(cmd.find(L"--capture-safe")==std::wstring::npos){analyzer_=std::make_unique<LoopbackAnalyzer>(window_);mixer_=std::make_unique<SessionMixer>(window_);brightness_=std::make_unique<BrightnessProvider>(window_);if(!(testing_&&cmd.find(L"--qa-sample")!=std::wstring::npos))bluetooth_=std::make_unique<BluetoothProvider>(window_);powerMode_=std::make_unique<PowerModeWatcher>(window_);}battery_=std::make_unique<BatteryProvider>(window_,testing_?std::filesystem::path{}:store_.directory/L"battery-history.nexus",settings_.batteryHistory);if(!testing_){std::ifstream saved(store_.directory/L"workspaces.nexus",std::ios::binary);if(saved)workspaces_=WorkspaceStore::read(saved);}if(cmd.find(L"--capture-safe")==std::wstring::npos)syncProductivity();platformThread_=std::thread([w=window_]{CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);auto info=new PlatformInfo(platformInfo());info->wallpaper=wallpaperAccent();if(!PostMessageW(w,PlatformMessage,0,reinterpret_cast<LPARAM>(info)))delete info;CoUninitialize();});content_.settings=settings_;
     for(auto id:{&GUID_ACDC_POWER_SOURCE,&GUID_BATTERY_PERCENTAGE_REMAINING}){
         auto registration=RegisterPowerSettingNotification(window_,id,DEVICE_NOTIFY_WINDOW_HANDLE);if(registration)powerNotifications_.push_back(registration);
     }
@@ -61,7 +62,7 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     if(testing_&&cmd.find(L"--qa-seek")!=std::wstring::npos){content_.page=Page::Media;content_.playback.available=true;content_.playback.canSeek=true;content_.playback.duration=content_.playback.seekMax=240;content_.playback.position=75;content_.playback.sampledAt=seconds();content_.scrub.begin(220,380,0,240);content_.pinned=true;transition(IslandState::Expanded);refresh();}
     if(testing_&&cmd.find(L"--qa-previews")!=std::wstring::npos){content_.page=Page::Shelf;auto path=(std::filesystem::current_path()/L"docs/evidence/v0.4/artwork.png").wstring();content_.shelf.push_back({ShelfItem::Kind::File,path,L"Original QA artwork.png"});content_.shelf.push_back({ShelfItem::Kind::File,(std::filesystem::current_path()/L"docs/QUICK_START.md").wstring(),L"Quick start.md"});requestPreviews();content_.pinned=true;transition(IslandState::Expanded);refresh();}
     if(cmd.find(L"--qa-handoff")!=std::wstring::npos&&testing_)SetTimer(window_,15,180,nullptr);
-    if(cmd.find(L"--lab")!=std::wstring::npos)openLab();
+    if(cmd.find(L"--lab")!=std::wstring::npos)openSettings(3);
     if(cmd.find(L"--benchmark")!=std::wstring::npos){benchmark_=true;benchmarkStart_=seconds();FILETIME c,e;GetProcessTimes(GetCurrentProcess(),&c,&e,&initialKernel_,&initialUser_);SetTimer(window_,ScenarioTimer,73,nullptr);}
     if(cmd.find(L"--ui-test")!=std::wstring::npos){settings_.hoverOpen=true;settings_.hoverDelay=100;SetTimer(window_,13,200,nullptr);}
     if(testing_&&cmd.find(L"--qa-live")!=std::wstring::npos){settings_.uiMode=1;content_.pinned=true;transition(IslandState::LiveActivity);refresh();}
@@ -78,7 +79,12 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     const bool sample=cmd.find(L"--qa-sample")!=std::wstring::npos;
     auto qaDevices=[sample]{if(!sample)return BluetoothProvider::enumerate();auto make=[](const wchar_t* name,bool connected,int battery,DeviceKind kind,const char* brand){BluetoothDevice d;d.name=name;d.connected=connected;d.audio=kind==DeviceKind::Headphones||kind==DeviceKind::Earbuds||kind==DeviceKind::Speaker;d.battery=battery;d.kind=kind;d.brand=brand;return d;};
         return std::vector<BluetoothDevice>{make(L"Galaxy Buds3 Pro",true,82,DeviceKind::Earbuds,"samsung"),make(L"WH-1000XM5",true,64,DeviceKind::Headphones,"sony"),make(L"DualSense Wireless Controller",false,41,DeviceKind::Gamepad,"playstation"),make(L"JBL Flip 6",false,-1,DeviceKind::Speaker,"jbl")};};
+    // QA: the pointer light placed over the island, for captures.
+    if(testing_&&cmd.find(L"--qa-sheen")!=std::wstring::npos){refresh();renderer_->pointer(250,70,true,true);}
     // Phase 4 QA states, with illustrative content only.
+    // QA: the synthetic showcase track "heard" up to its playhead (deterministic envelope), for waveform captures.
+    if(testing_&&cmd.find(L"--qa-wave")!=std::wstring::npos&&content_.playback.duration>0){auto& p=content_.playback;auto& w=waves_.track(WaveformLibrary::key(p.title,p.artist,p.duration));
+        for(double t=0;t<p.position;t+=.05){double beat=.42+.3*std::sin(t*.8)*std::sin(t*.8)+.18*std::sin(t*3.1)+.1*std::sin(t*11.0);w.hear(t,p.duration,float(std::clamp(beat*(t<6?t/6:1),0.,1.)));}pushWaveform();}
     if(testing_&&cmd.find(L"--qa-clipboard")!=std::wstring::npos){settings_.clipboardHistory=true;content_.settings=settings_;double now=seconds();auto notepad=shellIcon(L"C:\\Windows\\System32\\notepad.exe",32);
         auto add=[&](ClipEntry e,double age){e.sourceIcon=notepad;clips_.add(std::move(e),now-age);};
         {ClipEntry e;e.kind=ClipEntry::Kind::Files;e.files={L"C:\\Users\\Public\\Documents\\Quarterly review.pdf",L"C:\\Users\\Public\\Documents\\Budget.xlsx"};e.source=L"File Explorer";add(std::move(e),5400);}
@@ -97,7 +103,7 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     if(testing_&&cmd.find(L"--qa-hud")!=std::wstring::npos){content_.volume=audio_?audio_->value.load():40;events_.publish({ActivityKind::Volume,"volume",40,double(content_.volume),.5,30},seconds());presentActivity();}
     if(testing_&&cmd.find(L"--qa-brightness")!=std::wstring::npos){content_.brightness=64;events_.publish({ActivityKind::Brightness,"brightness",40,64,.5,30},seconds());presentActivity();}
     if(cmd.find(L"--capture")!=std::wstring::npos&&!benchmark_&&cmd.find(L"--ui-test")==std::wstring::npos)SetTimer(window_,5,cmd.find(L"--qa-command")!=std::wstring::npos?4200:2800,nullptr);if(testing_&&cmd.find(L"--qa-entrance")!=std::wstring::npos)SetTimer(window_,34,2700,nullptr); store_.log("Info","application_started_directcomposition");
-    MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){if(lab_&&IsDialogMessageW(lab_,&msg))continue;TranslateMessage(&msg);DispatchMessageW(&msg);}
+    MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}
     store_.log("Info","application_stopped");return int(msg.wParam);
 }
 IslandWindow::~IslandWindow(){
@@ -107,7 +113,7 @@ IslandWindow::~IslandWindow(){
     if(platformThread_.joinable())platformThread_.join();
     previews_.reset();powerMode_.reset();bluetooth_.reset();battery_.reset();brightness_.reset();mixer_.reset();analyzer_.reset();system_.reset();media_.reset();audio_.reset();for(auto h:powerNotifications_)UnregisterPowerSettingNotification(h);
     if(tray_.hWnd)Shell_NotifyIconW(NIM_DELETE,&tray_);
-    renderer_.reset();if(lab_&&IsWindow(lab_))DestroyWindow(lab_);if(window_&&IsWindow(window_))DestroyWindow(window_);
+    renderer_.reset();if(window_&&IsWindow(window_))DestroyWindow(window_);
 }
 void IslandWindow::position(){
     positioning_=true;
@@ -140,7 +146,7 @@ void IslandWindow::animate(){
 void IslandWindow::transition(IslandState s){
     // The command bar closes only through closeCommand (Esc, run, click away), never by an activity or hover timing out.
     if(content_.command.active&&s!=IslandState::Command)return;
-    bool changed=state_!=s;state_=s;if(s!=IslandState::Compact&&content_.hud){content_.hud=0;motion_.compactWidth=settings_.uiMode==0?72:settings_.compactWidth;}content_.expanded=s!=IslandState::Compact;content_.live=s==IslandState::LiveActivity||s==IslandState::Notification||s==IslandState::Command;content_.card=s==IslandState::Notification||s==IslandState::Command;if(changed){content_.settings=settings_;if(content_.expanded)refresh();else renderer_->redraw(content_,debug_,true);}clockTimer();animate();if(lab_)InvalidateRect(lab_,nullptr,FALSE);}
+    bool changed=state_!=s;state_=s;if(s!=IslandState::Compact&&content_.hud){content_.hud=0;motion_.compactWidth=settings_.uiMode==0?72:settings_.compactWidth;}content_.expanded=s!=IslandState::Compact;content_.live=s==IslandState::LiveActivity||s==IslandState::Notification||s==IslandState::Command;content_.card=s==IslandState::Notification||s==IslandState::Command;if(changed){content_.settings=settings_;if(content_.expanded)refresh();else renderer_->redraw(content_,debug_,true);}clockTimer();animate();}
 void IslandWindow::power(bool notify){
     SYSTEM_POWER_STATUS p{};if(GetSystemPowerStatus(&p)){
         const int previousBattery=content_.battery;const bool previouslyCharging=content_.charging;
@@ -179,7 +185,7 @@ void IslandWindow::yieldToApp(){
 }
 void IslandWindow::fullscreen(){
     if(benchmark_)return;
-    HWND fg=GetForegroundWindow();if(!fg||fg==window_||fg==lab_)return;
+    HWND fg=GetForegroundWindow();if(!fg||fg==window_)return;
     DWORD pid=0;GetWindowThreadProcessId(fg,&pid);if(pid==GetCurrentProcessId())return;
     wchar_t cls[128]{};GetClassNameW(fg,cls,128);
     bool shell=wcscmp(cls,L"Progman")==0||wcscmp(cls,L"WorkerW")==0||wcscmp(cls,L"Shell_TrayWnd")==0;
@@ -204,7 +210,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
     {LRESULT handled=0;if(productivityMessage(m,w,l,handled))return handled;}
     switch(m){
     case WM_ERASEBKGND:return 1;
-    case WM_APP+50:if(w==1)openLab();else if(w==2)transition(IslandState::Expanded);else if(w==3){settings_.startAtLogin=startup::apply(true);store_.save(settings_,settingsFile_);refresh();}return 0;
+    case WM_APP+50:if(w==1)openSettings(3);else if(w==2)transition(IslandState::Expanded);else if(w==3){settings_.startAtLogin=startup::apply(true);store_.save(settings_,settingsFile_);refresh();}return 0;
     case WM_PAINT:{PAINTSTRUCT ps;BeginPaint(window_,&ps);EndPaint(window_,&ps);return 0;}
     case WM_MOUSEACTIVATE:return state_==IslandState::Compact?MA_NOACTIVATE:MA_ACTIVATE;
     case WM_KEYDOWN:if(content_.command.active&&commandKey(w))return 0;if(content_.hovered==Action::VolumeSlider&&audio_&&(w==VK_LEFT||w==VK_RIGHT||w==VK_HOME||w==VK_END)){audio_->setVolume(w==VK_HOME?0:w==VK_END?100:audio_->value+(w==VK_RIGHT?2:-2));return 0;}if(w==VK_ESCAPE){if(content_.scrub.active){endScrub(false);ReleaseCapture();pressedAction_=Action::None;return 0;}perform(Action::Close);return 0;}if(w==VK_TAB){std::vector<Action> enabled;for(auto& t:renderer_->targets)if(t.enabled)enabled.push_back(t.action);auto it=std::find(enabled.begin(),enabled.end(),content_.hovered);int index=it==enabled.end()?-1:int(it-enabled.begin());if(!enabled.empty()){index=(index+((GetKeyState(VK_SHIFT)&0x8000)?int(enabled.size())-1:1))%int(enabled.size());content_.hovered=enabled[index];feedback(content_.hovered);}return 0;}if(w==VK_RETURN||w==VK_SPACE){perform(content_.hovered);return 0;}break;
@@ -228,12 +234,14 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                 // Intent: a pointer sweeping past keeps restarting the delay; only a resting pointer opens.
                 POINT p{};GetCursorPos(&p);double now=seconds(),dt=now-hoverSampleTime_;double speed=dt>0?std::hypot(double(p.x-hoverSample_.x),double(p.y-hoverSample_.y))*96/dpi_/dt:0;
                 if(dt>.004&&speed>700)SetTimer(window_,7,settings_.hoverDelay,nullptr);hoverSample_=p;hoverSampleTime_=now;}
+            {double now=seconds();auto origin=bodyOrigin(motion_.width.sample(now).position,motion_.height.sample(now).position,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);
+                renderer_->pointer(float(GET_X_LPARAM(l)*96/dpi_-origin.x-motion_.dragX.sample(now).position),float(GET_Y_LPARAM(l)*96/dpi_-origin.y-motion_.dragY.sample(now).position),true,motion_.reduced);}
             auto target=hit(l);
             // In the command bar the highlight follows the pointer across results and stays on the selection otherwise.
             if(content_.command.active){if(inRange(target,Action::CommandResultBase,Action::ActionEnd)){int row=int(target)-int(Action::CommandResultBase);if(row!=content_.command.selected){content_.command.selected=row;refresh();}}else target=Action(int(Action::CommandResultBase)+content_.command.selected);}
             if(target!=content_.hovered){bool detail=target==Action::Seek||content_.hovered==Action::Seek||content_.page==Page::Shelf;content_.hovered=target;if(detail)refresh();KillTimer(window_,19);if(content_.live&&target==Action::Overview)SetTimer(window_,19,420,nullptr);}feedback(target,GET_X_LPARAM(l),GET_Y_LPARAM(l));
         }return 0;}
-    case WM_MOUSELEAVE:KillTimer(window_,7);edgeHold_=false;KillTimer(window_,19);if(interaction_==InteractionState::Hover){interaction_=InteractionState::Rest;content_.hovered=Action::None;feedback(Action::None);refresh();animate();if(!content_.pinned)SetTimer(window_,8,settings_.collapseDelay,nullptr);}return 0;
+    case WM_MOUSELEAVE:KillTimer(window_,7);edgeHold_=false;renderer_->pointer(0,0,false,motion_.reduced);KillTimer(window_,19);if(interaction_==InteractionState::Hover){interaction_=InteractionState::Rest;content_.hovered=Action::None;feedback(Action::None);refresh();animate();if(!content_.pinned)SetTimer(window_,8,settings_.collapseDelay,nullptr);}return 0;
     case WM_LBUTTONDOWN:pressedAction_=hit(l);if(pressedAction_==Action::Seek)scrubAt(l,true);if(pressedAction_==Action::VolumeSlider)setVolumeAt(l);if(inRange(pressedAction_,Action::MixerSliderBase,Action::MixerMuteBase))setMixerAt(l);interaction_=InteractionState::Pressed;GetCursorPos(&down_);lastPointer_=down_;dragTime_=seconds();SetCapture(window_);if(pressedAction_==Action::None)animate();else feedback(pressedAction_,GET_X_LPARAM(l),GET_Y_LPARAM(l),true);return 0;
     case WM_LBUTTONUP:{if(pressedAction_==Action::Seek){scrubAt(l);endScrub(true);}bool dragged=interaction_==InteractionState::Dragging;interaction_=InteractionState::Hover;ReleaseCapture();
         if(dragged){POINT up{};GetCursorPos(&up);double dx=(up.x-down_.x)*96/dpi_,dy=(up.y-down_.y)*96/dpi_;
@@ -247,7 +255,9 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
     case WM_MOUSEHWHEEL:if(state_!=IslandState::Compact&&content_.sessions.size()>1&&(content_.live||content_.page==Page::Media||content_.page==Page::Overview)){double now=seconds();swipeAccumulator_+=GET_WHEEL_DELTA_WPARAM(w);if(std::abs(swipeAccumulator_)>=120&&now-swipeTime_>.3){switchSession(swipeAccumulator_>0?1:-1);swipeAccumulator_=0;swipeTime_=now;}}return 0;
     case WM_MOUSEWHEEL:if(state_==IslandState::Expanded&&content_.page==Page::System&&content_.statsTab==2){content_.deviceOffset=std::clamp(content_.deviceOffset+(GET_WHEEL_DELTA_WPARAM(w)>0?-1:1),0,std::max(0,int(content_.devices.size())-4));refresh();return 0;}if(state_==IslandState::Expanded&&content_.page==Page::Shelf&&content_.shelfTab==1){content_.clipOffset=std::clamp(content_.clipOffset+(GET_WHEEL_DELTA_WPARAM(w)>0?-1:1),0,std::max(0,int(content_.clips.size())-4));refresh();return 0;}if(state_!=IslandState::Compact&&(content_.page==Page::Shelf||content_.page==Page::Audio)){bool mixer=content_.page==Page::Audio&&content_.audioTab==0;auto& offset=content_.page==Page::Shelf?content_.shelfOffset:mixer?content_.mixerOffset:content_.audioOffset;int count=int(content_.page==Page::Shelf?content_.shelf.size():mixer?content_.mixer.size():content_.outputs.size());offset=std::clamp(offset+(GET_WHEEL_DELTA_WPARAM(w)>0?-1:1),0,std::max(0,count-4));refresh();return 0;}if(audio_&&audio_->available){POINT p{GET_X_LPARAM(l),GET_Y_LPARAM(l)};ScreenToClient(window_,&p);if(settings_.wheelVolume||hit(MAKELPARAM(p.x,p.y))==Action::VolumeSlider)audio_->setVolume(audio_->value+(GET_WHEEL_DELTA_WPARAM(w)>0?2:-2));}return 0;
     case MediaMessage:if(media_)updateSessions();return 0;
-    case SpectrumMessage:if(analyzer_){analyzer_->pending=false;bool delivering=analyzer_->active()&&analyzer_->available.load();if(delivering!=content_.waveform){content_.waveform=delivering;refresh();}if(delivering)renderer_->spectrum(analyzer_->frame());}return 0;
+    case SpectrumMessage:if(analyzer_){analyzer_->pending=false;bool delivering=analyzer_->active()&&analyzer_->available.load();if(delivering!=content_.waveform){content_.waveform=delivering;refresh();}if(delivering){auto frame=analyzer_->frame();renderer_->spectrum(frame);
+        // The waveform timeline learns the track's loudness from what is actually heard.
+        auto& p=content_.playback;if(settings_.waveTimeline&&p.playing&&p.duration>0&&!content_.scrub.active){double position=p.position+std::max(0.,seconds()-p.sampledAt);if(waves_.track(WaveformLibrary::key(p.title,p.artist,p.duration)).hear(position,p.duration,frame.level)>=0)pushWaveform(frame.level);}}}return 0;
     case MixerMessage:if(mixer_){mixer_->pending=false;auto entries=mixer_->entries();bool layout=entries.size()!=content_.mixer.size();for(size_t i=0;!layout&&i<entries.size();++i){auto& a=entries[i];auto& b=content_.mixer[i];layout=a.pid!=b.pid||a.name!=b.name||a.muted!=b.muted||a.active!=b.active||std::abs(a.volume-b.volume)>.004f||a.icon!=b.icon;}
         bool dragging=inRange(pressedAction_,Action::MixerSliderBase,Action::MixerMuteBase);content_.mixer=std::move(entries);content_.mixerOffset=std::clamp(content_.mixerOffset,0,std::max(0,int(content_.mixer.size())-4));
         bool shown=state_!=IslandState::Compact&&!content_.live&&content_.page==Page::Audio&&content_.audioTab==0;if(layout&&!dragging&&shown)refresh();renderer_->meters(content_.mixer,content_.mixerOffset,shown);}return 0;
@@ -264,11 +274,13 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
     case ShelfPreviewMessage:if(previews_){for(auto& item:content_.shelf)if(item.kind==ShelfItem::Kind::File)item.preview=previews_->get(item.value);refresh();}return 0; case SystemMessage:if(system_){content_.system=system_->snapshot();if(state_!=IslandState::Compact&&IsWindowVisible(window_))refresh();}return 0;
     case WM_POWERBROADCAST:if(w==PBT_POWERSETTINGCHANGE)power(true);return TRUE;
     case SettingsChangedMessage:{std::unique_ptr<Settings> incoming(reinterpret_cast<Settings*>(l));settingsSequence_=unsigned(w);if(incoming)receiveSettings(*incoming);return 0;}
-    case SettingsActionMessage:settingsAction(SettingAction(w));return 0;
+    case SettingsActionMessage:settingsAction(SettingAction(w),int(l));return 0;
     case FullscreenMessage:if(w){SetTimer(window_,17,120,nullptr);}else{DWORD pid=0;auto fg=GetForegroundWindow();if(fg)GetWindowThreadProcessId(fg,&pid);if(!testing_&&pid&&pid!=GetCurrentProcessId())yieldToApp();fullscreen();}return 0;
     case WM_DISPLAYCHANGE:if(renderer_)applySettings(true);return 0;
     case WM_DPICHANGED:if(positioning_)return 0;if(renderer_)applySettings(true);return 0;
-    case WM_SETTINGCHANGE:if(renderer_)applySettings();return 0;
+    case WM_SETTINGCHANGE:if(renderer_)applySettings();
+        if(w==SPI_SETDESKWALLPAPER)std::thread([window=window_]{CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);auto info=new PlatformInfo(platformInfo());info->wallpaper=wallpaperAccent();if(!PostMessageW(window,PlatformMessage,0,reinterpret_cast<LPARAM>(info)))delete info;CoUninitialize();}).detach();
+        return 0;
     case TrayMessage:if(l==WM_RBUTTONUP||l==WM_CONTEXTMENU)showMenu();else if(l==WM_LBUTTONDBLCLK)openSettings();return 0;
     case WM_TIMER: if(w==17){KillTimer(window_,17);fullscreen();return 0;}
                 if(w==16){
@@ -325,11 +337,12 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
             KillTimer(window_,6);DwmFlush();captureWindow(window_,store_.directory/L"island-capture.png");
             if(motionStudy_){SetTimer(window_,16,80,nullptr);return 0;}
             DestroyWindow(qaMatte_);qaMatte_=nullptr;UnregisterClassW(L"NexusIsland.QAMatte",instance_);DeleteObject(qaBrush_);qaBrush_=nullptr;
-            if(lab_)captureWindow(lab_,store_.directory/L"lab-capture.png",true);
         }
         if(w==SettleTimer){double t=seconds();if(motion_.width.settled(t)&&motion_.height.settled(t)&&motion_.dragX.settled(t)&&motion_.dragY.settled(t)&&motion_.slide.settled(t)){updateRegion(false);renderer_->animate(motion_,t);KillTimer(window_,SettleTimer);}else updateRegion(true);}
         if(w==ActivityTimer&&events_.tick(seconds())){if(!events_.active()){KillTimer(window_,ActivityTimer);content_.activity.clear();levelIndicator();refresh();if(interaction_==InteractionState::Rest&&!content_.pinned)transition(IslandState::Compact);}else presentActivity();}
-        if(w==HudTimer)updateHud();
+        if(w==HudTimer){if(settingsWindow_&&settingsWindow_->open())settingsWindow_->update(settings_,settingsContext(),settingsSequence_);else KillTimer(window_,HudTimer);}
+        if(w==36){KillTimer(window_,36);transition(state_==IslandState::Compact?IslandState::Expanded:IslandState::Compact);}// Lab: interrupt reversal
+        if(w==37)labMeasure();
         if(w==ScenarioTimer){
             ++scenarioStep_;double now=seconds();
             events_.publish({ActivityKind::Volume,"benchmark-volume",40,double(scenarioStep_%101),.1,.3},now);
@@ -345,94 +358,13 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
 }
 void IslandWindow::showMenu(){
     HMENU menu=CreatePopupMenu();AppendMenuW(menu,MF_STRING,1,L"Expand / collapse");AppendMenuW(menu,MF_STRING,2,L"Animation Lab");AppendMenuW(menu,MF_STRING,3,L"Settings");
-    AppendMenuW(menu,MF_STRING|(hud_?MF_CHECKED:0),4,L"Performance HUD");AppendMenuW(menu,MF_STRING|(debug_?MF_CHECKED:0),5,L"Visual bounds");
+   AppendMenuW(menu,MF_STRING|(debug_?MF_CHECKED:0),5,L"Visual bounds");
     AppendMenuW(menu,MF_STRING,6,L"Open local logs");AppendMenuW(menu,MF_STRING,7,L"Clear local logs");AppendMenuW(menu,MF_SEPARATOR,0,nullptr);AppendMenuW(menu,MF_STRING,9,L"Exit Arnav Island");
     POINT p;GetCursorPos(&p);SetForegroundWindow(window_);int command=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_NONOTIFY,p.x,p.y,0,window_,nullptr);DestroyMenu(menu);PostMessageW(window_,WM_NULL,0,0);
-    switch(command){case 1:transition(state_==IslandState::Compact?IslandState::Expanded:IslandState::Compact);break;case 2:openLab();break;case 3:perform(Action::Settings);break;
-    case 4:hud_=!hud_;if(hud_){openLab();SetTimer(window_,HudTimer,1000,nullptr);updateHud();}else{KillTimer(window_,HudTimer);if(lab_)SetWindowTextW(lab_,L"Arnav Island / Animation Lab");}break;
+    switch(command){case 1:transition(state_==IslandState::Compact?IslandState::Expanded:IslandState::Compact);break;case 2:openSettings(3);break;case 3:perform(Action::Settings);break;
     case 5:debug_=!debug_;renderer_->redraw(content_,debug_);break;
     case 6:ShellExecuteW(nullptr,L"open",store_.directory.c_str(),nullptr,nullptr,SW_SHOWNORMAL);break;
     case 7:store_.clear();break;case 9:PostMessageW(window_,WM_CLOSE,0,0);break;}
-}
-void IslandWindow::openLab(bool settings){
-    if(lab_){ShowWindow(lab_,SW_SHOW);SetForegroundWindow(lab_);return;}
-    labMode_=!settings;
-    store_.log("Info",settings?"settings_opened":"animation_lab_opened");
-    WNDCLASSW wc{};wc.hInstance=instance_;wc.lpfnWndProc=labProcedure;wc.lpszClassName=L"ArnavIsland.Lab";wc.hCursor=LoadCursor(nullptr,IDC_ARROW);wc.hIcon=LoadIconW(instance_,MAKEINTRESOURCEW(101));RegisterClassW(&wc);
-    lab_=CreateWindowExW(WS_EX_CONTROLPARENT,wc.lpszClassName,settings?L"Arnav Island / Settings":L"Arnav Island / Animation Lab",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,180,220,730,650,nullptr,nullptr,instance_,this);
-    BOOL dark=TRUE;DwmSetWindowAttribute(lab_,DWMWA_USE_IMMERSIVE_DARK_MODE,&dark,sizeof(dark));
-    auto control=[&](const wchar_t* cls,const wchar_t* title,DWORD style,int id,int x,int y,int width,int height){if(wcscmp(cls,L"BUTTON")==0&&style==BS_PUSHBUTTON)style=BS_OWNERDRAW;HWND h=CreateWindowExW(0,cls,title,WS_CHILD|WS_VISIBLE|WS_TABSTOP|style,x,y,width,height,lab_,reinterpret_cast<HMENU>(INT_PTR(id)),instance_,nullptr);if(style==BS_AUTOCHECKBOX)SetWindowTheme(h,L"",L"");SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);return h;};
-    auto combo=control(L"COMBOBOX",L"",CBS_DROPDOWNLIST,100,32,173,270,200);
-    for(auto name:{L"Balanced",L"Fluid",L"Playful",L"Snappy",L"Calm"})SendMessageW(combo,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(name));SendMessageW(combo,CB_SETCURSEL,settings_.preset,0);
-    control(L"BUTTON",L"Expand",BS_PUSHBUTTON,101,32,232,142,38);control(L"BUTTON",L"Collapse",BS_PUSHBUTTON,102,184,232,142,38);control(L"BUTTON",L"Interrupt / reverse",BS_PUSHBUTTON,103,336,232,174,38);control(L"BUTTON",L"Media shape",BS_PUSHBUTTON,104,520,232,146,38);
-    auto stiffness=control(TRACKBAR_CLASSW,L"",TBS_HORZ,110,32,325,290,30);SendMessageW(stiffness,TBM_SETRANGE,TRUE,MAKELPARAM(100,1000));SendMessageW(stiffness,TBM_SETPOS,TRUE,int(motion_.body.stiffness));
-    auto damping=control(TRACKBAR_CLASSW,L"",TBS_HORZ,111,366,325,300,30);SendMessageW(damping,TBM_SETRANGE,TRUE,MAKELPARAM(15,90));SendMessageW(damping,TBM_SETPOS,TRUE,int(motion_.body.damping));
-    auto mass=control(TRACKBAR_CLASSW,L"",TBS_HORZ,112,32,403,290,30);SendMessageW(mass,TBM_SETRANGE,TRUE,MAKELPARAM(5,30));SendMessageW(mass,TBM_SETPOS,TRUE,int(motion_.body.mass*10));
-    control(L"BUTTON",L"Impulse",BS_PUSHBUTTON,113,366,400,142,34);control(L"BUTTON",L"Stall UI 300 ms",BS_PUSHBUTTON,114,518,400,148,34);
-    control(L"BUTTON",L"Reduce motion",BS_AUTOCHECKBOX,120,32,472,160,26);SendDlgItemMessageW(lab_,120,BM_SETCHECK,settings_.reduceMotion,0);
-    control(L"BUTTON",L"Hide in fullscreen",BS_AUTOCHECKBOX,121,214,472,175,26);SendDlgItemMessageW(lab_,121,BM_SETCHECK,settings_.hideFullscreen,0);
-    control(L"BUTTON",L"Reset defaults",BS_PUSHBUTTON,122,32,540,150,36);control(L"BUTTON",L"Save preferences",BS_PUSHBUTTON,123,506,540,160,36);
-    ShowWindow(lab_,SW_SHOW);SetForegroundWindow(lab_);
-}
-void IslandWindow::drawLab(HWND h){
-    PAINTSTRUCT ps;HDC dc=BeginPaint(h,&ps);RECT r;GetClientRect(h,&r);HBRUSH bg=CreateSolidBrush(RGB(14,18,25));FillRect(dc,&r,bg);DeleteObject(bg);SetBkMode(dc,TRANSPARENT);
-    auto label=[&](int x,int y,const std::wstring& text,int size,COLORREF color,int weight=FW_NORMAL){HFONT f=uiFont(size,weight);auto old=SelectObject(dc,f);SetTextColor(dc,color);TextOutW(dc,x,y,text.c_str(),int(text.size()));SelectObject(dc,old);DeleteObject(f);};
-    label(32,25,L"A R N A V   /   S T U D I O",13,RGB(143,219,197),FW_SEMIBOLD);
-    label(30,58,labMode_?L"Make motion feel inevitable.":L"A space that feels like yours.",30,RGB(240,244,251),FW_SEMIBOLD);
-    label(32,103,L"Retarget freely. One object, always in motion.",16,RGB(145,159,180));
-    label(32,149,L"MOTION CHARACTER",12,RGB(177,190,207),FW_SEMIBOLD);
-    label(32,299,L"STIFFNESS  /  "+std::to_wstring(int(motion_.body.stiffness)),13,RGB(177,190,207));
-    label(366,299,L"DAMPING  /  "+std::to_wstring(int(motion_.body.damping)),13,RGB(177,190,207));
-    label(32,378,L"MASS  /  "+std::to_wstring(motion_.body.mass).substr(0,4),13,RGB(177,190,207));
-    label(366,378,L"CONTINUITY TESTS",12,RGB(177,190,207),FW_SEMIBOLD);
-    EndPaint(h,&ps);
-}
-void IslandWindow::labCommand(int id){
-    switch(id){
-    case 100:settings_.preset=int(SendDlgItemMessageW(lab_,100,CB_GETCURSEL,0,0));motion_.body=preset(MotionPreset(settings_.preset));
-        SendDlgItemMessageW(lab_,110,TBM_SETPOS,TRUE,int(motion_.body.stiffness));SendDlgItemMessageW(lab_,111,TBM_SETPOS,TRUE,int(motion_.body.damping));SendDlgItemMessageW(lab_,112,TBM_SETPOS,TRUE,int(motion_.body.mass*10));animate();break;
-    case 101:transition(IslandState::Expanded);break;case 102:transition(IslandState::Compact);break;case 103:transition(state_==IslandState::Compact?IslandState::Expanded:IslandState::Compact);break;
-    case 104:transition(IslandState::Media);break;
-    case 113:{double now=seconds();motion_.dragY.reset(motion_.dragY.sample(now).position,now,350);motion_.dragY.retarget(0,now,motion_.body);animate();break;}
-    case 114:transition(state_==IslandState::Compact?IslandState::Expanded:IslandState::Compact);Sleep(300);break;
-    case 120:settings_.reduceMotion=SendDlgItemMessageW(lab_,120,BM_GETCHECK,0,0)==BST_CHECKED;motion_.reduced=settings_.reduceMotion;animate();break;
-    case 121:settings_.hideFullscreen=SendDlgItemMessageW(lab_,121,BM_GETCHECK,0,0)==BST_CHECKED;fullscreen();break;
-    case 122:settings_={};motion_.body=preset(MotionPreset::Balanced);motion_.reduced=false;SendDlgItemMessageW(lab_,100,CB_SETCURSEL,0,0);SendDlgItemMessageW(lab_,120,BM_SETCHECK,FALSE,0);SendDlgItemMessageW(lab_,121,BM_SETCHECK,TRUE,0);labCommand(100);break;
-    case 123:store_.save(settings_,settingsFile_);store_.log("Info","settings_saved");SetWindowTextW(lab_,L"Arnav Island / Preferences saved");break;
-    }
-    InvalidateRect(lab_,nullptr,FALSE);
-}
-LRESULT CALLBACK IslandWindow::labProcedure(HWND h,UINT m,WPARAM w,LPARAM l){
-    auto self=reinterpret_cast<IslandWindow*>(GetWindowLongPtrW(h,GWLP_USERDATA));
-    if(m==WM_NCCREATE){self=static_cast<IslandWindow*>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams);SetWindowLongPtrW(h,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(self));}
-    if(!self)return DefWindowProcW(h,m,w,l);
-    try{
-    if(m==WM_PAINT){self->drawLab(h);return 0;}
-    if(m==WM_ERASEBKGND)return 1;
-    if(m==WM_CTLCOLORSTATIC||m==WM_CTLCOLORBTN){static HBRUSH background=CreateSolidBrush(RGB(14,18,25));SetTextColor(reinterpret_cast<HDC>(w),RGB(211,221,234));SetBkColor(reinterpret_cast<HDC>(w),RGB(14,18,25));return reinterpret_cast<LRESULT>(background);}
-    if(m==WM_DRAWITEM){auto d=reinterpret_cast<DRAWITEMSTRUCT*>(l);if(d->CtlType==ODT_BUTTON){
-        HBRUSH background=CreateSolidBrush(RGB(14,18,25));FillRect(d->hDC,&d->rcItem,background);DeleteObject(background);
-        bool pressed=d->itemState&ODS_SELECTED,accent=d->CtlID==123;
-        COLORREF color=accent?(pressed?RGB(107,177,160):RGB(145,219,197)):(pressed?RGB(42,53,67):RGB(29,37,49));
-        HBRUSH brush=CreateSolidBrush(color);HPEN pen=CreatePen(PS_SOLID,1,accent?color:RGB(51,63,79));auto oldBrush=SelectObject(d->hDC,brush),oldPen=SelectObject(d->hDC,pen);
-        RoundRect(d->hDC,d->rcItem.left,d->rcItem.top,d->rcItem.right,d->rcItem.bottom,10,10);SelectObject(d->hDC,oldBrush);SelectObject(d->hDC,oldPen);DeleteObject(brush);DeleteObject(pen);
-        wchar_t label[128]{};GetWindowTextW(d->hwndItem,label,128);SetBkMode(d->hDC,TRANSPARENT);SetTextColor(d->hDC,accent?RGB(10,27,23):RGB(229,235,244));HFONT font=uiFont(14,FW_MEDIUM);auto oldFont=SelectObject(d->hDC,font);DrawTextW(d->hDC,label,-1,&d->rcItem,DT_CENTER|DT_VCENTER|DT_SINGLELINE);SelectObject(d->hDC,oldFont);DeleteObject(font);
-        if(d->itemState&ODS_FOCUS){RECT focus=d->rcItem;InflateRect(&focus,-4,-4);DrawFocusRect(d->hDC,&focus);}return TRUE;
-    }}
-    if(m==WM_COMMAND&&(HIWORD(w)==BN_CLICKED||HIWORD(w)==CBN_SELCHANGE)){self->labCommand(LOWORD(w));return 0;}
-    if(m==WM_HSCROLL){self->motion_.body.stiffness=SendDlgItemMessageW(h,110,TBM_GETPOS,0,0);self->motion_.body.damping=SendDlgItemMessageW(h,111,TBM_GETPOS,0,0);self->motion_.body.mass=SendDlgItemMessageW(h,112,TBM_GETPOS,0,0)/10.;self->animate();InvalidateRect(h,nullptr,FALSE);return 0;}
-    if(m==WM_CLOSE){DestroyWindow(h);return 0;}
-    if(m==WM_DESTROY){self->lab_=nullptr;return 0;}
-    if(m==WM_KEYDOWN&&w==VK_ESCAPE){DestroyWindow(h);return 0;}
-    }catch(...){self->store_.log("Error","lab_operation_failed");}
-    return DefWindowProcW(h,m,w,l);
-}
-void IslandWindow::updateHud(){
-    if(!lab_)return;PROCESS_MEMORY_COUNTERS p{sizeof(p)};GetProcessMemoryInfo(GetCurrentProcess(),&p,sizeof(p));
-    DWM_TIMING_INFO timing{sizeof(timing)};HRESULT timingResult=DwmGetCompositionTimingInfo(nullptr,&timing);
-    double refresh=SUCCEEDED(timingResult)&&timing.rateRefresh.uiDenominator?double(timing.rateRefresh.uiNumerator)/timing.rateRefresh.uiDenominator:0;
-    std::wostringstream title;title<<L"Arnav HUD | DWM "<<refresh<<L" Hz (not app FPS) | RAM "<<p.WorkingSetSize/1048576<<L" MB | commits "<<renderer_->commits<<L" | queue "<<events_.depth()<<L" | state "<<int(state_);
-    SetWindowTextW(lab_,title.str().c_str());
 }
 void IslandWindow::finishBenchmark(){
     KillTimer(window_,ScenarioTimer);FILETIME c,e,k,u;GetProcessTimes(GetCurrentProcess(),&c,&e,&k,&u);
@@ -447,13 +379,21 @@ void IslandWindow::finishBenchmark(){
 
 namespace nexus {
 void IslandWindow::saveDisplays(){auto profiles=displays_;store_.submit([profiles,dir=store_.directory]{auto path=dir/L"displays.tmp";{std::ofstream f(path);profiles.write(f);f.flush();if(!f)throw std::runtime_error("Display profiles write failed");}if(!MoveFileExW(path.c_str(),(dir/L"displays.nexus").c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("Display profiles replace failed");});}
-void IslandWindow::refresh(){content_.settings=settings_;content_.reducedMotion=motion_.reduced;bool compact=state_==IslandState::Compact;{const double now=seconds();const bool still=motion_.height.settled(now)&&motion_.width.settled(now);renderer_->setRest(!compact&&still&&motion_.reveal.settled(now),compact&&still);}renderer_->redraw(content_,debug_,compact);contentDirty_=compact;}
+void IslandWindow::pushWaveform(float live){
+    auto& p=content_.playback;if(!renderer_||state_==IslandState::Compact||content_.live||content_.page!=Page::Media||!(p.duration>0)||!settings_.waveTimeline)return;
+    std::array<float,TrackWaveform::bars> heights;heights.fill(-1.f);
+    if(auto* w=waves_.find(WaveformLibrary::key(p.title,p.artist,p.duration))){heights=w->heights();
+        // The bar under the playhead moves with the music.
+        if(live>=0&&p.playing){int i=TrackWaveform::bucket(p.position+std::max(0.,seconds()-p.sampledAt),p.duration);heights[size_t(i)]=std::max(heights[size_t(i)],std::clamp(live,0.f,1.f));}}
+    renderer_->waveform(heights,motion_.reduced);
+}
+void IslandWindow::refresh(){content_.settings=settings_;content_.reducedMotion=motion_.reduced;bool compact=state_==IslandState::Compact;{const double now=seconds();const bool still=motion_.height.settled(now)&&motion_.width.settled(now);renderer_->setRest(!compact&&still&&motion_.reveal.settled(now),compact&&still);}renderer_->redraw(content_,debug_,compact);contentDirty_=compact;if(!compact)pushWaveform();}
 void IslandWindow::clockTimer(){bool visible=state_!=IslandState::Compact&&IsWindowVisible(window_);bool request=visible&&!content_.live&&(content_.page==Page::Overview||content_.page==Page::System);if(request!=systemRequested_){systemRequested_=request;if(request)SetTimer(window_,10,400,nullptr);else{KillTimer(window_,10);if(system_)system_->setActive(false);}}if(content_.focus.running||(visible&&(content_.live||content_.page==Page::Media)&&content_.playback.playing))SetTimer(window_,9,1000,nullptr);else KillTimer(window_,9);if(settings_.compactClock&&IsWindowVisible(window_))SetTimer(window_,18,60000,nullptr);else KillTimer(window_,18);updateProviders();
     if(battery_)battery_->setFast((state_==IslandState::Expanded&&content_.page==Page::System&&content_.statsTab==1)||(content_.card&&content_.notice.kind>=3));
     bool hideActive=settings_.autoHide&&IsWindowVisible(window_)&&!testing_;if(hideActive!=autoHideTimer_){autoHideTimer_=hideActive;if(hideActive)SetTimer(window_,23,33,nullptr);else{KillTimer(window_,23);if(autoHide_.hidden||motion_.slide.target()!=0){autoHide_.hidden=false;if(motion_.reduced)motion_.slide.reset(0,seconds());else motion_.slide.retarget(0,seconds(),{.9,420,26});if(renderer_)animate();}}}}
 Action IslandWindow::hit(LPARAM l){if(state_==IslandState::Compact)return Action::None;double now=seconds();auto origin=bodyOrigin(motion_.width.sample(now).position,motion_.height.sample(now).position,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);return renderer_->hit(float(GET_X_LPARAM(l)*96/dpi_-origin.x-motion_.dragX.sample(now).position),float(GET_Y_LPARAM(l)*96/dpi_-origin.y-motion_.dragY.sample(now).position-motion_.contentShift.sample(now).position));}
 void IslandWindow::applySettings(bool rebuild,bool reposition){
-    motion_.body=preset(MotionPreset(settings_.preset));motion_.edge=settings_.edge;motion_.compactWidth=settings_.uiMode==0?72:settings_.compactWidth;motion_.corner=settings_.corner;BOOL enabled=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&enabled,0);motion_.reduced=settings_.reduceMotion||!enabled;
+    motion_.body=bodySpring(settings_);motion_.edge=settings_.edge;motion_.compactWidth=settings_.uiMode==0?72:settings_.compactWidth;motion_.corner=settings_.corner;BOOL enabled=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&enabled,0);motion_.reduced=settings_.reduceMotion||!enabled;
     DWORD light=0,size=sizeof(light);if(settings_.theme==2)RegGetValueW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",L"AppsUseLightTheme",RRF_RT_REG_DWORD,nullptr,&light,&size);content_.light=settings_.theme==1||(settings_.theme==2&&light);content_.expanded=state_!=IslandState::Compact;
     content_.blur=GlassBackdrop::effectsEnabled();if(rebuild){renderer_.reset();position();renderer_=std::make_unique<Renderer>();renderer_->initialize(window_,dpi_);}else if(reposition)position();motion_.edge=settings_.edge;motion_.compactWidth=settings_.uiMode==0?72:settings_.compactWidth;refresh();animate();
     if(settingsWindow_&&settingsWindow_->open())settingsWindow_->update(settings_,settingsContext(),settingsSequence_);
@@ -542,8 +482,8 @@ void IslandWindow::perform(Action a){
     case Action::HoverDelay:settings_.hoverDelay=settings_.hoverDelay>=600?100:settings_.hoverDelay+100;save=true;break;
     case Action::FullscreenToggle:settings_.hideFullscreen=!settings_.hideFullscreen;save=true;fullscreen();break;
     case Action::ReducedToggle:{settings_.reduceMotion=!settings_.reduceMotion;BOOL enabled=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&enabled,0);motion_.reduced=settings_.reduceMotion||!enabled;save=true;animate();break;}
-    case Action::MotionPreset:settings_.preset=(settings_.preset+1)%5;motion_.body=preset(MotionPreset(settings_.preset));save=true;animate();break;
-    case Action::Lab:openLab();break;
+    case Action::MotionPreset:settings_.preset=(settings_.preset+1)%5;motion_.body=bodySpring(settings_);save=true;animate();break;
+    case Action::Lab:openSettings(3);break;
     case Action::DisplaySettings:ShellExecuteW(nullptr,L"open",L"ms-settings:display",nullptr,nullptr,SW_SHOWNORMAL);break;
     case Action::NetworkSettings:ShellExecuteW(nullptr,L"open",L"ms-settings:network-status",nullptr,nullptr,SW_SHOWNORMAL);break;
     case Action::BluetoothSettings:ShellExecuteW(nullptr,L"open",L"ms-settings:bluetooth",nullptr,nullptr,SW_SHOWNORMAL);break;

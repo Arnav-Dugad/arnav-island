@@ -37,7 +37,7 @@ struct SettingsWindow::State {
 
 class SettingsUi {
 public:
-    SettingsUi(HWND island,SettingsWindow::State& shared,Settings s,SettingsContext c,int section):island_(island),shared_(shared),s_(s),context_(c),section_(std::max(0,section)){items_=settingItems(c.monitors);}
+    SettingsUi(HWND island,SettingsWindow::State& shared,Settings s,SettingsContext c,int section):island_(island),shared_(shared),s_(s),context_(c),section_(std::max(0,section)){items_=settingItems(c.monitors);if(section_==3)replay();}
     HWND create();
     LRESULT message(HWND,UINT,WPARAM,LPARAM);
     bool animating();void render();bool dirty=true;
@@ -48,6 +48,8 @@ private:
     std::map<int,ComPtr<IDWriteTextFormat>> formats_;float dpi_=96;UINT width_=0,height_=0;bool mica_=false,keyboard_=false;
     Spring navY_{0},page_{1},scroll_{0};double scrollTarget_=0;std::map<int,Spring> knobs_,hovers_,pillX_,pillW_,thumbs_,rings_;
     Hit hover_,press_,focus_;int dragItem_=-1;double confirmUntil_=0;int confirmItem_=-1;bool tracking_=false;
+    // Animation Lab: a spring that plays the island's own motion in miniature.
+    Spring preview_{0};double previewStart_=-10;bool previewForward_=false;void replay();void drawPreview(const D2D1_RECT_F& area,const Palette& p,float alpha);
     float W()const{return width_*96.f/dpi_;}float H()const{return height_*96.f/dpi_;}
     Palette palette()const;bool enabled(const SettingItem&)const;std::wstring detail(const SettingItem&)const;
     IDWriteTextFormat* format(float size,DWRITE_FONT_WEIGHT weight);float measure(const std::wstring&,float size,DWRITE_FONT_WEIGHT weight=DWRITE_FONT_WEIGHT_NORMAL);
@@ -63,7 +65,7 @@ private:
 };
 
 Palette SettingsUi::palette()const{
-    bool light=s_.theme==1||(s_.theme==2&&systemLight());UINT32 accent=swatchColors[std::clamp(s_.accent,0,3)];
+    bool light=s_.theme==1||(s_.theme==2&&systemLight());UINT32 accent=s_.accent==4?(context_.wallpaper?context_.wallpaper:swatchColors[0]):swatchColors[std::clamp(s_.accent,0,3)];
     if(light){const UINT32 deep[]={0x2e7d68,0x2f6fb8,0x7453b8,0xb4652c};return {0xf3f3f6,0xffffff,0xe2e3e8,0x1b1c20,0x696c75,deep[std::clamp(s_.accent,0,3)],0xffffff,0xffffff,mica_?0.f:1.f,mica_?.72f:1.f,true};}
     return {0x141518,0x1e1f24,0x2b2d33,0xf2f3f6,0x9b9ea8,accent,0x101114,0x34363d,mica_?0.f:1.f,mica_?.62f:1.f,false};
 }
@@ -75,7 +77,7 @@ bool SettingsUi::enabled(const SettingItem& i)const{
     return true;
 }
 std::wstring SettingsUi::detail(const SettingItem& i)const{
-    if(i.action==SettingAction::TransparencySettings)return context_.blur?L"On — glass blurs what is behind the island":L"Off — glass is tinted but not blurred until you turn it on";
+    if(i.action==SettingAction::TransparencySettings)return context_.blur?L"On — Frosted glass blurs what is behind the island":L"Off — Frosted glass uses a translucent frost; turn on for real blur";
     if(i.key=="material"&&!context_.glassAvailable)return L"Glass needs Windows 11 composition support";
     if(i.key=="commandShortcut"&&context_.shortcutTaken)return L"Another app already uses this shortcut \u2014 choose another";
     return i.detail;
@@ -96,7 +98,7 @@ std::vector<Row> SettingsUi::layout(float& contentHeight,std::vector<D2D1_RECT_F
     if(nav)*nav=navRects();
     std::vector<Row> rows;const float left=Sidebar+20,right=W()-32,R=right-Pad,scroll=float(at(scroll_));float y=CardTop-scroll+(about()?92:0);
     for(size_t index=0;index<items_.size();++index){auto& item=items_[index];if(item.section!=section_||(item.action==SettingAction::OpenArmoury&&!context_.armoury))continue;
-        Row row;row.item=int(index);float h=item.control==SettingControl::Order?52:64;row.row={left,y,right,y+h};float cy=y+h/2;
+        Row row;row.item=int(index);float h=item.control==SettingControl::Order?52:item.control==SettingControl::Preview?216:64;row.row={left,y,right,y+h};float cy=y+h/2;
         switch(item.control){
         case SettingControl::Toggle:row.control={R-44,cy-11,R,cy+11};row.parts={row.control};break;
         case SettingControl::Slider:row.control={R-220,cy-12,R,cy+12};row.parts={row.control};break;
@@ -105,6 +107,8 @@ std::vector<Row> SettingsUi::layout(float& contentHeight,std::vector<D2D1_RECT_F
         case SettingControl::Swatch:{float x=R-float(item.options.size())*38+10;row.control={x,cy-14,R,cy+14};for(size_t k=0;k<item.options.size();++k)row.parts.push_back({x+k*38.f,cy-14,x+k*38.f+28,cy+14});break;}
         case SettingControl::Button:{float w=std::max(96.f,measure(confirmItem_==int(index)?L"Click again to confirm":item.options.front(),13,DWRITE_FONT_WEIGHT_MEDIUM)+36);row.control={R-w,cy-16,R,cy+16};row.parts={row.control};break;}
         case SettingControl::Order:row.control={R-72,cy-15,R,cy+15};row.parts={{R-72,cy-15,R-40,cy+15},{R-32,cy-15,R,cy+15}};break;
+        case SettingControl::Preview:row.control={left+Pad,y+44,R,y+h-14};row.parts={row.control};break;
+        case SettingControl::Actions:{float total=0;std::vector<float> widths;for(auto& o:item.options){float w=std::max(74.f,measure(o,13,DWRITE_FONT_WEIGHT_MEDIUM)+32);widths.push_back(w);total+=w+8;}total-=8;float x=R-total;row.control={x,cy-16,R,cy+16};for(float w:widths){row.parts.push_back({x,cy-16,x+w,cy+16});x+=w+8;}break;}
         default:break;
         }
         rows.push_back(std::move(row));y+=h;
@@ -132,14 +136,18 @@ void SettingsUi::post(){++posted_;auto copy=std::make_unique<Settings>(s_);if(Po
 void SettingsUi::apply(int index,int value){
     auto& item=items_[index];if(!enabled(item))return;
     if(item.control==SettingControl::Order){item.set(s_,value);post();dirty=true;return;}
-    int before=item.get(s_);item.set(s_,value);if(item.get(s_)!=before){post();dirty=true;}
+    auto spring=bodySpring(s_);int before=item.get(s_);item.set(s_,value);if(item.get(s_)!=before){post();dirty=true;}
+    auto after=bodySpring(s_);if(section_==3&&(after.mass!=spring.mass||after.stiffness!=spring.stiffness||after.damping!=spring.damping))replay();
 }
+// Each replay flips direction: expand, then collapse, with the island's current spring.
+void SettingsUi::replay(){double now=seconds();previewForward_=!previewForward_;previewStart_=now;auto spec=bodySpring(s_);if(s_.reduceMotion)preview_.reset(previewForward_?1:0,now);else preview_.retarget(previewForward_?1:0,now,spec);dirty=true;}
 void SettingsUi::slide(int index,float x){
     float height;auto rows=layout(height);for(auto& row:rows)if(row.item==index){auto& item=items_[index];auto r=row.control;float f=std::clamp((x-r.left)/(r.right-r.left),0.f,1.f);int v=item.lo+int(std::lround(f*(item.hi-item.lo)/item.step))*item.step;apply(index,std::clamp(v,item.lo,item.hi));}
 }
 void SettingsUi::selectSection(int section){
     section=std::clamp(section,0,int(settingSections().size())-1);if(section==section_)return;section_=section;double now=seconds();
     if(!s_.reduceMotion){page_.reset(0,now);page_.retarget(1,now,Page);}scrollTarget_=0;scroll_.reset(0,now);confirmItem_=-1;dirty=true;
+    if(section_==3){previewForward_=false;preview_.reset(0,now);replay();}
 }
 void SettingsUi::activate(const Hit& h,float x){
     if(h.section>=0){selectSection(h.section);return;}
@@ -150,6 +158,8 @@ void SettingsUi::activate(const Hit& h,float x){
     case SettingControl::Stepper:if(h.part>=0){int n=item.hi-item.lo+1;apply(h.item,item.lo+((v-item.lo+(h.part?1:-1))%n+n)%n);}break;
     case SettingControl::Order:if(h.part>=0)apply(h.item,h.part?1:-1);break;
     case SettingControl::Slider:slide(h.item,x);break;
+    case SettingControl::Preview:replay();break;
+    case SettingControl::Actions:if(h.part>=0){PostMessageW(island_,SettingsActionMessage,WPARAM(item.action),LPARAM(h.part));dirty=true;}break;
     case SettingControl::Button:{
         if(item.action==SettingAction::TransparencySettings){ShellExecuteW(nullptr,L"open",L"ms-settings:personalization-colors",nullptr,nullptr,SW_SHOWNORMAL);break;}
         if(item.action==SettingAction::SoundSettings){ShellExecuteW(nullptr,L"open",L"ms-settings:sound",nullptr,nullptr,SW_SHOWNORMAL);break;}
@@ -173,7 +183,7 @@ void SettingsUi::key(WPARAM k){
         else if(item.control==SettingControl::Choice||item.control==SettingControl::Swatch){apply(focus_.item,std::clamp(v+d,item.lo,item.hi));focus_.part=item.get(s_);}
         else if(item.control==SettingControl::Stepper)activate({focus_.item,d>0?1:0,-1},0);
         else if(item.control==SettingControl::Order)apply(focus_.item,d);}
-    else if(k==VK_SPACE||k==VK_RETURN){if(focus_.section>=0)selectSection(focus_.section);else if(focus_.item>=0){auto& item=items_[focus_.item];if(item.control==SettingControl::Toggle||item.control==SettingControl::Button)activate({focus_.item,0,-1},0);}}
+    else if(k==VK_SPACE||k==VK_RETURN){if(focus_.section>=0)selectSection(focus_.section);else if(focus_.item>=0){auto& item=items_[focus_.item];if(item.control==SettingControl::Toggle||item.control==SettingControl::Button)activate({focus_.item,0,-1},0);else if(item.control==SettingControl::Actions||item.control==SettingControl::Preview)activate({focus_.item,std::max(0,focus_.part),-1},0);}}
     // Keep the focused row inside the viewport.
     if(focus_.item>=0){float height;for(auto& row:layout(height))if(row.item==focus_.item){float top=row.row.top,bottom=row.row.bottom;if(top<CardTop-10)scrollTarget_-=CardTop-10-top;else if(bottom>H()-20)scrollTarget_+=bottom-(H()-20);float max=std::max(0.f,height-H());scrollTarget_=std::clamp(scrollTarget_,0.,double(max));aim(scroll_,scrollTarget_,Scroll);}}
 }
@@ -182,7 +192,7 @@ void SettingsUi::refresh(){
     if(shared_.requestedSection>=0){selectSection(shared_.requestedSection);shared_.requestedSection=-1;}
     if(!shared_.pending)return;shared_.pending=false;
     // Ignore echoes of older edits while the pointer is still moving a control.
-    if(shared_.incomingSequence<posted_)return;
+    if(shared_.incomingSequence<posted_){if(shared_.incomingContext.labStats!=context_.labStats){context_.labStats=shared_.incomingContext.labStats;dirty=true;}return;}
     bool monitorsChanged=shared_.incomingContext.monitors!=context_.monitors;s_=shared_.incoming;context_=shared_.incomingContext;if(monitorsChanged)items_=settingItems(context_.monitors);theme();dirty=true;
 }
 void SettingsUi::theme(){
@@ -220,7 +230,7 @@ void SettingsUi::resize(){
 }
 bool SettingsUi::animating(){
     double now=seconds();auto moving=[&](const Spring& s){return !s.settled(now);};
-    if(moving(navY_)||moving(page_)||moving(scroll_))return true;
+    if(moving(navY_)||moving(page_)||moving(scroll_)||moving(preview_))return true;
     for(auto* map:{&knobs_,&hovers_,&pillX_,&pillW_,&thumbs_,&rings_})for(auto& [k,s]:*map)if(moving(s))return true;
     return false;
 }
@@ -252,7 +262,8 @@ void SettingsUi::render(){
         if(r>0){brush_->SetColor(D2D1::ColorF(p.border));dc_->DrawLine({row.row.left+Pad,row.row.top},{row.row.right-Pad,row.row.top},brush_.Get(),1);}
         auto& rowHover=spring(hovers_,row.item*100+98,0);aim(rowHover,hover_.item==row.item&&on?1:0,Hover);fill({row.row.left+4,row.row.top+4,row.row.right-4,row.row.bottom-4},7,p.light?0x000000:0xffffff,float(at(rowHover))*(p.light?.02f:.025f));
         float textRight=row.control.left-16;
-        if(item.control==SettingControl::Order){int page=item.get(s_);text(item.title,{row.row.left+Pad,row.row.top+6,textRight,row.row.top+22},11,p.muted,alpha);drawIcon(dc_.Get(),factory_.Get(),std::array<Icon,7>{Icon::Home,Icon::Music,Icon::Stats,Icon::Focus,Icon::Settings,Icon::Shelf,Icon::Audio}[page],row.row.left+Pad,row.row.top+25,16,p.ink);text(item.options[page],{row.row.left+Pad+24,row.row.top+22,textRight,row.row.top+44},14,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);}
+        if(item.control==SettingControl::Preview){text(item.title,{row.row.left+Pad,row.row.top+12,row.row.right-Pad,row.row.top+32},14,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);text(detail(item),{row.row.left+Pad,row.row.top+12,row.row.right-Pad,row.row.top+32},12,p.muted,alpha,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
+        else if(item.control==SettingControl::Order){int page=item.get(s_);text(item.title,{row.row.left+Pad,row.row.top+6,textRight,row.row.top+22},11,p.muted,alpha);drawIcon(dc_.Get(),factory_.Get(),std::array<Icon,7>{Icon::Home,Icon::Music,Icon::Stats,Icon::Focus,Icon::Settings,Icon::Shelf,Icon::Audio}[page],row.row.left+Pad,row.row.top+25,16,p.ink);text(item.options[page],{row.row.left+Pad+24,row.row.top+22,textRight,row.row.top+44},14,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);}
         else{bool hasDetail=!detail(item).empty();text(item.title,{row.row.left+Pad,hasDetail?row.row.top+12:cy-11,textRight,hasDetail?row.row.top+32:cy+11},14,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);if(hasDetail)text(detail(item),{row.row.left+Pad,row.row.top+33,textRight,row.row.top+52},12,p.muted,alpha);}
         int value=item.get?item.get(s_):0;auto hovered=[&](int part){return hover_.item==row.item&&(hover_.part==part||hover_.part==99);};
         switch(item.control){
@@ -271,12 +282,16 @@ void SettingsUi::render(){
         case SettingControl::Stepper:{for(int b=0;b<2;++b){auto r=row.parts[b];auto& h=spring(thumbs_,100000+row.item*10+b,0);aim(h,press_.item==row.item&&press_.part==b?2:hovered(b)?1:0,Hover);float g=float(at(h));fill(r,16,p.ink,(.06f+std::min(g,1.f)*.06f-std::max(0.f,g-1)*.04f)*alpha);drawIcon(dc_.Get(),factory_.Get(),b?Icon::ArrowRight:Icon::ArrowLeft,r.left+9,r.top+9,14,p.ink,alpha);}
             text(value>=0&&value<int(item.options.size())?item.options[value]:std::to_wstring(value),{row.parts[0].right,cy-11,row.parts[1].left,cy+11},13,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER);break;}
         case SettingControl::Swatch:{auto target=row.parts[std::clamp(value,0,int(row.parts.size())-1)];auto& rx=spring(rings_,row.item,target.left);aim(rx,target.left,Pill);float x=float(at(rx))+14;
-            for(size_t o=0;o<row.parts.size();++o){auto r=row.parts[o];brush_->SetColor(D2D1::ColorF(p.light?std::array<UINT32,4>{0x2e7d68,0x2f6fb8,0x7453b8,0xb4652c}[o]:swatchColors[o],alpha));dc_->FillEllipse(D2D1::Ellipse({r.left+14,cy},hovered(int(o))?10.5f:9.5f,hovered(int(o))?10.5f:9.5f),brush_.Get());}
+            for(size_t o=0;o<row.parts.size();++o){auto r=row.parts[o];const UINT32 wall=context_.wallpaper?context_.wallpaper:0x9aa0aa,deepWall=((((wall>>16)&255)*5/10)<<16)|((((wall>>8)&255)*5/10)<<8)|((wall&255)*5/10);
+                brush_->SetColor(D2D1::ColorF(o==4?(p.light?deepWall:wall):p.light?std::array<UINT32,4>{0x2e7d68,0x2f6fb8,0x7453b8,0xb4652c}[o]:swatchColors[o],alpha));dc_->FillEllipse(D2D1::Ellipse({r.left+14,cy},hovered(int(o))?10.5f:9.5f,hovered(int(o))?10.5f:9.5f),brush_.Get());}
             brush_->SetColor(D2D1::ColorF(p.ink,alpha));dc_->DrawEllipse(D2D1::Ellipse({x,cy},14,14),brush_.Get(),2);break;}
         case SettingControl::Button:{auto r=row.control;bool confirm=confirmItem_==row.item&&now<confirmUntil_;auto& h=spring(thumbs_,100000+row.item*10,0);aim(h,press_.item==row.item?2:hovered(0)?1:0,Hover);float g=float(at(h));
             if(confirm){fill(r,7,0xd9434b,alpha);text(L"Click again to confirm",r,13,0xffffff,alpha,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_CENTER);}
             else{fill(r,7,p.ink,(.07f+std::min(g,1.f)*.05f-std::max(0.f,g-1)*.04f)*alpha);stroke(r,7,p.ink,.08f*alpha,1);text(item.options.front(),r,13,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER);}break;}
         case SettingControl::Order:{int slot=row.item;for(int b=0;b<2;++b){auto r=row.parts[b];bool possible=b?item.key!="nav6":item.key!="nav0";auto& h=spring(thumbs_,100000+slot*10+b,0);aim(h,press_.item==row.item&&press_.part==b?2:hovered(b)?1:0,Hover);float g=float(at(h));fill(r,15,p.ink,(.06f+std::min(g,1.f)*.06f)*(possible?1:.4f));drawIcon(dc_.Get(),factory_.Get(),b?Icon::ArrowDown:Icon::ArrowUp,r.left+8,r.top+8,14,p.ink,possible?1:.35f);}break;}
+        case SettingControl::Preview:drawPreview(row.control,p,alpha);break;
+        case SettingControl::Actions:{for(size_t b=0;b<row.parts.size();++b){auto r=row.parts[b];auto& h=spring(thumbs_,200000+row.item*10+int(b),0);aim(h,press_.item==row.item&&press_.part==int(b)?2:hovered(int(b))?1:0,Hover);float g=float(at(h));
+            fill(r,8,b==0?p.accent:p.ink,(b==0?.9f+std::min(g,1.f)*.1f:.07f+std::min(g,1.f)*.05f-std::max(0.f,g-1)*.04f)*alpha);if(b)stroke(r,8,p.ink,.08f*alpha,1);text(item.options[b],r,13,b==0?p.onAccent:p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER);}break;}
         default:break;
         }
         if(keyboard_&&focus_.item==row.item){auto r=row.control;if(focus_.part>=0&&focus_.part<int(row.parts.size())&&item.control!=SettingControl::Slider)r=row.parts[focus_.part];stroke({r.left-3,r.top-3,r.right+3,r.bottom+3},9,p.accent,1,2);}
@@ -285,6 +300,33 @@ void SettingsUi::render(){
     if(maxScroll>0){float track=H()-24,thumb=std::max(40.f,track*H()/contentHeight),y=12+(track-thumb)*scroll/maxScroll;fill({W()-7,y,W()-4,y+thumb},1.5f,p.ink,.22f);}
     HRESULT hr=dc_->EndDraw();if(hr==D2DERR_RECREATE_TARGET){resize();return;}check(hr);
     check(swap_->Present(1,0));dirty=false;publish();
+}
+// A miniature island on a screen edge, morphing with the island's spring, beside
+// the spring's step response with its overshoot and settling time.
+void SettingsUi::drawPreview(const D2D1_RECT_F& a,const Palette& p,float alpha){
+    const double now=seconds();const auto spec=bodySpring(s_);const float split=a.left+(a.right-a.left)*.46f;
+    fill(a,10,p.ink,(p.light?.035f:.05f)*alpha);stroke(a,10,p.ink,.07f*alpha,1);
+    // Stage: the island hangs from a screen edge, compact (collapsed) to open (expanded).
+    const float cx=(a.left+split)/2,top=a.top+14;brush_->SetColor(D2D1::ColorF(p.ink,.18f*alpha));dc_->DrawLine({a.left+18,top},{split-18,top},brush_.Get(),1);
+    const float t=float(at(preview_)),w=lerp(62,164,t),h=lerp(14,84,t),r=lerp(7,15,t);
+    fill({cx-w/2,top,cx+w/2,top+h},r,p.light?0x15171c:0x0b0c0f,alpha);
+    const float c=std::clamp(t,0.f,1.f);if(c>.35f){float q=(c-.35f)/.65f;fill({cx-w/2+12,top+12,cx-w/2+40,top+40},7,p.accent,q*alpha);fill({cx-w/2+50,top+16,cx+w/2-14,top+23},3,0xffffff,.55f*q*alpha);fill({cx-w/2+50,top+29,cx+w/2-46,top+35},3,0xffffff,.3f*q*alpha);fill({cx-w/2+12,top+52,cx+w/2-12,top+56},2,0xffffff,.18f*q*alpha);fill({cx-w/2+12,top+52,cx-w/2+12+(w-24)*.4f,top+56},2,p.accent,q*alpha);}
+    // Step response of the same spring, 0 to 1, over the next 1.4 s of simulated time.
+    Spring probe{0};probe.retarget(1,0,spec);const float gx0=split+18,gx1=a.right-18,gy0=a.top+18,gy1=a.bottom-40;const double span=1.4*(s_.labSpeed==2?4:s_.labSpeed==1?2:1);
+    auto yOf=[&](double v){return float(gy1-(gy1-gy0)*std::clamp(v,-.1,1.35)/1.35);};
+    brush_->SetColor(D2D1::ColorF(p.ink,.12f*alpha));dc_->DrawLine({gx0,yOf(1)},{gx1,yOf(1)},brush_.Get(),1);dc_->DrawLine({gx0,gy1},{gx1,gy1},brush_.Get(),1);
+    double peak=0,settle=-1;ComPtr<ID2D1PathGeometry> path;factory_->CreatePathGeometry(&path);ComPtr<ID2D1GeometrySink> sink;path->Open(&sink);
+    for(int i=0;i<=120;++i){double tt=span*i/120;auto sample=probe.sample(tt);peak=std::max(peak,sample.position);D2D1_POINT_2F pt{lerp(gx0,gx1,float(i)/120),yOf(sample.position)};if(i==0)sink->BeginFigure(pt,D2D1_FIGURE_BEGIN_HOLLOW);else sink->AddLine(pt);}
+    sink->EndFigure(D2D1_FIGURE_END_OPEN);sink->Close();
+    for(int i=0;i<=1200;++i){double tt=span*i/1200;auto sample=probe.sample(tt);if(std::abs(sample.position-1)<.01&&std::abs(sample.velocity)<.05){if(settle<0)settle=tt;}else settle=-1;}
+    brush_->SetColor(D2D1::ColorF(p.accent,alpha));ComPtr<ID2D1StrokeStyle> round;D2D1_STROKE_STYLE_PROPERTIES props{};props.startCap=D2D1_CAP_STYLE_ROUND;props.endCap=D2D1_CAP_STYLE_ROUND;props.lineJoin=D2D1_LINE_JOIN_ROUND;factory_->CreateStrokeStyle(props,nullptr,0,&round);
+    dc_->DrawGeometry(path.Get(),brush_.Get(),2,round.Get());
+    // A dot rides the curve while the preview plays.
+    const double elapsed=now-previewStart_;if(elapsed>=0&&elapsed<=span){auto sample=probe.sample(elapsed);D2D1_POINT_2F pt{lerp(gx0,gx1,float(elapsed/span)),yOf(sample.position)};dc_->FillEllipse(D2D1::Ellipse(pt,4.5f,4.5f),brush_.Get());}
+    const int overshoot=int(std::lround(std::max(0.,peak-1)*100)),settleMs=settle<0?-1:int(std::lround(settle*1000));
+    std::wstring numbers=(settleMs<0?std::wstring(L"Still moving after "+std::to_wstring(int(span*1000))+L" ms"):L"Settles in "+std::to_wstring(settleMs)+L" ms")+L"   \u00b7   "+(overshoot?std::to_wstring(overshoot)+L"% overshoot":std::wstring(L"No overshoot"));
+    text(numbers,{gx0,a.bottom-34,gx1,a.bottom-16},12.5f,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);
+    text(context_.labStats.empty()?std::wstring(L"Measuring the display\u2026"):context_.labStats,{a.left+18,a.bottom-34,split-10,a.bottom-16},11,p.muted,alpha);
 }
 LRESULT SettingsUi::message(HWND h,UINT m,WPARAM w,LPARAM l){
     auto point=[&]{return std::pair<float,float>{GET_X_LPARAM(l)*96.f/dpi_,GET_Y_LPARAM(l)*96.f/dpi_};};

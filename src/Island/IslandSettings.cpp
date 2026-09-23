@@ -1,3 +1,5 @@
+#include <dwmapi.h>
+#include <psapi.h>
 #include "IslandWindow.h"
 #include "App/Version.h"
 #include <shellapi.h>
@@ -11,12 +13,53 @@ std::string narrow(const std::wstring& w){std::string s;for(wchar_t c:w)s+=c<128
 }
 SettingsContext IslandWindow::settingsContext(){
     SettingsContext c;int monitors=0;EnumDisplayMonitors(nullptr,nullptr,countMonitor,reinterpret_cast<LPARAM>(&monitors));c.monitors=std::max(1,monitors);
-    c.blur=GlassBackdrop::effectsEnabled();c.armoury=!content_.platform.armoury.empty();c.glassAvailable=renderer_&&renderer_->glassAvailable();c.shortcutTaken=settings_.commandShortcut!=0&&!hotkey_&&!testing_;c.version=appVersion;return c;
+    c.blur=GlassBackdrop::effectsEnabled();c.armoury=!content_.platform.armoury.empty();c.glassAvailable=renderer_&&renderer_->glassAvailable();c.labStats=labStats();c.wallpaper=content_.platform.wallpaper;c.shortcutTaken=settings_.commandShortcut!=0&&!hotkey_&&!testing_;c.version=appVersion;return c;
 }
 void IslandWindow::openSettings(int section){
     if(!settingsWindow_)settingsWindow_=std::make_unique<SettingsWindow>(window_);
     settingsWindow_->show(settings_,settingsContext(),section);store_.log("Info","settings_window_opened");
+    SetTimer(window_,3,1000,nullptr);// keeps the Animation Lab readout current while Settings is open
 }
+// Frames the compositor has finished, from Windows 11's frame counter (0 when unavailable).
+// DWM_TIMING_INFO's counters no longer track composition, so they are not used.
+static UINT64 compositorFrame(){
+    using GetFrameId=HRESULT(WINAPI*)(int,UINT64*);static const auto get=reinterpret_cast<GetFrameId>(reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"dcomp.dll"),"DCompositionGetFrameId")));
+    UINT64 id=0;return get&&SUCCEEDED(get(2/*COMPOSITION_FRAME_ID_COMPLETED*/,&id))?id:0;
+}
+// The Animation Lab readout: the island's display rate, frames composed during the last try-it motion, memory.
+std::wstring IslandWindow::labStats(){
+    MONITORINFOEXW m{};m.cbSize=sizeof(m);DEVMODEW mode{};mode.dmSize=sizeof(mode);double hz=0;
+    if(GetMonitorInfoW(MonitorFromWindow(window_,MONITOR_DEFAULTTONEAREST),&m)&&EnumDisplaySettingsW(m.szDevice,ENUM_CURRENT_SETTINGS,&mode)&&mode.dmDisplayFrequency>1)hz=mode.dmDisplayFrequency;
+    PROCESS_MEMORY_COUNTERS p{sizeof(p)};GetProcessMemoryInfo(GetCurrentProcess(),&p,sizeof(p));
+    std::wstring s=hz>0?std::to_wstring(int(std::lround(hz)))+L" Hz display":std::wstring(L"Display rate unknown");
+    if(!labLast_.empty())s+=L"  \u00b7  "+labLast_;
+    return s+L"  \u00b7  "+std::to_wstring(p.WorkingSetSize/1048576)+L" MB";
+}
+// Try-it buttons: play a real transition on the island, then count the frames the
+// compositor finished while its shape moved.
+void IslandWindow::labPlay(int which){
+    labFrames_=compositorFrame();labStart_=seconds();
+    switch(which){
+    case 0:content_.pinned=false;transition(IslandState::Expanded);break;
+    case 1:content_.pinned=false;transition(IslandState::Compact);break;
+    case 2:transition(state_==IslandState::Compact?IslandState::Expanded:IslandState::Compact);SetTimer(window_,36,170,nullptr);break;// reverses mid-flight
+    case 3:if(state_!=IslandState::Compact)transition(IslandState::Compact);if(content_.battery>=0)showNotice(content_.charging?3:4);else labLast_=L"This PC has no battery card to show";break;
+    default:return;
+    }
+    if(labFrames_)SetTimer(window_,37,16,nullptr);store_.log("Info","lab_play");
+}
+// Polled every frame-ish until the shape comes to rest (within half a DIP), or 1.5 s.
+void IslandWindow::labMeasure(){
+    if(!labFrames_){KillTimer(window_,37);return;}
+    const double now=seconds(),elapsed=now-labStart_;
+    auto resting=[&](const Spring& s){auto p=s.sample(now);return std::abs(p.position-s.target())<.5&&std::abs(p.velocity)<6;};
+    if(elapsed<1.5&&!(resting(motion_.width)&&resting(motion_.height)))return;
+    KillTimer(window_,37);const UINT64 frame=compositorFrame();const UINT64 start=labFrames_;labFrames_=0;
+    if(elapsed<.1||frame<start)labLast_=motion_.reduced?L"Reduce motion is on, so it changed instantly":L"It didn't move";
+    else labLast_=std::to_wstring(int(std::lround(double(frame-start)/elapsed)))+L" fps while it moved";
+    if(settingsWindow_&&settingsWindow_->open())settingsWindow_->update(settings_,settingsContext(),settingsSequence_);
+}
+
 void IslandWindow::scheduleSave(){SetTimer(window_,20,350,nullptr);}
 // Applies a complete preference set from the Settings window. Only the work a
 // change needs is done: repositioning for offsets, rebuilding for DPI/edge/display.
@@ -30,9 +73,10 @@ void IslandWindow::receiveSettings(Settings next){
     if(!monitor)displays_.remember(currentDisplay_,settings_);
     applySettings(rebuild,reposition);if(battery_)battery_->setHistory(settings_.batteryHistory);syncProductivity();if(next.hideFullscreen!=previous.hideFullscreen)fullscreen();clockTimer();scheduleSave();
 }
-void IslandWindow::settingsAction(SettingAction action){
+void IslandWindow::settingsAction(SettingAction action,int argument){
     switch(action){
-    case SettingAction::OpenLab:openLab();break;
+    case SettingAction::OpenLab:openSettings(3);break;
+    case SettingAction::LabPlay:labPlay(argument);break;
     case SettingAction::ResetAll:{Settings next;next.startAtLogin=settings_.startAtLogin;receiveSettings(next);store_.log("Info","settings_reset");break;}
     case SettingAction::ResetLayout:{Settings next=settings_;next.navigation=defaultNavigation;next.homeMetrics=defaultMetrics;content_.layoutSlot=0;receiveSettings(next);break;}
     case SettingAction::OpenLogs:ShellExecuteW(nullptr,L"open",store_.directory.c_str(),nullptr,nullptr,SW_SHOWNORMAL);break;
@@ -63,14 +107,14 @@ std::string IslandWindow::verifySetting(const SettingItem& item){
     if(k=="corner"&&motion_.corner!=settings_.corner)return fail("corner radius not applied");
     if(k=="theme"){DWORD light=0,size=sizeof(light);RegGetValueW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",L"AppsUseLightTheme",RRF_RT_REG_DWORD,nullptr,&light,&size);bool expected=settings_.theme==1||(settings_.theme==2&&light);if(content_.light!=expected)return fail("theme not applied");}
     if(k=="material"||k=="glassTint"){auto style=renderer_->glassStyle();if(renderer_->glassAvailable()&&style.visible!=settings_.glassy())return fail("glass visibility not applied");if(settings_.glassy()&&std::abs(style.tint-settings_.glassTint/100.f)>.001f)return fail("glass tint not applied");if(k=="material"&&settings_.edge==0&&std::abs(r.top-(mi.rcMonitor.top+int((settings_.verticalOffset+settings_.gap())*s)))>1)return fail("glass float gap not applied");}
-    if(k=="preset"){auto p=preset(MotionPreset(settings_.preset));if(motion_.body.stiffness!=p.stiffness||motion_.body.damping!=p.damping||motion_.body.mass!=p.mass)return fail("motion preset not applied");}
+    if(k=="preset"||k=="springStiffness"||k=="springDamping"||k=="springMass"||k=="labSpeed"){auto p=bodySpring(settings_);if(motion_.body.stiffness!=p.stiffness||motion_.body.damping!=p.damping||motion_.body.mass!=p.mass)return fail("motion preset not applied");}
     if(k=="reduceMotion"){BOOL animations=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animations,0);if(motion_.reduced!=(settings_.reduceMotion||!animations))return fail("reduced motion not applied");}
     if(k=="hoverOpen"){
         // Drive the real hover path: pointer arrives, the hover timer fires.
         transition(IslandState::Compact);interaction_=InteractionState::Hover;SendMessageW(window_,WM_TIMER,7,0);bool opened=state_!=IslandState::Compact;
         interaction_=InteractionState::Rest;content_.pinned=false;transition(IslandState::Compact);if(opened!=settings_.hoverOpen)return fail("hover opening does not follow preference");}
     if(k=="startAtLogin"&&startupRequest_!=int(settings_.startAtLogin))return fail("sign-in startup request not issued");
-    if(k=="accent"||k=="albumAccents"){UINT32 accents[]={0xa4deca,0xa6cafa,0xccb8f1,0xefc7a6};UINT32 expected=content_.light?0x487467:settings_.albumAccents&&content_.playback.artwork?content_.playback.artwork->accent:accents[settings_.accent];if(renderer_->accentColor()!=expected)return fail("accent color not applied");}
+    if(k=="accent"||k=="albumAccents"){UINT32 expected=islandAccent(settings_.accent,content_.light,content_.platform.wallpaper,content_.playback.artwork.get(),settings_.albumAccents);if(renderer_->accentColor()!=expected)return fail("accent color not applied");}
     if(k=="autoHide"&&(settings_.autoHide!=autoHideTimer_&&!testing_))return fail("edge polling does not follow preference");
     if(k=="autoHide"&&!settings_.autoHide&&motion_.slide.target()!=0)return fail("island stays hidden after auto-hide was turned off");
     if(k=="monitor"&&MonitorFromWindow(window_,MONITOR_DEFAULTTONULL)==nullptr)return fail("island left every display");
@@ -82,7 +126,7 @@ void IslandWindow::settingsTestStep(){
     auto log=[&](bool pass,const std::string& line){settingsTestLog_.push_back((pass?"PASS ":"FAIL ")+line);if(!pass)++settingsTestFailures_;};
     auto click=[&](RECT r,float fx=.5f){int x=r.left+int(std::lround((r.right-r.left)*fx)),y=(r.top+r.bottom)/2;SendMessageW(settings,WM_MOUSEMOVE,0,MAKELPARAM(x,y));SendMessageW(settings,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(x,y));SendMessageW(settings,WM_LBUTTONUP,0,MAKELPARAM(x,y));};
     auto probe=[&](int index)->std::optional<SettingsWindow::Probe>{for(auto& p:settingsWindow_->probes())if(p.kind==SettingsWindow::Probe::Kind::Control&&p.index==index)return p;return std::nullopt;};
-    auto testable=[&](const SettingItem& i){return i.control!=SettingControl::Button||i.action==SettingAction::ResetLayout||i.action==SettingAction::OpenLab||i.action==SettingAction::ResetAll;};
+    auto testable=[&](const SettingItem& i){if(i.control==SettingControl::Preview||i.control==SettingControl::Actions||i.control==SettingControl::Note)return false;return i.control!=SettingControl::Button||i.action==SettingAction::ResetLayout||i.action==SettingAction::ResetAll;};
     auto finish=[&]{
         KillTimer(window_,21);settingsWindow_.reset();
         std::ostringstream out;out<<"Settings window end-to-end test: "<<(settingsTestFailures_?"FAIL":"PASS")<<" ("<<settingsTestLog_.size()<<" checks, "<<settingsTestFailures_<<" failures)\n";for(auto& l:settingsTestLog_)out<<l<<'\n';
@@ -116,7 +160,6 @@ void IslandWindow::settingsTestStep(){
         auto& item=items[settingsTestItem_];int expected=settingsTestExpected_;bool reached=false;std::string what;
         if(item.control==SettingControl::Button){
             if(item.action==SettingAction::ResetLayout){reached=settings_.navigation==defaultNavigation&&settings_.homeMetrics==defaultMetrics;what="navigation and statistics restored";}
-            else if(item.action==SettingAction::OpenLab){reached=lab_!=nullptr;what="Animation Lab opened";if(reached){DestroyWindow(lab_);}}
             else if(item.action==SettingAction::ResetAll){Settings defaults;defaults.startAtLogin=settings_.startAtLogin;reached=settings_==defaults;what="all preferences reset (sign-in kept)";}
         }else{int actual=item.get(settings_);int tolerance=item.control==SettingControl::Slider?item.step:0;reached=std::abs(actual-expected)<=tolerance&&(item.control!=SettingControl::Slider||actual!=settingsTestBefore_);what=std::to_string(settingsTestBefore_)+" -> "+std::to_string(actual);}
         if(!reached&&settingsTestWait_<30)return;

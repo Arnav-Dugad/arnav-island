@@ -54,7 +54,12 @@ void Renderer::initialize(HWND hwnd,float dpi) {
     meterLayer_->SetOffsetX(std::round((20+156)*scale_));for(size_t i=0;i<meters_.size();++i){auto& m=meters_[i];check(device_->CreateVisual(&m.visual));check(device_->CreateScaleTransform(&m.scale));m.visual->SetTransform(m.scale.Get());m.visual->SetOffsetY(std::round((38+62+i*36+24)*scale_));meterLayer_->AddVisual(m.visual.Get(),FALSE,nullptr);}
     for(auto* v:{std::addressof(tabPill_),std::addressof(cardIcon_),std::addressof(energy_),std::addressof(cardRing_)})check(device_->CreateVisual(v->GetAddressOf()));
     // The card's level ring is wider than the content surface's origin allows, so it is its own layer that fades and moves with the content.
+    // Bands share the one content surface; hard borders keep their seams invisible.
+    for(size_t k=0;k<bands_.size();++k){auto& b=bands_[k];check(device_->CreateVisual(&b.visual));check(device_->CreateEffectGroup(&b.effect));check(device_->CreateRectangleClip(&b.clip));
+        b.visual->SetEffect(b.effect.Get());b.visual->SetBorderMode(DCOMPOSITION_BORDER_MODE_HARD);b.clip->SetLeft(0.f);b.clip->SetRight(std::ceil(380*scale_));
+        b.clip->SetTop(std::round(float(k)*48*scale_));b.clip->SetBottom(k+1==bands_.size()?std::ceil(284*scale_):std::round(float(k+1)*48*scale_));b.visual->SetClip(b.clip.Get());check(content_->AddVisual(b.visual.Get(),FALSE,nullptr));}
     check(content_->AddVisual(cardRing_.Get(),FALSE,nullptr));
+    check(device_->CreateVisual(&sheen_));check(device_->CreateEffectGroup(&sheenEffect_));sheen_->SetEffect(sheenEffect_.Get());sheenEffect_->SetOpacity(0.f);check(body_->AddVisual(sheen_.Get(),TRUE,inner_.Get()));
     for(auto* v:{std::addressof(caret_),std::addressof(privacyBand_)})check(device_->CreateVisual(v->GetAddressOf()));
     for(auto pair:{std::pair{std::addressof(caretEffect_),caret_.Get()},std::pair{std::addressof(privacyEffect_),privacyBand_.Get()}}){check(device_->CreateEffectGroup(pair.first->GetAddressOf()));pair.second->SetEffect(pair.first->Get());pair.first->Get()->SetOpacity(0.f);}
     check(content_->AddVisual(caret_.Get(),FALSE,nullptr));check(body_->AddVisual(privacyBand_.Get(),FALSE,nullptr));privacyBand_->SetOffsetX(std::round(20*scale_));privacyBand_->SetOffsetY(std::round(7*scale_));cardRing_->SetOffsetX(std::round(-8*scale_));cardRing_->SetOffsetY(std::round(-8*scale_));
@@ -110,7 +115,11 @@ void Renderer::text(ID2D1RenderTarget* rt,const std::wstring& value,float x,floa
     f->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);f->SetTextAlignment(alignment);if(height>0)f->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     DWRITE_TRIMMING trim{DWRITE_TRIMMING_GRANULARITY_CHARACTER,0,0};ComPtr<IDWriteInlineObject> ellipsis;write_->CreateEllipsisTrimmingSign(f.Get(),&ellipsis);f->SetTrimming(&trim,ellipsis.Get());
     ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(color),&b));
-    rt->DrawText(value.c_str(),UINT32(value.size()),f.Get(),D2D1::RectF(std::round(x*scale_)/scale_,std::round(y*scale_)/scale_,std::round((x+w)*scale_)/scale_,std::round((y+(height>0?height:size*1.6f))*scale_)/scale_),b.Get(),D2D1_DRAW_TEXT_OPTIONS_CLIP);
+    const auto box=D2D1::RectF(std::round(x*scale_)/scale_,std::round(y*scale_)/scale_,std::round((x+w)*scale_)/scale_,std::round((y+(height>0?height:size*1.6f))*scale_)/scale_);
+    // On see-through glass, a faint halo keeps text readable over any wallpaper.
+    if(haloAlpha_>0){ComPtr<ID2D1SolidColorBrush> halo;check(rt->CreateSolidColorBrush(D2D1::ColorF(haloColor_,haloAlpha_),&halo));const float d=.6f/scale_;
+        for(auto [dx,dy]:{std::pair{-d,0.f},std::pair{d,0.f},std::pair{0.f,-d},std::pair{0.f,d}})rt->DrawText(value.c_str(),UINT32(value.size()),f.Get(),D2D1::RectF(box.left+dx,box.top+dy,box.right+dx,box.bottom+dy),halo.Get(),D2D1_DRAW_TEXT_OPTIONS_CLIP);}
+    rt->DrawText(value.c_str(),UINT32(value.size()),f.Get(),box,b.Get(),D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
 // Ease-out cubic from `from` to 1 over 0.22 s, beginning at `start`.
 ComPtr<IDCompositionAnimation> Renderer::entrance(double start,float from){
@@ -121,13 +130,16 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     if(!headerOnly){
         // A different page, tab, session or result set on an open, resting island.
         std::string key=std::to_string(int(s.page))+'.'+std::to_string(s.statsTab)+'.'+std::to_string(s.audioTab)+'.'+std::to_string(s.shelfTab)+'.'+std::to_string(s.session)+'.'+std::to_string(int(s.live))+std::to_string(int(s.card))+std::to_string(int(s.command.active))+'.'+std::to_string(s.command.results.size());
-        if(key!=contentKey_){const double now=seconds();if(restExpanded_&&s.expanded&&!s.reducedMotion&&!contentKey_.empty()){contentEntrance_=now;auto a=entrance(now,.5f);contentEffect_->SetOpacity(a.Get());}contentKey_=key;}
+        if(key!=contentKey_){const double now=seconds();if(restExpanded_&&s.expanded&&!s.reducedMotion&&!contentKey_.empty())cascade(now);contentKey_=key;}
     }
     // Glass keeps text colors but lets fills breathe; solid surfaces stay opaque.
     const bool glass=s.settings.glassy()&&glass_.available();
+    haloAlpha_=glass&&(s.settings.material==2||!s.blur)?(s.light?.3f:.26f):0.f;haloColor_=s.light?0xffffff:0x000000;
+    sheenStrength_=s.reducedMotion?0.f:glass?(s.light?.55f:.3f):s.light?0.f:.09f;
+    if(sheenStrength_>0&&sheenTone_!=0xffffff){sheenTone_=0xffffff;surface(sheenSurface_,260,260,[&](auto* rt){D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(0xffffff,.55f)},{.45f,D2D1::ColorF(0xffffff,.16f)},{1,D2D1::ColorF(0xffffff,0.f)}};ComPtr<ID2D1GradientStopCollection> c;check(rt->CreateGradientStopCollection(stops,3,&c));ComPtr<ID2D1RadialGradientBrush> b;check(rt->CreateRadialGradientBrush(D2D1::RadialGradientBrushProperties({130,130},{0,0},130,130),c.Get(),&b));rt->FillRectangle({0,0,260,260},b.Get());});sheen_->SetContent(sheenSurface_.Get());}
     const UINT32 bg=s.light?0xf7f7f9:0x090a0c,ink=s.light?0x202329:0xf1f3f7,muted=s.light?0x656b75:(glass?0xa3aab6:0x8e96a4),raised=glass?0xffffff:s.light?0xeceef2:0x14171d,line=glass?(s.light?0x000000:0xffffff):s.light?0xdde1e7:0x242a33;
     const float raisedAlpha=glass?(s.light?.5f:.075f):1.f,lineAlpha=glass?(s.light?.1f:.12f):1.f;const UINT32 solidRaised=glass?(s.light?0xe6e8ec:0x1b1d23):raised,track=glass?(s.light?0xc5c9d0:0x3a3e46):line;
-    const UINT32 accents[]={0xa4deca,0xa6cafa,0xccb8f1,0xefc7a6};UINT32 accent=s.settings.albumAccents&&s.playback.artwork?s.playback.artwork->accent:accents[s.settings.accent];if(s.light)accent=0x487467;
+    UINT32 accent=islandAccent(s.settings.accent,s.light,s.platform.wallpaper,s.playback.artwork.get(),s.settings.albumAccents);
     bool attached=!s.settings.floating();
     GlassStyle style;style.visible=glass;style.light=s.light;style.blur=s.blur;style.material=s.settings.material;style.tint=s.settings.glassTint/100.f;style.accent=s.settings.albumAccents&&s.playback.artwork?s.playback.artwork->accent:0;glass_.style(style);expanded_=s.expanded;live_=s.live;edge_=s.settings.edge;attached_=attached;iconMotion_=s.settings.animatedIcons&&!s.reducedMotion;
     if(!headerOnly){targets.clear();iconCursor_=7;for(auto& i:icons_)i.used=false;}
@@ -230,11 +242,11 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 for(int i=0;i<n;++i){bool selected=i==s.session;float w=selected?12.f:5.f;b->SetColor(D2D1::ColorF(selected?ink:muted,selected?1.f:.55f));rt->FillRoundedRectangle(D2D1::RoundedRect({x,58,x+w,63},2.5f,2.5f),b.Get());targets.push_back({Action(int(Action::SessionBase)+i),x-2,54,w+4,13});x+=w+4;}}
             return;
         }
-        const wchar_t* titles[]={L"Your day, at a glance",L"Now playing",L"System overview",L"Make room for focus",L"Make it yours",L"Within reach",L"Sound, your way"};
+        const wchar_t* titles[]={L"",L"Now playing",L"System overview",L"Make room for focus",L"Make it yours",L"Within reach",L"Sound, your way"};
         int chips=s.page==Page::Media?int(std::min<size_t>(5,s.sessions.size())):0;if(chips<2)chips=0;
         auto tabs=[&](std::initializer_list<std::pair<Action,const wchar_t*>> items,int selected,float y){int i=0;for(auto& [a,name]:items){float x=i*88.f;targets.push_back({a,x,y,82,26});label(name,x,y,82,26,11.5f,i==selected?(s.light?0xf8f8fa:0x171b22):muted,i==selected?DWRITE_FONT_WEIGHT_SEMI_BOLD:DWRITE_FONT_WEIGHT_MEDIUM);++i;}};
         if(s.page==Page::System)tabs({{Action::StatsSystem,L"System"},{Action::StatsBattery,L"Battery"},{Action::StatsDevices,L"Devices"}},s.statsTab,-2);
-        else text(rt,titles[int(s.page)],0,0,chips?340.f-chips*28:302.f,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+        else if(*titles[int(s.page)])text(rt,titles[int(s.page)],0,0,chips?340.f-chips*28:302.f,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
         iconButton(Action::Close,Icon::Close,352,-4,28,28);if(s.page==Page::Overview)iconButton(Action::CommandOpen,Icon::Search,318,-4,28,28);
         for(int i=0;i<chips;++i){auto& session=s.sessions[i];float x=344-float(chips-i)*28;bool selected=i==s.session;box(x,-2,24,24,raised,12);
             identity(rt,session,x+3,1,18,solidRaised);
@@ -252,7 +264,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             text(rt,s.playback.title,tx,45,tw,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.artist,tx,74,tw,11,muted);{auto* rule=findService(s.playback.service);std::wstring app=rule?std::wstring(rule->name):s.playback.appName;if(app.empty())app=video?L"Video":L"Music";
                 if(s.sessions.size()>1)app+=L"  ·  "+std::to_wstring(s.session+1)+L" of "+std::to_wstring(s.sessions.size());text(rt,app,tx,100,std::max(40.f,tw-(s.settings.waveform&&s.playback.playing&&s.waveform?104.f:0.f)),9.5f,muted);}
             iconButton(Action::Previous,Icon::Previous,tx,132,36,36,false,s.playback.canPrevious);iconButton(Action::Play,s.playback.playing?Icon::Pause:Icon::Play,tx+54,124,52,52,true,s.playback.canToggle);iconButton(Action::Next,Icon::Next,tx+124,132,36,36,false,s.playback.canNext);
-            double position=std::clamp(s.playback.position+(s.playback.playing?std::max(0.,seconds()-s.playback.sampledAt):0.),0.,s.playback.duration);if(s.playback.canSeek)targets.push_back({Action::Seek,0,178,380,25});if(s.scrub.active){position=s.scrub.value;text(rt,L"Pull away for finer control",tx,176,tw,8.5f,muted);}text(rt,s.playback.duration>0?clockText(position):L"No timeline provided",0,200,160,10,muted);button(Action::MediaMode,s.settings.mediaLayout==0?L"Auto":s.settings.mediaLayout==1?L"Music":L"Video",167,199,54,22);text(rt,s.playback.duration>0?clockText(s.playback.duration):L"",300,200,80,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);
+            double position=std::clamp(s.playback.position+(s.playback.playing?std::max(0.,seconds()-s.playback.sampledAt):0.),0.,s.playback.duration);if(s.playback.canSeek)targets.push_back({Action::Seek,0,178,380,25});if(s.scrub.active)position=s.scrub.value;text(rt,s.playback.duration>0?clockText(position):L"No timeline provided",0,204,160,10,muted);// While scrubbing, the fine-control hint takes the mode button's place.
+            if(s.scrub.active)text(rt,L"Pull away for finer control",100,204,180,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER,22);else button(Action::MediaMode,s.settings.mediaLayout==0?L"Auto":s.settings.mediaLayout==1?L"Music":L"Video",167,204,54,22);text(rt,s.playback.duration>0?clockText(s.playback.duration):L"",300,204,80,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);
         }else if(s.page==Page::System&&s.statsTab==1){
             const auto& p=s.power;const int percent=s.battery;const bool charging=p.charging||(s.charging&&!p.present);
             drawRing(rt,d2d_.Get(),58,100,40,4,percent>=0?percent/100.:0,charging?0x5fd98a:accent,track);
@@ -327,7 +340,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         const wchar_t* labels[]={L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio"};const Action actions[]={Action::Overview,Action::Media,Action::System,Action::Focus,Action::Settings,Action::Shelf,Action::Audio};const Icon glyphs[]={Icon::Home,Icon::Music,Icon::Stats,Icon::Focus,Icon::Settings,Icon::Shelf,Icon::Audio};
         for(int slot=0;slot<7;++slot){int p=s.settings.navigation[slot];float x=std::round((slot*navStep+4)*scale_)/scale_;bool selected=int(s.page)==p;targets.push_back({actions[p],x,navY,47,44});icon(actions[p],glyphs[p],x+14,navY+5,19,selected?ink:muted,p);label(labels[p],x,navY+26,47,16,9.5f,selected?ink:muted);if(selected){if(s.reducedMotion)navX.reset(x,seconds());else if(navX.target()!=x)navX.retarget(x,seconds(),MotionTokens::navigation);}}
         if(debug){b->SetColor(D2D1::ColorF(0xf98585));for(auto& target:targets)rt->DrawRectangle({target.x,target.y,target.x+target.width,target.y+target.height},b.Get());}
-    });drawingContent_=false;updateCaret(s,caretTarget_,accent);for(auto request:iconRequests_)icon(request.action,request.glyph,request.x,request.y,request.size,request.color,request.slot);content_->SetContent(contentSurface_.Get());for(auto& item:icons_)if(!item.used)item.effect->SetOpacity(0.f);auto nx=animation(navX,seconds(),scale_,20*scale_);nav_->SetOffsetX(nx.Get());nav_->SetOffsetY((38+navY)*scale_);commit();
+    });drawingContent_=false;updateCaret(s,caretTarget_,accent);for(auto request:iconRequests_)icon(request.action,request.glyph,request.x,request.y,request.size,request.color,request.slot);for(auto& b:bands_)b.visual->SetContent(contentSurface_.Get());for(auto& item:icons_)if(!item.used)item.effect->SetOpacity(0.f);auto nx=animation(navX,seconds(),scale_,20*scale_);nav_->SetOffsetX(nx.Get());nav_->SetOffsetY((38+navY)*scale_);commit();
 }
 
 ComPtr<IDCompositionAnimation> Renderer::animation(const Spring& s,double now,float factor,float bias) {
@@ -378,8 +391,7 @@ void Renderer::animate(const MotionEngine& m,double now) {
     restExpanded_=expanded_&&m.height.settled(now)&&m.width.settled(now)&&m.reveal.settled(now);restCompact_=!expanded_&&m.height.settled(now)&&m.width.settled(now);
     const bool contentEntering=restExpanded_&&now<contentEntrance_+.23,headerEntering=restCompact_&&now<headerEntrance_+.23;
     if(headerEntering){auto a=entrance(headerEntrance_,.35f);headerEffect_->SetOpacity(a.Get());}else headerEffect_->SetOpacity(headerOpacity.Get());
-    // Only the content surface eases in; navigation and controls stay steady.
-    if(contentEntering){auto a=entrance(contentEntrance_,.5f);check(contentEffect_->SetOpacity(a.Get()));}else check(contentEffect_->SetOpacity(opacity.Get()));if(privacyVisible_)privacyEffect_->SetOpacity(opacity.Get());else privacyEffect_->SetOpacity(0.f);check(iconEffect_->SetOpacity(opacity.Get()));if(m.live)navEffect_->SetOpacity(0.f);else check(navEffect_->SetOpacity(opacity.Get()));auto shift=animation(m.contentShift,now,scale_,std::round((m.card?16:m.live?20:38)*scale_));check(content_->SetOffsetY(shift.Get()));auto iconsShift=animation(m.contentShift,now,scale_,m.live?-18*scale_:0.f);iconLayer_->SetOffsetY(iconsShift.Get());
+    (void)contentEntering;check(contentEffect_->SetOpacity(opacity.Get()));if(privacyVisible_)privacyEffect_->SetOpacity(opacity.Get());else privacyEffect_->SetOpacity(0.f);check(iconEffect_->SetOpacity(opacity.Get()));if(m.live)navEffect_->SetOpacity(0.f);else check(navEffect_->SetOpacity(opacity.Get()));auto shift=animation(m.contentShift,now,scale_,std::round((m.card?16:m.live?20:38)*scale_));check(content_->SetOffsetY(shift.Get()));auto iconsShift=animation(m.contentShift,now,scale_,m.live?-18*scale_:0.f);iconLayer_->SetOffsetY(iconsShift.Get());
     auto barWidth=animation(m.volume,now,262*scale_);check(barClip_->SetRight(barWidth.Get()));
     auto ax=animation(m.artX,now,scale_),ay=animation(m.artY,now,scale_),size=animation(m.artSize,now,1.f/256),ao=animation(m.artOpacity,now);art_->SetOffsetX(ax.Get());art_->SetOffsetY(ay.Get());artScale_->SetScaleX(size.Get());artScale_->SetScaleY(size.Get());artEffect_->SetOpacity(ao.Get());
     auto blend=animation(handoff_.mix,now);incomingEffect_->SetOpacity(blend.Get());

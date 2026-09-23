@@ -7,7 +7,7 @@
 5. Audio lists active Windows outputs. Choose one to switch, or use Windows sound settings. Direct switching is optional compatibility behavior, configurable under Settings → Media & sound.
 6. **Settings** opens in its own window (gear icon, the Settings navigation item, the tray menu, or double-click the tray icon). Every change applies to the island immediately and saves automatically.
 7. Enable or disable **Start at sign-in** in Settings → General. This registers the current executable path for your Windows account. If you move the app, toggle it off/on from the new location. The developer-installed copy already has this enabled.
-8. Tab/Shift+Tab select controls after activation; Enter/Space activate; Escape collapses. Animation Lab is available from the right-click menu or Advanced preferences.
+8. Tab/Shift+Tab select controls after activation; Enter/Space activate; Escape collapses. The Animation Lab is in Settings → Motion (the tray menu's Animation Lab item opens it).
 
 Settings: `%LOCALAPPDATA%\ArnavIsland\settings.nexus`. Logs: same folder, `events.log`. No user media text, file paths or clipboard content are logged. The legacy Nexus settings are migrated by copy.
 
@@ -82,3 +82,13 @@ Larger requested integrations are tracked honestly in DELIVERY_PHASES.md in the 
 **Clipboard history.** Shelf → Clipboard → Turn on. Your last 24 copies appear there; click one to copy it again. Pause and Clear are at the bottom. Nothing is kept on disk.
 
 **Privacy dots.** A green dot means the camera is in use, orange the microphone, blue location. Open the island to see which app.
+
+## v0.10 glass, lab and waveform
+
+**Glass.** Settings → Appearance → Material. *Frosted glass* blurs what is behind the island when Windows **Transparency effects** are on, and becomes a soft frost when they are off. *Clear glass* never blurs; the desktop shows through a light tint. Move the pointer over the island to see the light follow it.
+
+**Animation Lab.** Settings → Motion. Pick a character, or drag Stiffness, Damping or Weight to make a Custom spring; the preview replays with each change (click it to replay). *Slow motion* slows the real island to ½× or ¼× until you set it back or restart. *Try it on the island* plays Expand, Collapse, Interrupt or a Card; the line under the preview then shows the frames Windows composed while it moved.
+
+**Waveform timeline.** Play something and open the Media page. The timeline fills in with the song's loudness as you listen. Drag it to seek as before. Settings → Media & sound → *Waveform timeline* switches back to a plain line.
+
+**Wallpaper accent.** Settings → Appearance → Accent, last swatch.

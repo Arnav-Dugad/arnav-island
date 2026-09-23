@@ -1,0 +1,10 @@
+﻿{
+    "scenario":  "idle tucked away (v0.10)",
+    "wall_seconds":  30.01,
+    "cpu_seconds":  0,
+    "cpu_percent_of_one_core":  0,
+    "logical_processors":  20,
+    "working_set_mb":  84.3,
+    "private_mb":  60.5,
+    "threads":  14
+}

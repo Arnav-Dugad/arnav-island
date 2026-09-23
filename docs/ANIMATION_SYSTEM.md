@@ -22,12 +22,23 @@ Drag uses saturating resistance and a bounded release velocity. Rest has no
 continuous motion. Reduced motion sets geometry directly and retains a small
 critically damped content reveal.
 
-The native Animation Lab exposes spring preset, stiffness, damping, mass,
-expand/collapse/reverse, a media-sized destination, an impulse, and an explicit
-300 ms UI-thread stall test. The stall is only a developer test command.
+The Animation Lab lives in Settings → Motion (v0.10). It exposes the body
+spring's preset or Custom stiffness, damping and mass, a live preview with the
+analytical step response, settle time and overshoot, slow motion (stiffness / k²,
+damping / k, so the curve keeps its shape) and try-it buttons that run real
+expand, collapse, mid-flight reversal and card transitions on the island. The
+readout counts frames from `DCompositionGetFrameId` while the shape moves; the
+older `DWM_TIMING_INFO` counters are not used because they no longer track
+composition.
+
+v0.10 motion: liquid morph (the growing dimension leads on a stiffer spring and
+the other follows on a softer one), staggered row entrances (six 48-DIP bands of
+the content surface, 28 ms apart, absolute-time compositor curves), icon swap
+pops, a pointer-following light on glass, and the learned waveform timeline
+(64 bars eased by compositor scale animations).
 
 Not implemented yet: artwork shared-element morphs, arbitrary path morphs,
-blur/reflection animation, staggered content, touch InteractionTracker, a full
+blur/reflection animation, odometer digits, touch InteractionTracker, a full
 gesture system and direct editing of every channel. The lab's media button tests
 geometry; it does not manufacture a media session. Current content is laid out
 for the expanded panel and is clipped in smaller lab-only geometry states.

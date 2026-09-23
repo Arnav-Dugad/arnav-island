@@ -23,6 +23,14 @@ void Renderer::updateSpectrumLayout(const ContentSnapshot& s,UINT32 accent){
     float top=mode==3?136.f:mode==2?21.f:7.f;spectrum_->SetOffsetY(std::round(top*scale_));if(mode==3)spectrum_->SetOffsetX(std::round((20+380-span)*scale_));
     double target=mode>=0?1:0;if(std::abs(spectrumOpacity_.target()-target)>.001){if(s.reducedMotion)spectrumOpacity_.reset(target,now);else spectrumOpacity_.retarget(target,now,MotionTokens::artworkOpacity);auto o=animation(spectrumOpacity_,now);spectrumEffect_->SetOpacity(o.Get());}
 }
+void Renderer::waveform(const std::array<float,64>& heights,bool reduced){
+    if(!wave_)return;const double now=seconds();bool changed=false;
+    for(size_t i=0;i<waveBars_.size();++i){auto& b=waveBars_[i];const float h=heights[i];
+        // Unheard stretches are short dots; heard ones rise with their loudness.
+        const float target=h<0?.14f:.24f+.76f*std::clamp(h,0.f,1.f);if(std::abs(target-b.target)<.004f)continue;b.target=target;changed=true;
+        b.glide.to(target,now,reduced?0:.16);auto a=glideAnimation(device_.Get(),b.glide,now,1,0);b.baseScale->SetScaleY(a.Get());b.fillScale->SetScaleY(a.Get());}
+    if(changed)commit();
+}
 void Renderer::spectrum(const SpectrumFrame& frame){
     if(barMode_<0||barCount_<=0)return;double now=seconds();const float lo=.15f,hi=barMode_==3?1.f:barMode_==1?.62f:.78f;
     for(int i=0;i<barCount_;++i){int a=i*Spectrum::bandCount/barCount_,b=std::max(a+1,(i+1)*Spectrum::bandCount/barCount_);float v=0;for(int k=a;k<b;++k)v=std::max(v,frame.bands[k]);

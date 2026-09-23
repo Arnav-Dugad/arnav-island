@@ -6,3 +6,5 @@
 .vs/
 /app/
 /*.lnk
+/.mcp.json
+/.codex/

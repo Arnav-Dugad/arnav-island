@@ -27,6 +27,7 @@
 #include "Productivity/Privacy.h"
 #include "Productivity/ClipboardModel.h"
 
+#include "Design/Accent.h"
 namespace nexus {
 struct ContentSnapshot {
     Page page=Page::Overview;bool expanded=false,live=false,dropHover=false,light=false,blur=true;int layoutSlot=0;bool reducedMotion=false;int settingsPage=0,shelfOffset=0,audioOffset=0;std::wstring activity;std::vector<ShelfItem> shelf;std::vector<AudioDevice> outputs;std::wstring feedback;Action hovered=Action::None;bool pinned=false;
@@ -84,6 +85,11 @@ class Renderer {
     void updateTimeline(const ContentSnapshot&,UINT32,UINT32);
     // Real-audio bars, level indicator, app badge and mixer meters.
     struct Bar {ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionScaleTransform> scale;Glide glide;};
+    // Waveform timeline: 64 bars of the track's heard loudness; the played part is the
+    // accent layer, revealed by a clip that advances with playback in the compositor.
+    struct WaveBar {ComPtr<IDCompositionVisual> base,fill;ComPtr<IDCompositionScaleTransform> baseScale,fillScale;Glide glide;float target=-2;};
+    std::array<WaveBar,64> waveBars_;ComPtr<IDCompositionVisual> wave_,waveBase_,waveFill_;ComPtr<IDCompositionScaleTransform> waveScale_;ComPtr<IDCompositionRectangleClip> waveClip_;ComPtr<IDCompositionEffectGroup> waveEffect_;
+    ComPtr<IDCompositionSurface> waveBaseSurface_,waveFillSurface_;UINT32 waveColors_[2]{1,1};int seekStyle_=-1;void ensureWave();
     std::array<Bar,24> bars_;std::array<Bar,4> meters_;ComPtr<IDCompositionVisual> spectrum_,meterLayer_,hudTrack_,hudFill_,artFrame_,badge_;
     ComPtr<IDCompositionSurface> spectrumSurface_,meterSurface_,hudTrackSurface_,hudFillSurface_,badgeSurface_;ComPtr<IDCompositionEffectGroup> spectrumEffect_,meterEffect_,hudEffect_,badgeEffect_;
     ComPtr<IDCompositionRectangleClip> hudClip_;Spring spectrumOpacity_{0},hudOpacity_{0},badgeOpacity_{0};UINT32 barColor_=0,meterColor_=0;int barMode_=-1,barCount_=0;float barInset_=0;
@@ -93,7 +99,7 @@ class Renderer {
     ComPtr<IDCompositionScaleTransform> cardIconScale_;ComPtr<IDCompositionRotateTransform> energyRotation_;Spring tabX_{0},tabOpacity_{0},cardPop_{1},energySpin_{0},energyGlow_{0};int tabKey_=-1;UINT32 tabColor_=0;int cardKey_=-1;
     // Phase 4: blinking caret for the command bar, privacy band on expanded pages.
     ComPtr<IDCompositionVisual> caret_,privacyBand_;ComPtr<IDCompositionSurface> caretSurface_,privacySurface_;ComPtr<IDCompositionEffectGroup> caretEffect_,privacyEffect_;
-    Spring caretX_{42};float caretTarget_=42;/* drawn after the content surface, never inside its draw */UINT32 caretColor_=1;std::wstring privacyKey_;bool privacyVisible_=false;
+    Spring caretX_{42};float caretTarget_=42;float haloAlpha_=0;UINT32 haloColor_=0;/* drawn after the content surface, never inside its draw */UINT32 caretColor_=1;std::wstring privacyKey_;bool privacyVisible_=false;
     void updateCaret(const ContentSnapshot&,float x,UINT32 accent);void updatePrivacyBand(const ContentSnapshot&,UINT32 ink,UINT32 muted,UINT32 raised);
     float measure(const std::wstring&,float size,DWRITE_FONT_WEIGHT weight=DWRITE_FONT_WEIGHT_NORMAL);
     void updateTabs(const ContentSnapshot&,float x,float y,int count,int selected,bool visible,UINT32 fill);void updateCard(const ContentSnapshot&,UINT32 track,UINT32 accent,UINT32 raised,UINT32 ink);
@@ -115,9 +121,17 @@ public:
     unsigned commits=0,redraws=0; bool software=false;
     void initialize(HWND,float);
     void redraw(const ContentSnapshot&,bool debug=false,bool headerOnly=false);
+    // Heights 0..1 per waveform bar, -1 for stretches not heard yet.
+    void waveform(const std::array<float,64>& heights,bool reduced);
     // Entrances: new content on a settled island eases in (compositor-timed), instead of snapping.
     double contentEntrance_=-1,headerEntrance_=-1;std::string contentKey_;std::wstring headerLabel_;bool restExpanded_=false,restCompact_=false;
     ComPtr<IDCompositionAnimation> entrance(double start,float from);
+    // The content surface is shown through horizontal bands, so rows can cascade in.
+    struct Band {ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionEffectGroup> effect;ComPtr<IDCompositionRectangleClip> clip;};std::array<Band,6> bands_;void cascade(double start);
+    // A soft light that follows the pointer across the island.
+    ComPtr<IDCompositionVisual> sheen_;ComPtr<IDCompositionSurface> sheenSurface_;ComPtr<IDCompositionEffectGroup> sheenEffect_;Spring sheenX_{0},sheenY_{0},sheenOpacity_{0};float sheenStrength_=0;UINT32 sheenTone_=1;
+    // Pointer position in body coordinates, or outside to fade the light away.
+    void pointer(float x,float y,bool inside,bool reduced);
     // Whether the island is resting open or resting compact right now, from the motion springs.
     void setRest(bool expanded,bool compact){restExpanded_=expanded;restCompact_=compact;}
     void animate(const MotionEngine&,double);
