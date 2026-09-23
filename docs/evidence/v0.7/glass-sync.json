@@ -1,0 +1,8 @@
+{
+  "prototype": "standalone DComp body clip + WinComp expression-driven glass on one HWND",
+  "samples": "16 screen captures at ~1 ms intervals during expand and collapse at 96 DPI",
+  "expand_peak_edge_speed_px_per_ms": 3.5,
+  "max_glass_edge_lead_px": 2,
+  "collapse": "glass edge stayed inside the DComp body edge in every sample",
+  "method": "bottom edge of a 35% red DComp overlay versus the glass tint/rim in the same column"
+}

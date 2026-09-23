@@ -43,3 +43,12 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 ## v0.6 display preferences
 
 `displays.nexus` stores monitor device identities and geometry locally. It is not uploaded or included in release archives. File peek and artwork atmosphere reuse existing in-memory visual data. The phase plan does not enable clipboard monitoring or audio capture; both remain future opt-in providers.
+
+## v0.7 audio, media and settings
+
+- **Live waveform:** WASAPI loopback reads the output mix on a worker thread only while bars are visible and a session is playing. Each buffer is reduced to 24 band levels in memory and discarded. Nothing is recorded, written to disk, logged or transmitted. Loopback does not access microphones.
+- **Mixer:** reads application audio sessions, process IDs, executable paths (to show the app's own name and icon) and peak levels. None of this is stored or logged. Volume/mute changes are applied only when you move a control.
+- **Media identity:** app names/icons come from Windows for the session's app ID. To confirm a YouTube tab, the island reads visible browser window titles locally and compares them with the playing title. Titles are not stored, logged or sent anywhere; only a YouTube/YouTube Music/none flag is kept in memory.
+- **Brightness:** reads the current panel brightness from Windows' WMI monitor classes. It never changes brightness.
+- **Settings window:** preferences are written to `settings.nexus` only. QA runs of `--settings-test` use a separate `settings-qa.nexus` and never touch sign-in startup.
+- Release screenshots are produced with synthetic sessions (`--qa-showcase`) built from stock Windows app icons, over an app-owned matte or colour pattern; no personal desktop content is published.

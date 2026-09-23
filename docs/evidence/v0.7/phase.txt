@@ -1,0 +1,2 @@
+Spectrum analysis: 19.0708 us per 1024-point step (100 steps/s while audio plays)
+PASS 4502 glass expression, glide, spectrum, settings-model and identity checks

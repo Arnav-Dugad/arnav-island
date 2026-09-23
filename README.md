@@ -1,27 +1,23 @@
-# Arnav Island 0.4 — a new visual system
+# Arnav Island 0.7 — glass, sound and a real Settings window
 
-A native Windows 11 island with a compact connected silhouette, original vector icons and responsive physical motion.
+A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.6.0-preview.1)
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.7.0-preview.1)
 
-![Arnav Island](docs/evidence/v0.4/artwork.png)
+![Media page with two sessions](docs/evidence/v0.7/media-sessions.png)
 
-- A redesigned dashboard: clear text hierarchy, aligned statistic cards, centered controls and a labelled icon navigation bar.
-- 35 original vector symbols on one optical grid. Interactive icons lift and compress through compositor springs; the selected navigation indicator travels between destinations.
-- **Track handoff:** outgoing and incoming covers blend while the same artwork object glides between compact and expanded views. Interrupting a blend preserves its visible mixture.
-- **Personal layouts:** reorder all seven navigation items and independently choose three Home statistics. Settings survive restart, and invalid saved orders recover safely.
-- **Glance rings:** battery and timer progress with animated markers; select Battery, Timer, Both or Off.
-- A real draggable volume slider, keyboard volume adjustment, media controls, focus timers, file shelf, audio outputs and local system statistics.
-- Dark/light/system themes, native interior acrylic, configurable hover, startup and reduced motion.
+- **Glass material** — Frosted or Clear glass that genuinely blurs what is behind the island and morphs with it at display refresh rate. Solid remains available.
+- **Settings window** — every preference in one place, applied live as you drag or toggle. Saved automatically.
+- **Every media session** — swipe between simultaneous players; real app logos from Windows; YouTube/YouTube Music identified only when confirmed.
+- **Live waveform** — bars driven by the real system audio (WASAPI loopback + FFT), resting in silence.
+- **Per-app mixer** — volume, mute and live meters for each application.
+- **Volume and brightness indicator** — the resting island grows into a level bar.
+- Carried forward: Mini Pill / Live Island / Command Center, hover-only opening (now intent-aware), precision seeking, file shelf with previews, focus timer, glance rings, statistics, output switching, display memory.
 
-No account, subscription, browser engine, cloud, driver or administrator access is required. Extract the ZIP and run ArnavIsland.exe. The release is unsigned and remains a preview: full accessibility, mixed-DPI/high-refresh hardware acceptance and long-duration reliability are unfinished.
+No account, subscription, browser engine, cloud, driver or administrator access is required. Extract the ZIP and run ArnavIsland.exe.
 
-The public repository distributes binaries and user documentation; source history remains private. [Report](docs/REPORT.md) · [Feature limits](docs/FEATURE_MATRIX.md) · [Design system](docs/DESIGN_SYSTEM.md) · [Performance evidence](docs/PERFORMANCE_RESULTS.md) · [Privacy](docs/PRIVACY.md).
+[Release notes](docs/RELEASE_NOTES.md) · [Quick start](docs/QUICK_START.md) · [Report](docs/REPORT.md) · [Feature limits](docs/FEATURE_MATRIX.md) · [Delivery phases](docs/DELIVERY_PHASES.md) · [Design system](docs/DESIGN_SYSTEM.md) · [Performance](docs/PERFORMANCE_RESULTS.md) · [Privacy](docs/PRIVACY.md)
 
-Build with a C++23 Windows toolchain and CMake, or `scripts/build.ps1 -Test`. The current native backend is Win32/DirectComposition/Direct2D/DirectWrite. Original Windows APIs provide system information; unavailable values are not invented.
+Build with MinGW-w64 GCC 16 and CMake (`scripts/build.ps1 -Test`). Backend: Win32, DirectComposition, Direct2D/DirectWrite, plus Windows.UI.Composition for the glass backdrop. Unavailable values are shown as unavailable, never invented.
 
-The v0.5 preview fixes maximized-browser disappearance and adds precision seeking, background shelf thumbnails, drag imagery and confirmed audio-route feedback. See [release notes](docs/RELEASE_NOTES.md).
-
-## Everyday scale — v0.6
-
-Mini Pill, Live Island and Command Center separate glance, hover and workspace surfaces. Width now reaches 560 DIP; compact content is configurable. No product name is drawn on the island. Shelf peek, display memory and spring-blended artwork atmosphere arrive in this phase. See [delivery phases](docs/DELIVERY_PHASES.md) for the larger requested integrations and honest API boundaries.
+![Frosted glass Live card](docs/evidence/v0.7/glass-live.png)

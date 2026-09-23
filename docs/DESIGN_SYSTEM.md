@@ -32,3 +32,9 @@ Actual native captures include dark/light, 110% application scale, right edge, c
 ## Multitasking
 
 The eighth preference group controls app-switch collapse and volume-wheel scope. Collapsing preserves physical position/velocity through the existing MotionEngine, as well as current page and activity state. Pinning overrides app-switch dismissal. These behaviors do not identify or track applications.
+
+## v0.7 materials and the Settings window
+
+**Glass.** Frosted: dark tint 0x0b0c10 at ~44% (light 0xf6f7f9 at ~54%) over the blurred backdrop; Clear roughly halves the tint. The tint borrows 12% of the artwork accent in dark mode so the island picks up the music without turning colorful. A white sheen fades from the top edge to 46% height; a 1 DIP inner rim runs from 30% white at the top to 7% at the bottom, like light catching an edge. Fills inside glass become translucent white (7.5% dark, 50% light) and hairlines 12%/10%, so cards read as layers of the same material. Glass floats with an 8 DIP gap and uses fully rounded corners.
+
+**Settings window.** 980×700 DIP, 236 DIP sidebar, 20 DIP card padding, 64 DIP rows (52 for ordering rows). Titles use Segoe UI Variable Display 28; row titles 14 medium; details 12. Controls: 44×22 toggles whose knob springs across and stretches on press; 220 DIP sliders with a thumb that grows on hover and tightens while dragging; segmented selectors whose pill slides and resizes on a spring; 28 DIP accent swatches with a travelling ring; steppers with 32 DIP round buttons. The sidebar indicator travels between sections and stretches with its velocity. Section content fades and rises 14 DIP on change.

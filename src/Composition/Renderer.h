@@ -14,17 +14,22 @@
 #include "Persistence/Settings.h"
 #include "FileShelf/FileShelf.h"
 #include "Audio/AudioProvider.h"
+#include "Audio/SessionMixer.h"
+#include "Audio/LoopbackAnalyzer.h"
 #include "Interaction/DetailModels.h"
+#include "Composition/GlassBackdrop.h"
 
 namespace nexus {
 struct ContentSnapshot {
-    Page page=Page::Overview;bool expanded=false,live=false,dropHover=false,glassActive=false,light=false;int layoutSlot=0;bool reducedMotion=false;int settingsPage=0,shelfOffset=0,audioOffset=0;std::wstring activity;std::vector<ShelfItem> shelf;std::vector<AudioDevice> outputs;std::wstring feedback;Action hovered=Action::None;bool pinned=false;
+    Page page=Page::Overview;bool expanded=false,live=false,dropHover=false,light=false,blur=true;int layoutSlot=0;bool reducedMotion=false;int settingsPage=0,shelfOffset=0,audioOffset=0;std::wstring activity;std::vector<ShelfItem> shelf;std::vector<AudioDevice> outputs;std::wstring feedback;Action hovered=Action::None;bool pinned=false;
     MediaSnapshot playback;SystemSnapshot system;Settings settings;FocusClock focus;ScrubGesture scrub;
     std::wstring headline=L"Your space, in rhythm.";
     std::wstring detail=L"A quieter home for the things happening now.";
     std::wstring media=L"No media session";
     std::wstring artist=L"Play something in a compatible player";
     int battery=-1,volume=0; bool charging=false,muted=false;
+    std::vector<MediaSnapshot> sessions;int session=0;std::vector<MixerEntry> mixer;int audioTab=0,mixerOffset=0;
+    int hud=0,brightness=-1;bool waveform=false;
 };
 
 class Renderer {
@@ -39,7 +44,7 @@ class Renderer {
     ComPtr<IDCompositionEffectGroup> contentEffect_,barEffect_,headerEffect_,artEffect_,pulseEffect_,hoverEffect_;
     ComPtr<IDCompositionSurface> baseSurface_,innerSurface_,headerSurface_,contentSurface_,barSurface_,artSurface_,leftSurface_,rightSurface_,pulseSurface_,hoverSurface_;
     ComPtr<IDCompositionScaleTransform> artScale_,leftScale_,rightScale_,hoverScale_;
-    int cachedEdge_=-1,edge_=0;bool attached_=true,expanded_=false,live_=false;UINT32 baseColor_=0,accentColor_=0;bool material_=false;std::shared_ptr<const Artwork> artwork_;
+    int cachedEdge_=-1,edge_=0;bool attached_=true,expanded_=false,live_=false;UINT32 baseColor_=0,accentColor_=0;int material_=-1;GlassBackdrop glass_;std::shared_ptr<const Artwork> artwork_;
         struct IconVisual {ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionSurface> surface;ComPtr<IDCompositionScaleTransform> scale;ComPtr<IDCompositionEffectGroup> effect;Spring x{0},y{0},lift{0},zoom{1};Action action=Action::None;int key=-1;float drawnSize=0,baseY=0;bool used=false;};
     struct IconRequest{Action action;Icon glyph;float x,y,size;UINT32 color;int slot;};std::vector<IconRequest> iconRequests_;bool drawingContent_=false;
     std::array<IconVisual,64> icons_;size_t iconCursor_=7;bool iconMotion_=true;Action hoverAction_=Action::None;bool pressing_=false;
@@ -60,6 +65,13 @@ class Renderer {
     ComPtr<IDCompositionEffectGroup> timelineEffect_,dropEffect_;
     Spring seekEmphasis_{1};UINT32 seekColor_=0;bool seeking_=false;
     void updateTimeline(const ContentSnapshot&,UINT32,UINT32);
+    // Real-audio bars, level indicator, app badge and mixer meters.
+    struct Bar {ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionScaleTransform> scale;Glide glide;};
+    std::array<Bar,24> bars_;std::array<Bar,4> meters_;ComPtr<IDCompositionVisual> spectrum_,meterLayer_,hudTrack_,hudFill_,artFrame_,badge_;
+    ComPtr<IDCompositionSurface> spectrumSurface_,meterSurface_,hudTrackSurface_,hudFillSurface_,badgeSurface_;ComPtr<IDCompositionEffectGroup> spectrumEffect_,meterEffect_,hudEffect_,badgeEffect_;
+    ComPtr<IDCompositionRectangleClip> hudClip_;Spring spectrumOpacity_{0},hudOpacity_{0},badgeOpacity_{0};UINT32 barColor_=0,meterColor_=0;int barMode_=-1,barCount_=0;float barInset_=0;
+    std::shared_ptr<const Artwork> badgeIcon_;int badgeService_=-1;bool badgeLight_=false;int meterRows_=0;
+    void updateSpectrumLayout(const ContentSnapshot&,UINT32 accent);void updateHud(const ContentSnapshot&,UINT32 accent,UINT32 track);void updateBadge(const ContentSnapshot&,UINT32 bg);
     void drawPreview(ID2D1RenderTarget*,const Artwork&,float,float,float,float);
     float dpi_=96,scale_=1;
     ComPtr<IDCompositionAnimation> animation(const Spring&,double,float factor=1,float bias=0);
@@ -75,6 +87,8 @@ public:
     void redraw(const ContentSnapshot&,bool debug=false,bool headerOnly=false);
     void animate(const MotionEngine&,double);
     void iconFeedback(Action,bool pressed,bool enabled);
+    bool glassAvailable()const{return glass_.available();}GlassStyle glassStyle()const{return glass_.current();}UINT32 accentColor()const{return accentColor_;}
+    void spectrum(const SpectrumFrame&);void meters(const std::vector<MixerEntry>&,int offset,bool visible);
     void absorb(const std::shared_ptr<const Artwork>&,float,float,float,float,bool); void routeConfirmed(bool,Action selected=Action::None); void commit(){check(device_->Commit());++commits;}
 };
 }

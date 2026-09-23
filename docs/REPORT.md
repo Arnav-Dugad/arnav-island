@@ -1,27 +1,41 @@
-# Arnav Island v0.6 — phase-one development report
+# Arnav Island v0.7 — development report
 
-The normal experience is now smaller. Mini Pill rests at 72 × 34 DIP. Live Island opens a 360 × 154 DIP hover card; Command Center retains the full 420 × 334 DIP workspace. Hover is the normal expansion action. Blank-space clicks no longer toggle or pin the surface, and the island no longer draws its product name.
+## What changed
 
-Compact width extends to 560 DIP. New settings select the mode and compact volume/timer/clock/media/battery details. Details fit the selected width; Mini intentionally stays minimal. Shelf peek uses cached Shell artwork with compositor opacity/scale springs. Artwork atmosphere blends three retained radial color layers with velocity-preserving springs, respecting reduced motion. Display memory stores stable monitor identity, offsets, width, scale and edge locally and falls back to primary when the preferred display is absent.
+**Settings became a window.** All 48 persisted preferences live in a separate Settings window (eight sections) running on its own UI thread. Edits reach the island immediately: sliders reposition and resize it while you drag, materials and themes restyle it, display/edge/scale changes rebuild only what they must. Preferences save 350 ms after the last change. The window's animations run on a vsync-paced swap chain, so they follow the monitor's refresh rate. The in-island settings pages were removed; the gear and the Settings navigation item open the window.
 
-## Scope and research
+**Glass.** Frosted and Clear glass blur what is behind the island through Windows' host backdrop brush, with tint, sheen and rim. The blur layer is a Windows.UI.Composition tree under the existing DirectComposition tree on the same window. Its rounded shape is driven by compositor expressions that evaluate the same spring equations as the body, so it morphs in step at display cadence without any per-frame work in the app.
 
-This is phase 1 of the user's expanded request. DELIVERY_PHASES.md records the API research and remaining phases: multi-session media, real loopback visualization, per-app mixer, branding review, Bluetooth, brightness, health data, clipboard, privacy and local commands/workspaces. Those providers are not simulated or claimed as shipped. No arbitrary firmware access, service scraping, or audio/clipboard capture has been enabled.
+**Phase 2 (audio and media).** Every Windows media session is available with swipe/drag/touchpad/tap selection; the playing app's own icon badges the artwork; YouTube and YouTube Music are identified only when the browser's window title confirms them; the waveform follows real loopback audio; Audio → Apps is a per-app mixer with live meters; volume and brightness changes grow the resting island into a level bar. Hover opening became intent-aware.
 
-## Verification and defects corrected
+## Verification
 
-- Three CTest suites pass: 11,682 core checks and 1,831 dashboard/model/cadence checks, plus real provider lifecycle coverage.
-- Twelve native interaction stages pass, including no surface-click expansion, small/large mode transitions, Command Center hover timer routing, settings, seeking, and prior shelf/nav regressions.
-- Native screenshots exposed a clipped Live title and a shelf overlay behind the content layer. Both were corrected and re-captured. A hover timer ID originally collided with fullscreen debounce; the IDs are now separate and the routing is covered by native regression.
-- Display-profile parsing/roundtrip, malformed records, stable-identity lookup and missing-display behavior are covered by models. Physical docking/mixed-DPI acceptance is still required.
-- Spring curves are checked at 60/90/120/144/165/240 Hz against the analytical trajectory. This proves numerical behavior, not achieved display FPS. Actual high-refresh presentation, waveform rendering and latency remain unmeasured.
+- **Settings end-to-end test (`--settings-test`): 94/94 checks pass.** It clicks every control in the real Settings window through its pointer path, waits for the island, and verifies behavior, not just stored values: compact width, window position for edge/offsets/glass gap, DPI for scale, theme, glass visibility and tint, motion preset, reduced motion, the real hover-open path, accent colour, sign-in request, navigation order, unique statistics, Animation Lab, reset layout, reset all, file persistence, and keyboard Tab/Space.
+- The test found and fixed a real bug on its first run: releasing mouse capture cleared the pressed control before the click was evaluated, so clicks would never have registered.
+- Unit suites: 11,682 core; 1,831 model; **4,502 new** checks: generated glass expression text is parsed and evaluated and matches `Spring::sample` in all damping regimes; Hermite glides keep position and velocity continuous; 110 Hz/1 kHz/6 kHz tones land in their bands, silence rests, noise stays bounded; every persisted key is reachable from the Settings model and round-trips; v5 files migrate.
+- Provider lifecycle on this laptop: mixer found 3 sources, loopback capture available, panel brightness read as 100%, AppsFolder resolved a real icon; three start/stop cycles.
+- Native interaction regression: 12/12 stages.
+- Real-device checks on this laptop: two Edge media sessions were listed with Edge's own icon, the YouTube tab was identified, the waveform followed the playing video, the mixer listed Edge and System sounds with real icons, and the brightness indicator showed the real panel value.
+- Glass: with Transparency effects temporarily switched on (then restored to off), captures show real blur of the content behind the island. A prototype measured the glass edge within 2 px of the DirectComposition body at ~3.5 px/ms.
 
-Final reviewed captures, process counters and publication/installation checks are recorded in evidence/v0.6. This is an unsigned preview, not a zero-defect or mass-deployment certification.
+Screenshots in `evidence/v0.7` use synthetic sessions and an app-owned backdrop; captures showing your desktop were used only for local checks and are not published.
 
-## Publication and installation — 2026-09-23
+## Found along the way
 
-Published [v0.6.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.6.0-preview.1) from source commit `4eee895`; public distribution commit `d2485eb`. The anonymous ZIP download and unpacked executable match the tested local hashes. The installed Desktop executable reports v0.6.0-preview.1 and is running/responding. The Desktop shortcut has no expansion arguments.
+Codex's v0.6 report said the app was installed with sign-in startup enabled. On the real account, `HKCU\...\Run` had no Arnav Island entry and `%LOCALAPPDATA%\ArnavIsland` did not exist: Codex ran inside its own packaged-app sandbox, which virtualized both. v0.7 is installed to `Desktop\Arnav Island\app`, registered for sign-in on the real account, and running.
 
-The settings file hash and sign-in registry value are unchanged; startup remains enabled. The new local display-profile store contains one profile and a valid Windows display identity. Monitor identities remain local and are excluded from evidence. Recent startup log entries are informational; the installed app connected to a real media session. This confirms provider connection, not universal service/action coverage.
+Your Windows **Transparency effects** setting is off, so glass currently shows as tinted rather than blurred. Turning it on (Settings → Appearance has a button) enables the blur.
 
-Exact hashes and verification flags are in `evidence/v0.6/public-verification.json`. Remaining phases and acceptance limits are explicit in DELIVERY_PHASES.md.
+## Limits
+
+- Custom Settings controls are keyboard-accessible but do not yet expose UI Automation for screen readers.
+- Only YouTube and YouTube Music get service marks; other web services show the browser's logo. A background tab cannot be identified.
+- Loopback cannot analyze protected or exclusive-mode audio; such playback rests.
+- The mixer covers the default output device only.
+- Brightness needs a panel exposing the WMI brightness class (typical for laptop screens).
+- Presented FPS at 120–240 Hz, GPU/power use and long-run stability were not measured.
+- Unsigned preview.
+
+## Next
+
+Phase 3: Bluetooth device cards, headphone arrival, battery health and the charging redesign. See DELIVERY_PHASES.md.

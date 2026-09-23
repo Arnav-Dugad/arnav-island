@@ -1,0 +1,58 @@
+{
+  "measured": "2026-09-23, Windows 11 26200, 20 logical processors, build 0.7.0-preview.1 (final code before packaging)",
+  "note": "Process CPU = user+kernel over 15 s after a 3 s warm-up; one-core equivalent. Not GPU, power or presented-FPS measurements.",
+  "scenarios": [
+    {
+      "scenario": "compact island, providers without media/audio workers",
+      "wall_seconds": 15.01,
+      "cpu_seconds": 0,
+      "cpu_percent_of_one_core": 0,
+      "logical_processors": 20,
+      "working_set_mb": 65,
+      "private_mb": 57.9,
+      "threads": 13
+    },
+    {
+      "scenario": "compact island, media session playing, live waveform on",
+      "wall_seconds": 15.01,
+      "cpu_seconds": 0.016,
+      "cpu_percent_of_one_core": 0.1,
+      "logical_processors": 20,
+      "working_set_mb": 83.1,
+      "private_mb": 62.7,
+      "threads": 20
+    },
+    {
+      "scenario": "glass Live card open, waveform on",
+      "wall_seconds": 15.01,
+      "cpu_seconds": 0,
+      "cpu_percent_of_one_core": 0,
+      "logical_processors": 20,
+      "working_set_mb": 84.4,
+      "private_mb": 62.9,
+      "threads": 20
+    },
+    {
+      "scenario": "compact waveform: 5 bars animated from 100 synthetic frames/s",
+      "wall_seconds": 15.01,
+      "cpu_seconds": 0.172,
+      "cpu_percent_of_one_core": 1.14,
+      "logical_processors": 20,
+      "working_set_mb": 65.9,
+      "private_mb": 58.7,
+      "threads": 13
+    },
+    {
+      "scenario": "Media page: 16 bars animated from 100 synthetic frames/s",
+      "wall_seconds": 15,
+      "cpu_seconds": 0.109,
+      "cpu_percent_of_one_core": 0.73,
+      "logical_processors": 20,
+      "working_set_mb": 66.8,
+      "private_mb": 59.1,
+      "threads": 13
+    }
+  ],
+  "waveform_scenarios_note": "The two 'synthetic frames' rows drive the real bar-animation path at 100 frames/s with generated band levels (no audio played on the speakers). The media session was paused during the 'media session playing' and glass rows, so the loopback analyzer was correctly idle there.",
+  "spectrum_analysis_us_per_step": 19.14
+}

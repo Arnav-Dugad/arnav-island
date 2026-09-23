@@ -20,8 +20,8 @@ public:
     }
     ~LocalStore(){{std::lock_guard lock(mutex_);closing_=true;}cv_.notify_one();if(worker_.joinable())worker_.join();}
     void submit(std::function<void()> f) {{std::lock_guard lock(mutex_);if(work_.size()<256)work_.push_back(std::move(f));}cv_.notify_one();}
-    Settings load(){std::ifstream f(directory/L"settings.nexus");if(!f)return {};try{return Settings::parse(f);}catch(...){log("Warning","settings_invalid_defaults_used");return {};}}
-    void save(Settings s){submit([this,s]{auto temp=directory/L"settings.tmp";{std::ofstream f(temp);s.write(f);f.flush();if(!f)throw std::runtime_error("Settings write failed");}if(!MoveFileExW(temp.c_str(),(directory/L"settings.nexus").c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("Settings replace failed");});}
+    Settings load(const std::wstring& name=L"settings.nexus"){std::ifstream f(directory/name);if(!f)return {};try{return Settings::parse(f);}catch(...){log("Warning","settings_invalid_defaults_used");return {};}}
+    void save(Settings s,std::wstring name=L"settings.nexus"){submit([this,s,name]{auto temp=directory/(name+L".tmp");{std::ofstream f(temp);s.write(f);f.flush();if(!f)throw std::runtime_error("Settings write failed");}if(!MoveFileExW(temp.c_str(),(directory/name).c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("Settings replace failed");});}
     void log(std::string level,std::string event){submit([this,level=std::move(level),event=std::move(event)]{auto p=directory/L"events.log";if(std::filesystem::exists(p)&&std::filesystem::file_size(p)>1024*1024){auto old=directory/L"events.previous.log";MoveFileExW(p.c_str(),old.c_str(),MOVEFILE_REPLACE_EXISTING);}std::ofstream f(p,std::ios::app);f<<"{\"level\":\""<<level<<"\",\"event\":\""<<event<<"\",\"uptime\":"<<GetTickCount64()<<"}\n";});}
     void clear(){submit([this]{std::ofstream(directory/L"events.log",std::ios::trunc);std::ofstream(directory/L"events.previous.log",std::ios::trunc);});}
 };

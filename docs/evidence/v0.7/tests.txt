@@ -1,0 +1,13 @@
+Test project C:/Users/rduga/Desktop/Arnav Island/build
+    Start 1: core
+1/4 Test #1: core .............................   Passed    0.02 sec
+    Start 2: provider_lifecycle
+2/4 Test #2: provider_lifecycle ...............   Passed    4.49 sec
+    Start 3: dashboard_models
+3/4 Test #3: dashboard_models .................   Passed    0.41 sec
+    Start 4: phase_models
+4/4 Test #4: phase_models .....................   Passed    0.09 sec
+
+100% tests passed out of 4
+
+Total Test time (real) =   5.02 sec

@@ -157,3 +157,20 @@ Final v0.6 executable, Windows 11, real media disabled for repeatability. These 
 The stress run recorded 405 compositor commits, 326 surface redraws, and zero queued activities at completion. The extra content rebuilds support switching between small/large layouts; there is no constant idle animation loop. Comparisons with earlier runs are not controlled benchmarks. No GPU/power-use, high-refresh FPS, input-latency, docking, multi-day or universal-player claim follows from these samples.
 
 Three CTest suites pass, with 11,682 core and 1,831 model/cadence checks. Twelve native interaction stages pass. Cadence math samples 60/90/120/144/165/240 Hz without changing physical time. Final screenshots use original local fixtures; private application content is excluded. Raw evidence is in `evidence/v0.6`.
+
+## v0.7 measured on 2026-09-23
+
+Final v0.7 code on Windows 11 (20 logical processors). Process user+kernel CPU over 15 s after a 3 s warm-up, as one-core equivalents. Not GPU, power or presented-FPS measurements.
+
+| Scenario | CPU time | One-core equivalent | Working set |
+|---|---:|---:|---:|
+| Compact, media/audio workers disabled | 0.000 s | below counter resolution | 65.0 MiB |
+| Compact, all providers running (session paused) | 0.016 s | 0.10% | 83.1 MiB |
+| Glass Live card open (session paused) | 0.000 s | below counter resolution | 84.4 MiB |
+| Compact waveform, 5 bars fed 100 synthetic frames/s | 0.172 s | 1.14% | 65.9 MiB |
+| Media page waveform, 16 bars fed 100 synthetic frames/s | 0.109 s | 0.73% | 66.8 MiB |
+| 200 interrupted body retargets (glass off) | 1.219 s / 16.07 s | 7.59% | 67.5 MiB |
+
+Spectrum analysis costs 19 µs per 1024-point step (about 0.2% of one core at 100 steps/s). The waveform rows use the real bar-animation path with generated band levels so no sound had to be played on the speakers; live loopback with real audio was exercised separately (bars followed a playing YouTube session) but its CPU was not isolated. Working set rises by ~18 MiB when the mixer, loopback and brightness workers are running.
+
+Four CTest suites pass: 11,682 core, 1,831 model, 4,502 phase (glass expressions, glides, spectrum, settings model, identity) and provider lifecycles including three start/stop cycles of the new workers. The Settings window end-to-end test passes 94 checks and the native interaction regression passes 12 stages. Raw data: `evidence/v0.7`.

@@ -3,7 +3,7 @@
 #include <d2d1.h>
 #include <cmath>
 namespace nexus {
-enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous,Next,Pin,Close,Plus,Minus,Muted,Volume,Battery,Processor,Memory,Download,Upload,Disk,Clock,File,Text,Check,Chevron,ArrowLeft,ArrowRight,Reset,Sun,Spark,Power,Link};
+enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous,Next,Pin,Close,Plus,Minus,Muted,Volume,Battery,Processor,Memory,Download,Upload,Disk,Clock,File,Text,Check,Chevron,ArrowLeft,ArrowRight,Reset,Sun,Spark,Power,Link,Island,Info,Sliders,ArrowUp,ArrowDown,Brightness,Apps};
 // Original 24-unit optical grid. Rounded stroke ends are consistent at every DPI.
 inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float x,float y,float size,UINT32 color,float opacity=1){
     D2D1_MATRIX_3X2_F saved;rt->GetTransform(&saved);rt->SetTransform(D2D1::Matrix3x2F::Scale(size/24,size/24)*D2D1::Matrix3x2F::Translation(x,y)*saved);
@@ -46,6 +46,13 @@ inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float
     case Icon::Spark:path({{12,2},{15,9},{22,12},{15,15},{12,22},{9,15},{2,12},{9,9}},true);break;
     case Icon::Power:line(12,2,12,12);path({{6,5},{3,9},{3,15},{7,20},{17,20},{21,15},{21,9},{18,5}});break;
     case Icon::Link:rect(2,8,14,16,4);rect(10,8,22,16,4);break;
+    case Icon::Island:rect(3,8,21,16,4);dot(16.5f,12,1.4f);line(7,12,12,12);break;
+    case Icon::Info:circle(12,12,9);line(12,11,12,17);dot(12,7.5f,1.1f);break;
+    case Icon::Sliders:line(4,7,20,7);line(4,17,20,17);circle(9,7,2.4f);circle(15,17,2.4f);break;
+    case Icon::ArrowUp:path({{5,15},{12,8},{19,15}});break;
+    case Icon::ArrowDown:path({{5,9},{12,16},{19,9}});break;
+    case Icon::Brightness:circle(12,12,3.6f);for(int i=0;i<8;++i){float a=i*3.14159265f/4;line(12+std::cos(a)*6.6f,12+std::sin(a)*6.6f,12+std::cos(a)*9.2f,12+std::sin(a)*9.2f);}break;
+    case Icon::Apps:rect(4,4,10,10,2);rect(14,4,20,10,2);rect(4,14,10,20,2);rect(14,14,20,20,2);break;
     }
     rt->SetTransform(saved);
 }

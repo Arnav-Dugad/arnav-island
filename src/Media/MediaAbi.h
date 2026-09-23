@@ -70,6 +70,11 @@ struct Session : IInspectable {
     virtual HRESULT STDMETHODCALLTYPE add_MediaPropertiesChanged(IUnknown*,INT64*)=0;
     virtual HRESULT STDMETHODCALLTYPE remove_MediaPropertiesChanged(INT64)=0;
 };
+// IVectorView<GlobalSystemMediaTransportControlsSession>, returned directly by GetSessions.
+struct SessionList : IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE GetAt(UINT32,Session**)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_Size(UINT32*)=0;
+};
 struct Manager : IInspectable {
     virtual HRESULT STDMETHODCALLTYPE GetCurrentSession(Session**)=0;
     virtual HRESULT STDMETHODCALLTYPE GetSessions(IInspectable**)=0;

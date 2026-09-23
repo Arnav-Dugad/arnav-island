@@ -1,4 +1,4 @@
-# Feature status — v0.6 preview
+# Feature status — v0.7 preview
 
 | Area | Implemented | Limits |
 |---|---|---|
@@ -9,7 +9,7 @@
 | Audio | Endpoint events, volume/mute, output names, optional direct switching | Isolated undocumented setter; current-output reselection tested, physical headphones/speakers switching not exercised |
 | Power | Real percentage/AC state, event-driven charging pulse, low-battery priority | No invented runtime estimates or firmware access |
 | Compact | Media title/art, timer, volume activity, battery | One priority activity at a time; no waveform simulation |
-| Glass | Documented DWM transient backdrop inside expanded panel; opaque exterior and fallback | Intentionally excludes rounded perimeter; effect is subtle and stops during body motion |
+| Glass | v0.7: whole-island Frosted/Clear glass from the Windows.UI.Composition host backdrop brush, tint, sheen and rim; shape follows the body springs in the compositor | Blur needs Windows Transparency effects; off, battery saver or high contrast give tinted, unblurred glass. Glass always floats (no concave shoulders) |
 | Statistics | CPU/history, memory, physical network throughput, disk free, uptime, thread count | Adaptive 1 Hz while visible; no GPU/fan/temperature readings |
 | Glance rings | Battery/timer/both/off; compositor marker rotation; larger Focus ring | Arcs update on state snapshots, not per-frame radial geometry |
 | Design system | 35 original vector symbols, centred controls, physical-pixel settled offsets, labelled navigation | Complete accessibility and text scaling remain unfinished |
@@ -36,3 +36,13 @@ Brightness, ROG actions, clipboard history, external notifications, camera/micro
 | Artwork atmosphere | Continuous spring retargeting of retained radial color layers | Subtle light only; no real audio visualization in this phase |
 
 See DELIVERY_PHASES.md for the remaining request; planned providers are not shipped features.
+
+| v0.7 feature | Implemented | Limits |
+|---|---|---|
+| Settings window | Separate thread and window; all persisted preferences; live application; autosave; keyboard navigation; Mica when allowed | Custom-drawn controls have no UI Automation tree yet; screen-reader support remains unfinished |
+| Media sessions | All GSMTC sessions (up to 8), per-session events, selection by app ID, swipe/drag/touchpad/tap, follow-current option | Players that do not publish a Windows media session cannot appear; one browser can expose one session for several tabs |
+| App logos | Icon and name from `shell:AppsFolder\<AUMID>` or the running executable; YouTube/YouTube Music marks when the browser window title confirms both the title and service | Other web services show the browser; an inactive tab's service cannot be confirmed |
+| Live waveform | WASAPI shared loopback on a worker, 1024-point FFT, 24 log bands, compositor-interpolated bars in compact, Live and Media | Protected/exclusive-mode audio can appear silent; runs only while a session is playing and bars are visible |
+| Per-app mixer | IAudioSessionManager2 sessions grouped by process, ISimpleAudioVolume volume/mute, live IAudioMeterInformation peaks, real process icons | Default output only; apps that route to another device are not listed |
+| Level indicator | Volume (endpoint callback) and brightness (WmiMonitorBrightnessEvent) grow the compact island into a bar | Brightness works on panels that expose the WMI class (internal laptop panels); external monitors report unavailable |
+| Intent-aware hover | Fast pointer sweeps restart the hover delay | Threshold is fixed at 700 DIP/s |

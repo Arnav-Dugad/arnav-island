@@ -1,0 +1,1 @@
+PASS 11682 checks; max curve error 0.00198515 DIP; 1000 curves 4.9387 ms; 33000 segments

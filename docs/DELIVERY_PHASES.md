@@ -10,7 +10,7 @@ Shelf hover preview uses the existing bounded background thumbnail cache. Artwor
 
 Verification: settings migration, profile roundtrip and malformed data, Mini/Live geometry, no body-click expansion, supported refresh cadence math, native captures, and process counters. Physical mixed-DPI docking and actual 120/144/165/240 Hz presentation require hardware acceptance.
 
-## Phase 2 — audio and media
+## Phase 2 — audio and media (delivered in v0.7)
 
 - Multi-session carousel: enumerate [GSMTC GetSessions](https://learn.microsoft.com/en-us/uwp/api/windows.media.control.globalsystemmediatransportcontrolssessionmanager.getsessions?view=winrt-26100), keep selection by session identity and support horizontal pointer gestures/keyboard navigation. OS media sessions are distinct from audio streams; not every audible application exposes metadata or controls.
 - Per-app mixer: [IAudioSessionManager2](https://learn.microsoft.com/en-us/windows/win32/api/audiopolicy/nn-audiopolicy-iaudiosessionmanager2), session-created/state events and ISimpleAudioVolume. Group only when process identity is trustworthy; handle session exit and device changes.
@@ -37,3 +37,11 @@ Verification: settings migration, profile roundtrip and malformed data, Mini/Liv
 ## Refresh-rate strategy
 
 Retained DirectComposition animations use continuous absolute-time curves sampled by Windows, with no 60 Hz animation timer. The 30 ms transient HWND-region update is input-region maintenance, not visual frame rendering. Do not advertise it as input synchronization at 240 Hz. The [compositor clock](https://learn.microsoft.com/en-us/windows/win32/directcomp/compositor-clock/compositor-clock) supports monitor-aware frame statistics and dynamic-rate work; investigate it when adding genuinely frame-produced waveform content. Mixed-monitor cadence is an OS/driver/display behavior requiring presentation measurements. Cadence unit tests establish numerical accuracy, not measured FPS.
+
+## Status after v0.7 — 2026-09-23
+
+Phase 2 shipped: multi-session carousel, per-app mixer, real loopback spectrum, app-provided logos (plus confirmed YouTube/YouTube Music marks), and the compact level indicator. From Phase 3, the brightness event provider and brightness indicator shipped early; Bluetooth cards, headphone arrival, battery health and the charging redesign remain. Phase 4 (clipboard, privacy indicators, commands, workspaces) has not started.
+
+Also delivered outside the phase plan at the user's request: a separate live-applying Settings window, and a Frosted/Clear glass material built on the host backdrop brush.
+
+Next recommended phase: Phase 3 devices and power — Bluetooth connection cards with battery where devices expose it, headphone arrival correlated with the confirmed default endpoint, and a battery-health page limited to readings the battery driver actually supplies.

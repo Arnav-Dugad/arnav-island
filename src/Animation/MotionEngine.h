@@ -86,11 +86,45 @@ public:
     }
     void reset(double value,double now,double velocity=0) { initial_={value,velocity}; target_=value; epoch_=now; }
     double target() const {return target_;}
+    const SpringSpec& spec() const {return spec_;}
     bool settled(double now) const {auto s=sample(now);return std::abs(s.position-target_)<.015&&std::abs(s.velocity)<.08;}
     // Adaptive cubic Hermite approximation. This is a time curve, never a frame schedule.
     std::vector<CubicSegment> curve(double now,double& duration) const {
         return approximateCurve([this](double t){return sample(t);},[this](double t){return settled(t);},now,duration);
     }
+};
+// The same damped oscillator as Spring::sample, re-based at `now` so a
+// compositor expression can evaluate it from a local clock that starts at zero.
+struct SpringTerms {
+    enum class Regime { Settled,Critical,Under,Over } regime=Regime::Settled;
+    double target=0,x=0,b=0,a=0,w=0,c1=0,c2=0,r1=0,r2=0;
+    static SpringTerms from(const Spring& s,double now) {
+        SpringTerms t;auto state=s.sample(now);t.target=s.target();t.x=state.position-t.target;const double v=state.velocity;
+        if(std::abs(t.x)<1e-6&&std::abs(v)<1e-6)return t;
+        const auto& spec=s.spec();t.a=spec.damping/(2*spec.mass);const double w2=spec.stiffness/spec.mass,d=w2-t.a*t.a;
+        if(std::abs(d)<1e-7*w2){t.regime=Regime::Critical;t.b=v+t.a*t.x;}
+        else if(d>0){t.regime=Regime::Under;t.w=std::sqrt(d);t.b=(v+t.a*t.x)/t.w;}
+        else {t.regime=Regime::Over;const double q=std::sqrt(-d);t.r1=-t.a+q;t.r2=-t.a-q;t.c1=(v-t.r2*t.x)/(t.r1-t.r2);t.c2=t.x-t.c1;}
+        return t;
+    }
+    double evaluate(double t) const {
+        switch(regime){
+        case Regime::Critical:return target+(x+b*t)*std::exp(-a*t);
+        case Regime::Under:return target+std::exp(-a*t)*(x*std::cos(w*t)+b*std::sin(w*t));
+        case Regime::Over:return target+c1*std::exp(r1*t)+c2*std::exp(r2*t);
+        default:return target;
+        }
+    }
+};
+// Smoothly follows values that arrive faster than a spring can settle (audio
+// levels, meters). Each update is a cubic Hermite segment from the current
+// position and velocity to the new value, so the compositor interpolates at the
+// display's own refresh rate with continuous velocity.
+struct Glide {
+    double p0=0,v0=0,p1=0,t0=0,span=0;
+    PhysicalState sample(double now)const{double s=now-t0;if(span<=0||s>=span)return {p1,0};s=std::max(0.,s);const double a=(3*(p1-p0)-2*v0*span)/(span*span),b=(2*(p0-p1)+v0*span)/(span*span*span);return {p0+s*(v0+s*(a+s*b)),v0+s*(2*a+3*s*b)};}
+    void to(double value,double now,double duration){auto c=sample(now);p0=c.position;v0=c.velocity;p1=value;t0=now;span=duration;}
+    CubicSegment segment()const{return {0,p0,v0,(3*(p1-p0)-2*v0*span)/(span*span),(2*(p0-p1)+v0*span)/(span*span*span)};}
 };
 inline double rubberBand(double displacement,double limit=90) {
     return std::copysign(limit*(1-1/(std::abs(displacement)/limit+1)),displacement);
@@ -116,7 +150,7 @@ struct MotionEngine {
     Spring width{196},height{34},radius{17},lift{0},reveal{0},volume{.5},dragX{0},dragY{0};
     SpringSpec body=preset(MotionPreset::Balanced);
     bool reduced=false,live=false;int edge=0;double compactWidth=196,corner=22;
-    Spring artX{12},artY{6},artSize{22},artOpacity{0},pulse{0},hoverX{20},hoverY{38},hoverW{40},hoverH{26},hoverOpacity{0},contentShift{0};
+    Spring artX{12},artY{6},artSize{22},artOpacity{0},pulse{0},hoverX{20},hoverY{38},hoverW{40},hoverH{26},hoverOpacity{0},contentShift{0},swipe{0},level{0};
     PhysicalState visibility(double now,bool compactHeader=false)const {
         auto h=height.sample(now),a=reveal.sample(now);double low=compactHeader?(edge?150.:34.):(live?76.:230.),range=compactHeader?100.:(live?68.:90.);double q=std::clamp((h.position-low)/range,0.,1.),gate=q*q*(3-2*q),speed=(q>0&&q<1)?6*q*(1-q)*h.velocity/range:0;
         if(compactHeader)return {1-gate,-speed};return {gate*a.position,speed*a.position+gate*a.velocity};
