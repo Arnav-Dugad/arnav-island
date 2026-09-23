@@ -17,3 +17,11 @@ This is phase 1 of the user's expanded request. DELIVERY_PHASES.md records the A
 - Spring curves are checked at 60/90/120/144/165/240 Hz against the analytical trajectory. This proves numerical behavior, not achieved display FPS. Actual high-refresh presentation, waveform rendering and latency remain unmeasured.
 
 Final reviewed captures, process counters and publication/installation checks are recorded in evidence/v0.6. This is an unsigned preview, not a zero-defect or mass-deployment certification.
+
+## Publication and installation — 2026-09-23
+
+Published [v0.6.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.6.0-preview.1) from source commit `4eee895`; public distribution commit `d2485eb`. The anonymous ZIP download and unpacked executable match the tested local hashes. The installed Desktop executable reports v0.6.0-preview.1 and is running/responding. The Desktop shortcut has no expansion arguments.
+
+The settings file hash and sign-in registry value are unchanged; startup remains enabled. The new local display-profile store contains one profile and a valid Windows display identity. Monitor identities remain local and are excluded from evidence. Recent startup log entries are informational; the installed app connected to a real media session. This confirms provider connection, not universal service/action coverage.
+
+Exact hashes and verification flags are in `evidence/v0.6/public-verification.json`. Remaining phases and acceptance limits are explicit in DELIVERY_PHASES.md.
