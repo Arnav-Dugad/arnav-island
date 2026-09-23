@@ -86,7 +86,7 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(8,L"Privacy indicators",L"Dots when an app uses the camera, microphone or location","privacyDots",&Settings::privacyDots);
     toggle(8,L"Privacy cards",L"Announce which app just started using the camera or microphone","privacyCards",&Settings::privacyCards);
     button(8,L"Windows privacy settings",L"Choose which apps may use the camera, microphone and location",L"Open",SettingAction::PrivacySettings);
-    number(8,C::Choice,L"Command shortcut",L"Opens the command bar from anywhere","commandShortcut",&Settings::commandShortcut,0,3,1,{L"Off",L"Alt+Shift+Space",L"Ctrl+Alt+Space",L"Win+Alt+Space"});
+    number(8,C::Choice,L"Command shortcut",L"Opens the command bar","commandShortcut",&Settings::commandShortcut,0,3,1,{L"Off",L"Alt+Shift+Space",L"Ctrl+Alt+Space",L"Win+Alt+Space"});
     button(8,L"Command bar",L"Volume, timers, apps, file search, settings and workspaces by typing",L"Open",SettingAction::OpenCommand);
     button(8,L"Saved workspaces",L"Remove every saved app set; open apps are not affected",L"Remove",SettingAction::ClearWorkspaces);
     button(9,L"Local logs",L"Diagnostics stay on this device",L"Open folder",SettingAction::OpenLogs);

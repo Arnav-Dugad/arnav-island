@@ -68,7 +68,7 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     if(testing_&&cmd.find(L"--qa-mini")!=std::wstring::npos){settings_.uiMode=0;applySettings();transition(IslandState::Compact);}
     if(testing_&&cmd.find(L"--qa-wide")!=std::wstring::npos){settings_.uiMode=1;settings_.compactWidth=560;settings_.compactClock=true;applySettings();transition(IslandState::Compact);}
     if(testing_&&cmd.find(L"--qa-peek")!=std::wstring::npos){content_.hovered=Action::ShelfItemBase;refresh();}
-    if(cmd.find(L"--settings")!=std::wstring::npos&&!settingsTest_)openSettings();
+    if(cmd.find(L"--settings")!=std::wstring::npos&&!settingsTest_){auto at=cmd.find(L"--settings-section=");openSettings(at==std::wstring::npos?-1:_wtoi(cmd.c_str()+at+19));}
     if(testing_&&cmd.find(L"--qa-glass")!=std::wstring::npos){settings_.material=cmd.find(L"--qa-clear")!=std::wstring::npos?2:1;applySettings(false,true);}
     if(settingsTest_){settingsTestPhase_=0;SetTimer(window_,21,400,nullptr);}
     // Synthetic 100 Hz band levels through the real bar-animation path; measures rendering cost without playing audio.
@@ -96,7 +96,7 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     for(auto pair:{std::pair{L"--qa-battery",1},std::pair{L"--qa-devices",2}})if(testing_&&cmd.find(pair.first)!=std::wstring::npos){content_.page=Page::System;content_.statsTab=pair.second;content_.pinned=true;if(bluetooth_||sample)content_.devices=qaDevices();if(battery_){battery_->setFast(true);updateBattery();}transition(IslandState::Expanded);refresh();}
     if(testing_&&cmd.find(L"--qa-hud")!=std::wstring::npos){content_.volume=audio_?audio_->value.load():40;events_.publish({ActivityKind::Volume,"volume",40,double(content_.volume),.5,30},seconds());presentActivity();}
     if(testing_&&cmd.find(L"--qa-brightness")!=std::wstring::npos){content_.brightness=64;events_.publish({ActivityKind::Brightness,"brightness",40,64,.5,30},seconds());presentActivity();}
-    if(cmd.find(L"--capture")!=std::wstring::npos&&!benchmark_&&cmd.find(L"--ui-test")==std::wstring::npos)SetTimer(window_,5,cmd.find(L"--qa-command")!=std::wstring::npos?4200:2800,nullptr); store_.log("Info","application_started_directcomposition");
+    if(cmd.find(L"--capture")!=std::wstring::npos&&!benchmark_&&cmd.find(L"--ui-test")==std::wstring::npos)SetTimer(window_,5,cmd.find(L"--qa-command")!=std::wstring::npos?4200:2800,nullptr);if(testing_&&cmd.find(L"--qa-entrance")!=std::wstring::npos)SetTimer(window_,34,2700,nullptr); store_.log("Info","application_started_directcomposition");
     MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){if(lab_&&IsDialogMessageW(lab_,&msg))continue;TranslateMessage(&msg);DispatchMessageW(&msg);}
     store_.log("Info","application_stopped");return int(msg.wParam);
 }
@@ -309,6 +309,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
             }
             if(!pass||scenarioStep_==17){SetCursorPos(qaCursor_.x,qaCursor_.y);auto result=pass?"PASS native hover open, leave close, disabled hover, navigation, timer actions, hit targets, edge/scale/theme, OLE drop and shelf clear, navigation reorder, metric choices, detail toggles, app-switch collapse, pin and drag protection, precision seeking and cancel, hover-only surface, mini/live modes, wide compact settings, auto-hide tucks away (click-through region) and reveals only at its edge (visible region)":"FAIL native interaction regression";store_.submit([dir=store_.directory,result,step=scenarioStep_,state=int(state_),interaction=int(interaction_),width=motion_.width.sample(seconds()).position]{std::ofstream(dir/L"ui-test.txt")<<"stage "<<step<<" state "<<state<<" interaction "<<interaction<<" width "<<width<<": "<<result<<'\n';});PostMessageW(window_,WM_CLOSE,0,0);}return 0;
         }
+        if(w==34){KillTimer(window_,34);perform(Action::Media);}// QA: page change 100 ms before the capture
         if(w==19){KillTimer(window_,19);if(content_.live&&content_.hovered==Action::Overview&&interaction_==InteractionState::Hover)perform(Action::Overview);}
         if(w==7){KillTimer(window_,7);if(settings_.autoHide&&!pointerOffEdge()){edgeHold_=true;return 0;}if(settings_.hoverOpen&&interaction_==InteractionState::Hover&&state_==IslandState::Compact)transition(settings_.uiMode==2?IslandState::Expanded:IslandState::LiveActivity);}
         if(w==8){KillTimer(window_,8);if(interaction_==InteractionState::Rest&&!content_.pinned)transition(IslandState::Compact);}
@@ -446,7 +447,7 @@ void IslandWindow::finishBenchmark(){
 
 namespace nexus {
 void IslandWindow::saveDisplays(){auto profiles=displays_;store_.submit([profiles,dir=store_.directory]{auto path=dir/L"displays.tmp";{std::ofstream f(path);profiles.write(f);f.flush();if(!f)throw std::runtime_error("Display profiles write failed");}if(!MoveFileExW(path.c_str(),(dir/L"displays.nexus").c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("Display profiles replace failed");});}
-void IslandWindow::refresh(){content_.settings=settings_;content_.reducedMotion=motion_.reduced;bool compact=state_==IslandState::Compact;renderer_->redraw(content_,debug_,compact);contentDirty_=compact;}
+void IslandWindow::refresh(){content_.settings=settings_;content_.reducedMotion=motion_.reduced;bool compact=state_==IslandState::Compact;{const double now=seconds();const bool still=motion_.height.settled(now)&&motion_.width.settled(now);renderer_->setRest(!compact&&still&&motion_.reveal.settled(now),compact&&still);}renderer_->redraw(content_,debug_,compact);contentDirty_=compact;}
 void IslandWindow::clockTimer(){bool visible=state_!=IslandState::Compact&&IsWindowVisible(window_);bool request=visible&&!content_.live&&(content_.page==Page::Overview||content_.page==Page::System);if(request!=systemRequested_){systemRequested_=request;if(request)SetTimer(window_,10,400,nullptr);else{KillTimer(window_,10);if(system_)system_->setActive(false);}}if(content_.focus.running||(visible&&(content_.live||content_.page==Page::Media)&&content_.playback.playing))SetTimer(window_,9,1000,nullptr);else KillTimer(window_,9);if(settings_.compactClock&&IsWindowVisible(window_))SetTimer(window_,18,60000,nullptr);else KillTimer(window_,18);updateProviders();
     if(battery_)battery_->setFast((state_==IslandState::Expanded&&content_.page==Page::System&&content_.statsTab==1)||(content_.card&&content_.notice.kind>=3));
     bool hideActive=settings_.autoHide&&IsWindowVisible(window_)&&!testing_;if(hideActive!=autoHideTimer_){autoHideTimer_=hideActive;if(hideActive)SetTimer(window_,23,33,nullptr);else{KillTimer(window_,23);if(autoHide_.hidden||motion_.slide.target()!=0){autoHide_.hidden=false;if(motion_.reduced)motion_.slide.reset(0,seconds());else motion_.slide.retarget(0,seconds(),{.9,420,26});if(renderer_)animate();}}}}
@@ -513,8 +514,7 @@ void IslandWindow::perform(Action a){
     case Action::Monitor:{std::vector<HMONITOR> monitors;EnumDisplayMonitors(nullptr,nullptr,collectMonitor,reinterpret_cast<LPARAM>(&monitors));displays_.remember(currentDisplay_,settings_);settings_.monitor=(settings_.monitor+1)%(int(monitors.size())+1);selectDisplay_=true;save=rebuild=true;break;}
     case Action::SettingsReset:{bool startup=settings_.startAtLogin;settings_=Settings{};settings_.startAtLogin=startup;save=rebuild=true;break;}
     case Action::ShelfClear:content_.shelf.clear();content_.shelfOffset=0;requestPreviews();break;
-    case Action::ShelfFiles:content_.shelfTab=0;break;
-    case Action::ShelfClipboard:content_.shelfTab=1;clipViews();break;
+    case Action::ShelfFiles:case Action::ShelfClipboard:{int tab=a==Action::ShelfFiles?0:1;if(tab!=content_.shelfTab&&!motion_.reduced){motion_.swipe.reset(tab>content_.shelfTab?14.:-14.,now);motion_.swipe.retarget(0,now,MotionTokens::content);}content_.shelfTab=tab;if(tab==1)clipViews();break;}
     case Action::ClipboardEnable:{Settings next=settings_;next.clipboardHistory=true;receiveSettings(next);content_.clipStatus=L"Clipboard history is on";content_.clipStatusUntil=seconds()+2.5;break;}
     case Action::ClipboardPause:clips_.paused=!clips_.paused;clipViews();content_.clipStatus=clips_.paused?L"Paused — new copies are not kept":L"Keeping new copies again";content_.clipStatusUntil=seconds()+2.5;break;
     case Action::ClipboardClear:clearClips();content_.clipStatus=L"Cleared";content_.clipStatusUntil=seconds()+2.5;break;
@@ -524,8 +524,8 @@ void IslandWindow::perform(Action a){
     case Action::Play:if(media_&&content_.playback.canToggle)media_->control(1,content_.playback.source,content_.playback.id);break;
     case Action::Previous:if(media_&&content_.playback.canPrevious)media_->control(2,content_.playback.source,content_.playback.id);break;
     case Action::Next:if(media_&&content_.playback.canNext)media_->control(3,content_.playback.source,content_.playback.id);break;
-    case Action::AudioApps:content_.audioTab=0;break;case Action::AudioOutputs:content_.audioTab=1;break;
-    case Action::StatsSystem:case Action::StatsBattery:case Action::StatsDevices:content_.statsTab=int(a)-int(Action::StatsSystem);if(a==Action::StatsBattery&&battery_){battery_->refresh();if(content_.charging)renderer_->energize(motion_.reduced,true);}break;
+    case Action::AudioApps:case Action::AudioOutputs:{int tab=a==Action::AudioApps?0:1;if(tab!=content_.audioTab&&!motion_.reduced){motion_.swipe.reset(tab>content_.audioTab?14.:-14.,now);motion_.swipe.retarget(0,now,MotionTokens::content);}content_.audioTab=tab;break;}
+    case Action::StatsSystem:case Action::StatsBattery:case Action::StatsDevices:if(int tab=int(a)-int(Action::StatsSystem);tab!=content_.statsTab&&!motion_.reduced){motion_.swipe.reset(tab>content_.statsTab?14.:-14.,now);motion_.swipe.retarget(0,now,MotionTokens::content);}content_.statsTab=int(a)-int(Action::StatsSystem);if(a==Action::StatsBattery&&battery_){battery_->refresh();if(content_.charging)renderer_->energize(motion_.reduced,true);}break;
     case Action::Armoury:if(!content_.platform.armoury.empty())ShellExecuteW(nullptr,L"open",(L"shell:AppsFolder\\"+content_.platform.armoury).c_str(),nullptr,nullptr,SW_SHOWNORMAL);break;
     case Action::PowerSettings:ShellExecuteW(nullptr,L"open",L"ms-settings:powersleep",nullptr,nullptr,SW_SHOWNORMAL);break;
     case Action::MixerSettings:ShellExecuteW(nullptr,L"open",L"ms-settings:apps-volume",nullptr,nullptr,SW_SHOWNORMAL);break;

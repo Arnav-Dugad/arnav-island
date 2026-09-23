@@ -42,7 +42,9 @@ void IslandWindow::onClipboard(){
     clipRetries_=0;if(read!=ClipboardWatcher::Read::Captured)return;
     if(e.kind==ClipEntry::Kind::Image){e.thumbnail=dibThumbnail(e.dib,96,&e.imageWidth,&e.imageHeight);if(!e.thumbnail)return;}
     if(!e.sourcePath.empty()){auto it=clipIcons_.find(e.sourcePath);if(it==clipIcons_.end()){if(clipIcons_.size()>64)clipIcons_.clear();it=clipIcons_.emplace(e.sourcePath,shellIcon(e.sourcePath,32)).first;}e.sourceIcon=it->second;}
-    auto label=copiedLabel(e);if(!clips_.add(std::move(e),seconds()))return;
+    // Some apps write the clipboard twice for one copy; the second update is the same copy.
+    const bool repeat=!clips_.entries().empty()&&clips_.entries().front().sameContent(e)&&seconds()-clips_.entries().front().time<1.5;
+    auto label=copiedLabel(e);if(!clips_.add(std::move(e),seconds()))return;if(repeat){clipViews();return;}
     content_.clipOffset=0;clipViews();store_.log("Info","clipboard_kept");
     if(settings_.clipboardConfirm&&!(settings_.autoHide&&autoHide_.hidden&&!settings_.alertsReveal)){copyLabel_=label;events_.publish({ActivityKind::Clipboard,"clipboard",25,0,.6,2.2},seconds());presentActivity();}
     else refresh();

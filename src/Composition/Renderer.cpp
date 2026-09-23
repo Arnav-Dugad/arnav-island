@@ -112,7 +112,17 @@ void Renderer::text(ID2D1RenderTarget* rt,const std::wstring& value,float x,floa
     ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(color),&b));
     rt->DrawText(value.c_str(),UINT32(value.size()),f.Get(),D2D1::RectF(std::round(x*scale_)/scale_,std::round(y*scale_)/scale_,std::round((x+w)*scale_)/scale_,std::round((y+(height>0?height:size*1.6f))*scale_)/scale_),b.Get(),D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
+// Ease-out cubic from `from` to 1 over 0.22 s, beginning at `start`.
+ComPtr<IDCompositionAnimation> Renderer::entrance(double start,float from){
+    constexpr double d=.22;const float span=1-from;ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(start)));
+    check(a->AddCubic(0,from,float(3*span/d),float(-3*span/(d*d)),float(span/(d*d*d))));check(a->End(d,1.f));return a;
+}
 void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
+    if(!headerOnly){
+        // A different page, tab, session or result set on an open, resting island.
+        std::string key=std::to_string(int(s.page))+'.'+std::to_string(s.statsTab)+'.'+std::to_string(s.audioTab)+'.'+std::to_string(s.shelfTab)+'.'+std::to_string(s.session)+'.'+std::to_string(int(s.live))+std::to_string(int(s.card))+std::to_string(int(s.command.active))+'.'+std::to_string(s.command.results.size());
+        if(key!=contentKey_){const double now=seconds();if(restExpanded_&&s.expanded&&!s.reducedMotion&&!contentKey_.empty()){contentEntrance_=now;auto a=entrance(now,.5f);contentEffect_->SetOpacity(a.Get());}contentKey_=key;}
+    }
     // Glass keeps text colors but lets fills breathe; solid surfaces stay opaque.
     const bool glass=s.settings.glassy()&&glass_.available();
     const UINT32 bg=s.light?0xf7f7f9:0x090a0c,ink=s.light?0x202329:0xf1f3f7,muted=s.light?0x656b75:(glass?0xa3aab6:0x8e96a4),raised=glass?0xffffff:s.light?0xeceef2:0x14171d,line=glass?(s.light?0x000000:0xffffff):s.light?0xdde1e7:0x242a33;
@@ -153,6 +163,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         if(s.settings.compactTimer&&s.focus.running)chip(Icon::Focus,clockText(std::ceil(s.focus.displayed(seconds()))),64);
         std::wstring label=!s.activity.empty()?s.activity:s.settings.compactMedia&&s.playback.available?s.playback.title:s.settings.compactTimer&&s.focus.running?clockText(std::ceil(s.focus.displayed(seconds()))):L"Ready";
         text(rt,label,start,0,std::max(12.f,end-start),11.5f,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);
+        if(label!=headerLabel_){if(restCompact_&&!s.expanded&&!s.reducedMotion&&!headerLabel_.empty()){headerEntrance_=seconds();auto a=entrance(headerEntrance_,.35f);headerEffect_->SetOpacity(a.Get());}headerLabel_=label;}
     });header_->SetContent(headerSurface_.Get());if(headerOnly){commit();return;}
     drawingContent_=true;iconRequests_.clear();caretTarget_=42;
     surface(contentSurface_,380,284,[&](auto* rt){
@@ -362,7 +373,12 @@ void Renderer::animate(const MotionEngine& m,double now) {
     else{leftScale_->SetCenterX(along);leftScale_->SetCenterY(0.f);rightScale_->SetCenterX(1.f);rightScale_->SetCenterY(0.f);wingLeft_->SetOffsetY(0.f);wingRight_->SetOffsetY(0.f);
         if(m.width.settled(now)){wingLeft_->SetOffsetX(restX-along);wingRight_->SetOffsetX(restX+restW-1);}
         else{auto lx=animation(m.width,now,-scale_/2,canvasWidth*scale_/2-along),rx=animation(m.width,now,scale_/2,canvasWidth*scale_/2-1);wingLeft_->SetOffsetX(lx.Get());wingRight_->SetOffsetX(rx.Get());}auto hx=animation(m.width,now,expanded_?0.f:scale_/2,expanded_?20*scale_:float(-m.compactWidth/2)*scale_);if(m.width.settled(now))header_->SetOffsetX(std::round(float(expanded_?20*scale_:(m.width.target()-m.compactWidth)*scale_/2)));else header_->SetOffsetX(hx.Get());}
-    auto opacity=visibility(m,now);auto headerOpacity=visibility(m,now,!expanded_);headerEffect_->SetOpacity(headerOpacity.Get());check(contentEffect_->SetOpacity(opacity.Get()));if(privacyVisible_)privacyEffect_->SetOpacity(opacity.Get());else privacyEffect_->SetOpacity(0.f);check(iconEffect_->SetOpacity(opacity.Get()));if(m.live)navEffect_->SetOpacity(0.f);else check(navEffect_->SetOpacity(opacity.Get()));auto shift=animation(m.contentShift,now,scale_,std::round((m.card?16:m.live?20:38)*scale_));check(content_->SetOffsetY(shift.Get()));auto iconsShift=animation(m.contentShift,now,scale_,m.live?-18*scale_:0.f);iconLayer_->SetOffsetY(iconsShift.Get());
+    auto opacity=visibility(m,now);auto headerOpacity=visibility(m,now,!expanded_);
+    restExpanded_=expanded_&&m.height.settled(now)&&m.width.settled(now)&&m.reveal.settled(now);restCompact_=!expanded_&&m.height.settled(now)&&m.width.settled(now);
+    const bool contentEntering=restExpanded_&&now<contentEntrance_+.23,headerEntering=restCompact_&&now<headerEntrance_+.23;
+    if(headerEntering){auto a=entrance(headerEntrance_,.35f);headerEffect_->SetOpacity(a.Get());}else headerEffect_->SetOpacity(headerOpacity.Get());
+    // Only the content surface eases in; navigation and controls stay steady.
+    if(contentEntering){auto a=entrance(contentEntrance_,.5f);check(contentEffect_->SetOpacity(a.Get()));}else check(contentEffect_->SetOpacity(opacity.Get()));if(privacyVisible_)privacyEffect_->SetOpacity(opacity.Get());else privacyEffect_->SetOpacity(0.f);check(iconEffect_->SetOpacity(opacity.Get()));if(m.live)navEffect_->SetOpacity(0.f);else check(navEffect_->SetOpacity(opacity.Get()));auto shift=animation(m.contentShift,now,scale_,std::round((m.card?16:m.live?20:38)*scale_));check(content_->SetOffsetY(shift.Get()));auto iconsShift=animation(m.contentShift,now,scale_,m.live?-18*scale_:0.f);iconLayer_->SetOffsetY(iconsShift.Get());
     auto barWidth=animation(m.volume,now,262*scale_);check(barClip_->SetRight(barWidth.Get()));
     auto ax=animation(m.artX,now,scale_),ay=animation(m.artY,now,scale_),size=animation(m.artSize,now,1.f/256),ao=animation(m.artOpacity,now);art_->SetOffsetX(ax.Get());art_->SetOffsetY(ay.Get());artScale_->SetScaleX(size.Get());artScale_->SetScaleY(size.Get());artEffect_->SetOpacity(ao.Get());
     auto blend=animation(handoff_.mix,now);incomingEffect_->SetOpacity(blend.Get());

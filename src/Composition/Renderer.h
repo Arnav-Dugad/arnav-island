@@ -115,6 +115,11 @@ public:
     unsigned commits=0,redraws=0; bool software=false;
     void initialize(HWND,float);
     void redraw(const ContentSnapshot&,bool debug=false,bool headerOnly=false);
+    // Entrances: new content on a settled island eases in (compositor-timed), instead of snapping.
+    double contentEntrance_=-1,headerEntrance_=-1;std::string contentKey_;std::wstring headerLabel_;bool restExpanded_=false,restCompact_=false;
+    ComPtr<IDCompositionAnimation> entrance(double start,float from);
+    // Whether the island is resting open or resting compact right now, from the motion springs.
+    void setRest(bool expanded,bool compact){restExpanded_=expanded;restCompact_=compact;}
     void animate(const MotionEngine&,double);
     void iconFeedback(Action,bool pressed,bool enabled);
     bool glassAvailable()const{return glass_.available();}GlassStyle glassStyle()const{return glass_.current();}UINT32 accentColor()const{return accentColor_;}
