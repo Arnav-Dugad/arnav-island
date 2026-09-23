@@ -1,50 +1,56 @@
-# Arnav Island 0.8.0-preview.1 — Hidden until you reach for it
+# Arnav Island 0.9.0-preview.1 — Type it, copy it, see who's listening
 
-Phase 3 of the delivery plan (devices and power), plus an edge-reveal mode, real brand logos and new motion.
+Phase 4 of the delivery plan (productivity and privacy), plus fixes to media sessions, the edge reveal, sharper rendering and many more real logos.
 
-## Hidden until the pointer reaches the edge
-- **On by default.** The island tucks away above the top edge (or past the right edge when docked there). Touch the screen edge where it lives, within a band a little wider than the island, and it slides in on a spring. Hover it to open as usual.
-- It tucks away again after your collapse delay once the pointer leaves and nothing is holding it open. An open page, a pinned island, a drag, a drop or an active seek all keep it out.
-- Tucked away, the island ignores clicks, so the windows under it get them.
-- **Show alerts while hidden** (off by default) lets device, charging and volume cards slide in on their own.
-- Settings → General → *Hide until the pointer reaches the edge* turns it off.
+## Command bar
+- **Alt+Shift+Space** opens a command bar on the island from anywhere. You can also use the search button on Home. Type, see exactly what will happen, press Enter.
+- It understands:
+  - volume ("volume 30", "mute")
+  - playback ("next", "pause")
+  - timers ("focus 25", "timer 10 min", "stopwatch")
+  - installed apps ("open spotify", or just "edge"; initials like "vsc" work)
+  - file search ("find budget pdfs from last month", which opens File Explorer search in your user folder with date and type filters)
+  - Windows Settings pages ("bluetooth settings")
+  - workspaces, the clipboard history, and "lock".
+- Nothing you type is ever run as a shell command. Every result is one of a fixed set of actions.
+- The bar grows and shrinks with its results. The caret glides and blinks in the compositor, and the highlight follows your arrow keys or pointer. Esc returns you to where you were.
+- The shortcut can be changed or turned off in Settings → Privacy & productivity (Off, Alt+Shift+Space, Ctrl+Alt+Space, Win+Alt+Space). If another app already owns it, Settings says so. For example, Claude's desktop app uses Ctrl+Alt+Space.
 
-## Real logos
-- **88 brand marks** from Simple Icons (CC0), drawn as vector paths at any scale: music and video services, social apps, browsers, players, game stores and hardware makers.
-- **Web services are identified from the browser's window title**, but only when the title confirms it: YouTube, YouTube Music, Spotify Web, SoundCloud, Twitch, Netflix, Prime Video, Disney+, Hotstar, JioSaavn, Gaana, Apple Music, Deezer, Tidal, Vimeo, Crunchyroll, Max, Plex, Kick, Audible, Bandcamp and more (44 rules). If the title is ambiguous, the browser's own icon is shown.
-- Desktop apps keep their real Windows icons. Apps with a known mark (for example Spotify, VLC, Discord, Steam) use it when Windows has no icon.
-- The compact island shows the logo when a session has no artwork.
+## Workspaces
+- "save workspace study" remembers the apps you have open. Later, "study" (or "workspace study") lists them, and a second Enter opens the ones that aren't running. Nothing is ever closed.
+- Up to 8 workspaces of up to 12 apps each, stored only on this PC. You can remove them in Settings.
 
-## Devices
-- **Connection cards.** When a paired Bluetooth device connects or disconnects, the island grows into a card with the device's maker logo (Samsung, Sony, Apple, Bose, JBL, boAt, Sennheiser and others), its type (earbuds, headphones, speaker, controller, keyboard, mouse, phone, watch), and its battery when the device reports one.
-- **Stats → Devices** lists paired devices with connection state and battery. Audio devices get **Connect/Disconnect** buttons that ask the Windows Bluetooth audio driver to connect or disconnect. Scroll the list with the wheel.
-- Connection changes come from Bluetooth radio and device events, with a slow once-a-minute check as a backstop. Paired is never shown as connected.
+## Clipboard history
+- **Off until you turn it on** (Shelf → Clipboard, or Settings). It keeps your last 24 copies in memory only: text, links, images and files. Click one to put it back on the clipboard.
+- Copies that apps mark as private (password managers, one-time codes) are never kept. Neither is anything from KeePass, 1Password, Bitwarden and similar apps. Pause and Clear are one click away. Turning history off forgets everything.
+- The island briefly shows "Copied link", "Copied image" and so on. You can turn that off.
 
-## Battery and power
-- **Charging card.** Plugging in or unplugging shows charge level, a one-shot energy sweep around the ring (skipped with reduced motion), and the charge rate and time to full when the battery driver reports them. It says so when the laptop is plugged in but holding its charge (battery care).
-- **Stats → Battery:** health (full-charge vs design capacity), full-charge energy, cycle count when supported, a 24-hour charge graph, time to full or remaining (labelled estimates), design capacity and voltage.
-- **Charge history** is kept for 7 days on this device only. Turning it off erases the history file.
-- **Power mode** (for example Best power efficiency, Balanced or Best performance) from Windows' own power-mode notification.
+## Privacy indicators
+- Small dots at the end of the island show when an app is using the **camera** (green), **microphone** (orange) or **location** (blue). The source is Windows' own privacy records, checked against apps that are actually running.
+- Open pages show which app it is. A card appears when an app starts using the camera or microphone.
 
-## ROG and vendor tools
-- The laptop model is read from the firmware tables Windows already exposes. On ASUS machines with Armoury Crate installed, Stats → System and Settings → Devices & power get an **Armoury Crate** button that opens the installed app. Nothing is sent to firmware, ACPI or vendor drivers.
+## Media fixes
+- **Two browser tabs no longer show up as the same thing.** Every tab of a browser shares one app ID, and the island used that ID to pick sessions and send play/pause. It now tracks each session separately, so switching between a YouTube tab and a JioHotstar tab shows each one, and play/pause reaches the right tab.
+- **Sites are identified from every open tab**, not just the visible window title. Each tab can label only one session. A background tab is recognised, and one YouTube tab never labels a second session.
+- A session without artwork shows its service or app logo in the artwork square.
 
-## Motion
-- Edge reveal: a spring slide with a fade; the glass blur and click region follow the same spring.
-- Cards: the island morphs into a 372 × 92 card, the logo pops in on a spring and an energy arc sweeps once around it.
-- Stats tabs: a sliding pill between System, Battery and Devices.
-- Changing pages slides the content in the direction of the navigation item you picked.
+## Edge reveal
+- Touching the screen edge now shows the **compact island only**. It opens when you move onto it and rest, as before.
+- The "new media" notice no longer counts as an alert that keeps the island out while hidden.
 
-## Settings
-- New section **Devices & power**: device cards, charging card, charge history, Bluetooth settings, power settings and Armoury Crate (only on machines that have it).
-- The window now always draws its final resting frame, and it responds to input sent from other threads straight away instead of waiting for the next mouse move.
+## Sharper, smoother
+- **Bigger, flowing shoulder curves.** The island now sweeps out of the screen edge. The curves are drawn at the exact pixel size of every shape, and all rounded corners are antialiased. The previous curves were a scaled bitmap and the corners were hard-edged.
+- **Sharper text:** grid-fitted, higher-contrast rendering and Segoe UI Variable's optical sizes (Small for captions).
+- The hover highlight keeps true rounded corners at any size.
+- New content eases in when you change page, tab or session, and tabs slide toward the one you picked. The compact label eases in when it changes.
+- Fixed: the device card's level ring was clipped; glance rings floated alone above expanded pages; the Home volume percentage sat above its slider.
 
-## Fixes
-- Word-start matching for device names: "TAS2400" no longer picks up a Samsung logo because it contains "s24".
-- Vendor discovery moved off the UI thread, removing a start-up pause of up to two seconds.
+## Logos
+- **180 brand marks** (from 88), including Xbox, AULA, Philips, PowerA, Marshall, Jabra, Logitech, Nintendo, Microsoft, JioHotstar, Gmail, F1, Gemini, OpenAI, Claude, GitHub, Cloudflare, Prime Video, Hulu, Minecraft, Riot, Ubisoft and many more.
+- Devices are recognised by name, Bluetooth company ID or USB vendor ID. For example: AULA keyboards, Xbox and PowerA controllers, Philips speakers (including model-only names such as "TAS2400"), Logitech mice and keyboards, and Nintendo Pro Controllers.
 
-Windows 11 x64, unsigned preview. Not covered: Bluetooth codec (Windows has no public API for it), firmware or GPU-mode control, clipboard shelf, privacy indicators, commands and workspace presets (Phase 4). Device battery appears only for devices that report it to Windows. Logos are trademarks of their owners and are used only to identify the app or device.
+Windows 11 x64, unsigned preview. Settings move to version 8; existing preferences are kept. The command bar has no text-selection or IME support yet.
 
 ---
 
-Previous release: [0.7.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.7.0-preview.1): glass material, separate Settings window, multi-session media, live waveform, per-app mixer, volume and brightness indicator.
+Previous release: [0.8.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.8.0-preview.1): edge reveal, Bluetooth and battery cards, 88 logos.

@@ -167,6 +167,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     });header_->SetContent(headerSurface_.Get());if(headerOnly){commit();return;}
     drawingContent_=true;iconRequests_.clear();caretTarget_=42;
     surface(contentSurface_,380,284,[&](auto* rt){
+        const bool logoArt=s.settings.appIcons&&s.playback.available&&(!s.playback.service.empty()||s.playback.appIcon);
         ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink),&b);
         auto box=[&](float x,float y,float w,float h,UINT32 color,float radius=12){b->SetColor(D2D1::ColorF(color,color==raised?raisedAlpha:1.f));rt->FillRoundedRectangle(D2D1::RoundedRect({x,y,x+w,y+h},radius,radius),b.Get());};
         auto hairline=[&](float x,float y,float w){b->SetColor(D2D1::ColorF(line,lineAlpha));rt->DrawLine({x,y},{x+w,y},b.Get(),1/scale_);};
@@ -222,7 +223,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             const bool bars=s.settings.waveform&&s.playback.playing&&s.waveform;
             text(rt,s.playback.available?s.playback.title:s.focus.running?L"Focus in progress":L"A little space for now",68,0,bars?216.f:250.f,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
             text(rt,s.playback.available?s.playback.artist:s.focus.running?clockText(std::ceil(s.focus.displayed(seconds()))):L"Sound · focus · things within reach",68,23,250,10.5f,muted);
-            if(!s.playback.artwork){box(0,0,52,52,raised,14);drawIcon(rt,d2d_.Get(),s.focus.running?Icon::Focus:Icon::Music,15,15,22,accent);}
+            if(!s.playback.artwork){box(0,0,52,52,raised,14);if(logoArt)identity(rt,s.playback,10,10,32,solidRaised);else drawIcon(rt,d2d_.Get(),s.focus.running?Icon::Focus:Icon::Music,15,15,22,accent);}
             iconButton(Action::Previous,Icon::Previous,66,44,36,32,false,s.playback.canPrevious);iconButton(Action::Play,s.playback.playing?Icon::Pause:Icon::Play,116,40,40,40,true,s.playback.canToggle);iconButton(Action::Next,Icon::Next,170,44,36,32,false,s.playback.canNext);iconButton(Action::Mute,s.muted?Icon::Muted:Icon::Volume,228,44,32,32);text(rt,std::to_wstring(s.volume)+L"%",266,52,54,11,muted);
             button(Action::Overview,L"Command Center",0,88,150,24);button(Action::Shelf,L"Shelf",160,88,73,24);iconButton(Action::Settings,Icon::Settings,284,86,36,28);
             if(s.sessions.size()>1){int n=int(std::min<size_t>(6,s.sessions.size()));float total=12+(n-1)*9.f,x=26-total/2;
@@ -240,14 +241,14 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             if(selected){b->SetColor(D2D1::ColorF(accent));rt->DrawEllipse(D2D1::Ellipse({x+12,10},12.5f,12.5f),b.Get(),1.6f);}
             targets.push_back({Action(int(Action::SessionBase)+i),x,-2,24,24});}
         if(s.page==Page::Overview){
-            if(!s.playback.artwork){box(0,43,64,64,raised,15);drawIcon(rt,d2d_.Get(),Icon::Music,19,62,26,muted);}
+            if(!s.playback.artwork){box(0,43,64,64,raised,15);if(logoArt)identity(rt,s.playback,12,55,40,solidRaised);else drawIcon(rt,d2d_.Get(),Icon::Music,19,62,26,muted);}
             text(rt,s.playback.available?s.playback.title:L"A quieter place for everything",80,48,252,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.available?s.playback.artist:L"Play something. Find your rhythm.",80,74,252,11,muted);iconButton(Action::Play,s.playback.playing?Icon::Pause:Icon::Play,340,58,40,40,true,s.playback.canToggle);targets.push_back({Action::Media,0,38,328,74});
             const Icon glyphs[]={Icon::Processor,Icon::Memory,Icon::Battery,Icon::Download,Icon::Upload,Icon::Disk,Icon::Clock};const wchar_t* names[]={L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime"};
             for(int i=0;i<3;++i){int metric=s.settings.homeMetrics[i];float x=i*130.f;box(x,126,120,68,raised,13);drawIcon(rt,d2d_.Get(),glyphs[metric],x+12,137,14,muted);text(rt,names[metric],x+33,136,77,10,muted);std::wstring number;switch(metric){case 0:number=value(s.system.cpu)+ (s.system.cpu>=0?L"%":L"");break;case 1:number=s.system.ramTotalGiB?value(s.system.ramPercent)+L"%":L"—";break;case 2:number=s.battery>=0?std::to_wstring(s.battery)+L"%":L"—";break;case 3:number=s.system.networkAvailable?rateText(s.system.download):L"—";break;case 4:number=s.system.networkAvailable?rateText(s.system.upload):L"—";break;case 5:number=s.system.diskTotalGiB?value(s.system.diskFreeGiB)+L" GB":L"—";break;default:number=clockText(double(s.system.uptime));break;}text(rt,number,x+12,156,100,metric>=3?18:23,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}
             iconButton(Action::Mute,s.muted?Icon::Muted:Icon::Volume,0,200,28,28);b->SetColor(D2D1::ColorF(line,lineAlpha));rt->DrawLine({38,215},{300,215},b.Get(),2);text(rt,s.muted?L"Muted":std::to_wstring(s.volume)+L"%",306,207,36,10.5f,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,16);iconButton(Action::Audio,Icon::Audio,346,200,34,28);targets.push_back({Action::VolumeSlider,38,201,262,26});
         }else if(s.page==Page::Media){
             bool video=s.settings.mediaLayout==2||(s.settings.mediaLayout==0&&s.playback.kind==MediaKind::Video);float tx=video?166.f:118.f,tw=380-tx;
-            if(!s.playback.artwork){box(0,video?30:44,video?148:100,video?148:100,raised,18);drawIcon(rt,d2d_.Get(),Icon::Music,video?56:34,video?85:77,32,muted);}
+            if(!s.playback.artwork){box(0,video?30:44,video?148:100,video?148:100,raised,18);if(logoArt)identity(rt,s.playback,video?42:22,video?72:66,video?64:56,solidRaised);else drawIcon(rt,d2d_.Get(),Icon::Music,video?56:34,video?85:77,32,muted);}
             text(rt,s.playback.title,tx,45,tw,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.artist,tx,74,tw,11,muted);{auto* rule=findService(s.playback.service);std::wstring app=rule?std::wstring(rule->name):s.playback.appName;if(app.empty())app=video?L"Video":L"Music";
                 if(s.sessions.size()>1)app+=L"  ·  "+std::to_wstring(s.session+1)+L" of "+std::to_wstring(s.sessions.size());text(rt,app,tx,100,std::max(40.f,tw-(s.settings.waveform&&s.playback.playing&&s.waveform?104.f:0.f)),9.5f,muted);}
             iconButton(Action::Previous,Icon::Previous,tx,132,36,36,false,s.playback.canPrevious);iconButton(Action::Play,s.playback.playing?Icon::Pause:Icon::Play,tx+54,124,52,52,true,s.playback.canToggle);iconButton(Action::Next,Icon::Next,tx+124,132,36,36,false,s.playback.canNext);

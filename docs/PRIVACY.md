@@ -61,3 +61,12 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **Battery:** readings come from the battery driver. `battery-history.nexus` stores time, percentage and charging state every 5 minutes for 7 days. It never leaves the device. Turning off *Keep charge history* deletes it.
 - **Platform:** manufacturer and model come from the firmware values Windows keeps in the registry; Armoury Crate is detected from the Start menu app list. Nothing is written.
 - Public screenshots of device cards use `--qa-sample`, which replaces real paired devices with illustrative ones.
+
+## v0.9 clipboard, privacy indicators, commands and workspaces
+
+- **Clipboard history** is off until you turn it on. When on, the island reads the clipboard only when it changes and keeps up to 24 copies in memory. It never writes them to disk, never logs their content and never sends them anywhere. Copies marked private by their app (the `ExcludeClipboardContentFromMonitorProcessing` and `CanIncludeInClipboardHistory` flags Windows' own history respects) and copies from password managers are skipped. Turning history off, clearing it, or quitting forgets everything.
+- **Privacy indicators** read Windows' capability access records under `HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore` for the camera, microphone and location. They check which apps are running to confirm current use. Nothing is written, and logs record only that indicators changed, never which app.
+- **Browser tabs:** to tell media sites apart, the island reads tab titles from browser windows through UI Automation (the tab strip only, never page content). Titles stay in memory and are compared with the playing title.
+- **Command bar:** what you type stays in memory and is parsed locally. File searches open File Explorer's own search in your user folder. Nothing is sent anywhere.
+- **Workspaces** store app names and their Start menu IDs or program paths in `workspaces.nexus`, on this PC only. Settings → Privacy & productivity removes them.
+- Public screenshots of these features use illustrative content (`--qa-clipboard`, `--qa-privacy`, `--qa-command`).

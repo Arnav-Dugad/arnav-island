@@ -1,4 +1,4 @@
-# Feature status — v0.8 preview
+# Feature status — v0.9 preview
 
 | Area | Implemented | Limits |
 |---|---|---|
@@ -20,7 +20,7 @@
 | Accessibility | Keyboard controls, OS reduced motion, opaque fallback under high contrast | Full screen-reader tree, text scaling and complete high-contrast palette unfinished |
 | Safety | No injection, drivers, cloud, Explorer patching or arbitrary plugins | Provider recovery and GPU device-loss restoration unfinished |
 
-Clipboard history, external notifications, camera/microphone indicators and external download monitoring are not implemented. Brightness (v0.7) and read-only ROG discovery (v0.8) are covered in the tables below. Empty or unavailable sensor values stay unavailable.
+External notifications and download monitoring are not implemented. Clipboard history and camera/microphone/location indicators arrived in v0.9 (below). Brightness (v0.7) and read-only ROG discovery (v0.8) are covered in the tables below. Empty or unavailable sensor values stay unavailable.
 
 | Feature | Implemented | Limits |
 |---|---|---|
@@ -59,3 +59,13 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Charging card | AC change shows level, rate, time to full or battery-care state, one-shot energy sweep | No endless decorative loop; with reduced motion the sweep is skipped |
 | Power mode | PowerRegisterForEffectivePowerModeNotifications | Display only; the island never changes the power mode |
 | ROG | Manufacturer/model from the BIOS registry values; Armoury Crate detected in the Start menu app list and opened by its app ID | Read-only. No ACPI, WMI writes, GPU-mode, fan or profile control |
+
+| v0.9 feature | Implemented | Limits |
+|---|---|---|
+| Command bar | Alt+Shift+Space (configurable) or Home's search button; fixed grammar for volume, playback, timers, installed apps (name, prefix, initials), file search with date/type filters, 34 Windows Settings pages, workspaces, clipboard and lock; intent shown before Enter; parsing and app icons on a worker | No text selection or IME composition; apps must be in the Start menu; file search covers the user folder |
+| Workspaces | Save open apps by name (installed app ID, or program path for classic apps); open the ones not running after a second Enter; 8 × 12, local file | No browser tabs or window positions; apps that are running are not moved or closed |
+| Clipboard history | Opt-in; text, links, images (DIB), files; 24 entries / 48 MB in memory; private flags and password managers skipped; click to copy back; pause, clear; duplicate updates collapsed | Nothing survives quitting; rich text is kept as plain text; image formats without a DIB are skipped |
+| Privacy indicators | Camera, microphone and location use from Windows' capability access records, confirmed against running processes; compact dots, expanded band, cards for camera and microphone | Apps that bypass Windows' capability tracking (some drivers, virtual cameras) cannot be seen; location use can be brief |
+| Media identity | Sessions keyed per session, not per app ID; sites assigned jointly from all tab titles (UI Automation, tab strip only) | A site whose tab title has neither the playing title nor its name stays unidentified |
+| Rendering | Shoulders drawn 1:1 at each radius, pixel-snapped at rest; soft (antialiased) clip borders; grid-fitted high-contrast text with optical sizes; rounded-clip hover highlight; content entrances | Text on transparent layers is grayscale-antialiased (ClearType needs an opaque target) |
+| Brand marks | 180 marks; device makers by name, Bluetooth company ID and USB vendor ID | Wordmark logos read small in round tiles |

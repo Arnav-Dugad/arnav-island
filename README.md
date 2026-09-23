@@ -1,19 +1,20 @@
-# Arnav Island 0.8 — hidden until you reach for it
+# Arnav Island 0.9 — type it, copy it, see who's listening
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.8.0-preview.1)
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.9.0-preview.1)
 
-![Edge reveal: hidden, sliding in at the top edge, open, tucked away](docs/evidence/v0.8/auto-hide-sequence.png)
+![Command bar opening Microsoft Edge](docs/evidence/v0.9/command-edge.png)
 
-- **Edge reveal**: the island stays tucked away until your pointer touches the screen edge where it lives, then slides in on a spring. Clicks pass through while it is hidden.
-- **Real logos**: 88 vector brand marks. Web services such as YouTube, Spotify, Netflix, Twitch and JioSaavn are identified only when the browser's window title confirms them.
-- **Bluetooth device cards**: maker logo, device type and battery when a device connects or disconnects, plus a Devices tab with one-tap connect for audio devices.
-- **Battery and charging**: charging card with a one-shot energy sweep, battery health, 24-hour graph, time estimates and power mode.
-- **ROG aware**: shows the laptop model and opens Armoury Crate when it is installed. Read-only; no firmware access.
-- Carried forward: glass material, live Settings window, multi-session media, live waveform, per-app mixer, volume and brightness indicator, hover-only opening, precision seeking, file shelf, focus timer, display memory.
+- **Command bar**: Alt+Shift+Space, then "volume 30", "focus 25", "open edge", "find budget pdfs from last month" or "bluetooth settings". You see what will happen before you press Enter; nothing typed runs as a shell command.
+- **Workspaces**: save the apps you have open under a name, and reopen them later with a second Enter.
+- **Clipboard history** (opt-in): your last 24 copies on the Shelf, in memory only. Private copies and password managers are skipped.
+- **Privacy dots**: green for camera, orange for microphone, blue for location, with the app's name when you open the island.
+- **Fixed**: two browser tabs no longer appear as one media session; touching the screen edge shows the compact island only.
+- **Sharper and smoother**: wider pixel-exact shoulder curves, antialiased corners, crisper text, content that eases in, and 180 real brand marks including Xbox, AULA, Philips and PowerA.
+- Carried forward: edge reveal, Bluetooth and battery cards, glass material, live Settings window, multi-session media, waveform, per-app mixer, focus timer, file shelf.
 
-![Device connection card](docs/evidence/v0.8/device-card.png)
+![Clipboard history on the Shelf](docs/evidence/v0.9/clipboard.png)
 
 No account, subscription, browser engine, cloud, driver or administrator access is required. Extract the ZIP and run ArnavIsland.exe.
 
@@ -21,4 +22,4 @@ No account, subscription, browser engine, cloud, driver or administrator access 
 
 Build with MinGW-w64 GCC 16 and CMake (`scripts/build.ps1 -Test`). Backend: Win32, DirectComposition, Direct2D/DirectWrite, plus Windows.UI.Composition for the glass backdrop. Unavailable values are shown as unavailable, never invented.
 
-![Devices tab with sample devices](docs/evidence/v0.8/devices-tab.png)
+![Camera in use card](docs/evidence/v0.9/privacy-card.png)

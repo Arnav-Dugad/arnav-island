@@ -42,7 +42,8 @@ void Renderer::updateHud(const ContentSnapshot& s,UINT32 accent,UINT32 track){
     double target=visible?1:0;if(std::abs(hudOpacity_.target()-target)>.001){if(s.reducedMotion)hudOpacity_.reset(target,now);else hudOpacity_.retarget(target,now,visible?MotionTokens::artworkOpacity:SpringSpec{1,700,60});auto o=animation(hudOpacity_,now);hudEffect_->SetOpacity(o.Get());}
 }
 void Renderer::updateBadge(const ContentSnapshot& s,UINT32 bg){
-    const auto& p=s.playback;bool visible=s.settings.appIcons&&s.expanded&&!s.card&&p.available&&(s.live||s.page==Page::Media||s.page==Page::Overview);
+    const auto& p=s.playback;// Without artwork the logo fills the artwork square instead, so no corner badge.
+    bool visible=s.settings.appIcons&&s.expanded&&!s.card&&p.available&&p.artwork&&(s.live||s.page==Page::Media||s.page==Page::Overview);
     if(visible&&(badgeIcon_!=p.appIcon||badgeService_!=int(std::hash<std::string>{}(p.service)&0x7fffffff)||badgeLight_!=s.light)){badgeIcon_=p.appIcon;badgeService_=int(std::hash<std::string>{}(p.service)&0x7fffffff);badgeLight_=s.light;
         surface(badgeSurface_,22,22,[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(bg),&b);rt->FillEllipse(D2D1::Ellipse({11,11},11,11),b.Get());
             identity(rt,p,4,4,14,0x3a3d45);});badge_->SetContent(badgeSurface_.Get());}

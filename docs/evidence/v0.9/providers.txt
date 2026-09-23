@@ -1,0 +1,24 @@
+cycle 0: audio available; media title state manager connected or awaiting initialization
+cycle 1: audio available; media title state manager connected or awaiting initialization
+cycle 2: audio available; media title state manager connected or awaiting initialization
+cycle 3: audio available; media title state manager connected or awaiting initialization
+cycle 4: audio available; media title state manager connected or awaiting initialization
+System provider produced real bounded CPU/RAM snapshots
+OLE file and text copy-only roundtrip passed; no file read/move/delete
+Drag-image GDI handles: 42 -> 42
+Shell thumbnail loaded; 40 drag-image/data roundtrips, bounded GDI handles
+cycle 0: mixer available (3 sources); loopback available; brightness 100
+cycle 1: mixer available (3 sources); loopback available; brightness 100
+cycle 2: mixer available (3 sources); loopback available; brightness 100
+AppsFolder identity: real icon, browser=0
+Battery: present=1 percent=80 design=90001 full=75677 rate=0 cycles=0 relative=0
+Bluetooth: 10 paired, 1 connected, 6 with battery, 6 audio, 9 with brand marks
+Reconnect path for an audio device: endpoint and KS control found (probe only)
+Battery and Bluetooth workers started and stopped; radio present
+Privacy: 108 consent records, 0 capabilities in use now
+Workspace capture: 3 open apps (2 by app ID)
+Browser tabs: 1 titles in 40 ms
+Command service: parsed on its worker; "open edge" gave 1 result(s), an installed app with its icon
+Clipboard: another app's copy captured, copied back, own copy ignored, original restored
+Platform: ASUS ROG, Armoury Crate installed
+Five real provider start/stop cycles completed in 6.77411 seconds; no audio changes requested

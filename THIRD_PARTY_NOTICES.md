@@ -41,3 +41,17 @@ Brand marks in `src/Design/Brands.h` are SVG paths from Simple Icons 16.32.0
 marks themselves are trademarks of their respective owners. They are used
 only to identify the app, service or device maker that Windows reports, and
 their use implies no endorsement. Simple Icons' own disclaimer applies.
+
+Brand marks withdrawn from later Simple Icons releases (Xbox, Microsoft, Windows 11,
+OpenAI, Logitech, Nintendo, Minecraft, Prime Video, Amazon, Hulu, LinkedIn, Slack,
+Skype, Microsoft Edge, Teams and Outlook) come from Simple Icons 9.21.0, also CC0 1.0.
+
+Philips (shield), PowerA, Marshall, Jabra and JioHotstar marks were traced into
+paths from files marked public domain on Wikimedia Commons ("Philips Shield blue.svg",
+"PowerA Logo.svg", "Marshall logo.svg", "Jabra logo.svg", "JioHotstar 2025.png").
+The AULA mark was traced from the logo on the brand's website (aulastar.com). All
+remain trademarks of their owners and are shown only to identify a device, app
+or service; no endorsement is implied.
+
+The command bar's file search uses Windows Advanced Query Syntax through File
+Explorer's search-ms: protocol; no search engine or index is bundled.
