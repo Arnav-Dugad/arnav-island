@@ -1,16 +1,16 @@
 # Further design candidates
 
-These are suggestions, not shipped features.
+Suggestions, not shipped features:
 
-1. **Cover-derived atmospheres** — a very faint, readable ambient glow behind playing media.
-2. **Precision timeline** — expand the scrubber under the pointer for accurate seeking in supported players.
-3. **Drag absorption** — carry the real shell drag image into and out of the file shelf.
-4. **Shelf previews** — safe asynchronous image thumbnails and recognizable file previews.
-5. **Intent-aware hover** — distinguish a passing pointer from a deliberate approach.
-6. **Display profiles** — remember layouts and fullscreen policies for each monitor.
-7. **Saved scenes** — switch between work, media and focus arrangements with one compact control.
-8. **Accessible narration** — complete screen-reader semantics, text scaling and keyboard focus treatment.
-9. **Output handoff** — clear device connection and route confirmation during headphone/speaker switching.
-10. **Resume your session** — restore chosen timers and layouts after restart with explicit persistence controls.
-11. **Motion diagnostics** — present-time traces and latency measurements for reproducible performance investigations.
-12. **Typography adaptation** — adjust secondary labels gracefully at extreme scale or long translated text.
+1. **Intent-aware hover** — open only when the pointer approaches deliberately.
+2. **Shelf peek** — enlarge a preview temporarily without opening its file.
+3. **Undo shelf clear** — recover a cleared shelf for a few seconds.
+4. **Saved scenes** — personal Work, Media and Focus layouts.
+5. **Display profiles** — remember placement and size per monitor.
+6. **Keyboard palette** — find and run island controls without the mouse.
+7. **Session restore** — optionally resume timers after restarting.
+8. **Quiet presentation mode** — suppress interruptions while presenting.
+9. **Accessible navigation** — complete UI Automation and text scaling.
+10. **Art atmospheres** — restrained cover-derived glow with contrast protection.
+11. **Safe updates** — signed releases and a reversible update flow.
+12. **Frame diagnostics** — measure presentation latency and missed frames across refresh rates.

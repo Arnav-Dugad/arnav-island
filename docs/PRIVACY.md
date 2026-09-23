@@ -38,3 +38,5 @@ Audio switching is local and opt-out. Startup writes only this application's HKC
 Personal layout adds only navigation IDs, metric IDs and visual preferences to local settings. Artwork handoff buffers are in memory and discarded with the renderer. No media images, titles, new analytics or network requests are persisted by these features. Synthetic motion-study images are explicit developer diagnostics, excluded from ordinary operation.
 
 Foreground integration observes only transient window handles and visible bounds to apply local fullscreen and dismissal policies. No foreground application history, executable paths, titles or content is saved or transmitted.
+
+Shelf thumbnail extraction reads only user-dropped file references, locally through Windows Shell. Previews live in memory and are not logged or uploaded. Windows may maintain its own thumbnail cache. Offline/recall placeholders are skipped. Media seeking is sent only to the current matching Windows session. Developer visibility audit records booleans (hidden, decorated, maximized, shell), not titles, URLs or application history.

@@ -26,3 +26,11 @@ Artwork blends only when supplied by Windows media metadata. The ring arcs use r
 ## Working alongside other apps
 
 Preferences → Multitasking controls collapse on app switching and optional scroll-anywhere volume. Unpinned panels collapse without resetting your selected page or timer; pinned panels and active drags remain open. By default, scroll over the volume slider to adjust volume. Shelf and output lists scroll normally.
+
+## v0.5 interactions
+
+The seek bar expands on hover or drag. Pull vertically away from it to reduce seeking sensitivity (35 DIPs: 35%; 70 DIPs: 12%). Release to request the position; Escape cancels. Seeking appears only when the current Windows media session advertises support and valid seek bounds.
+
+Shelf previews arrive asynchronously. Windows provides image/document thumbnails when supported, otherwise a file icon. Dragging out carries the cached preview and copies references safely; clearing the shelf does not delete originals. Cloud placeholders are not hydrated for thumbnails.
+
+Opening a normal maximized browser keeps the island visible. Hide in fullscreen applies to borderless monitor-covering windows. Turning that setting off keeps the island visible for fullscreen too.

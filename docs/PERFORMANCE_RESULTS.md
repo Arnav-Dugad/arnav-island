@@ -130,3 +130,17 @@ The stress run recorded 406 compositor commits, 225 surface redraws and zero que
 Zero idle CPU delta means below the process counter resolution during this sample, not zero power use. GPU usage, actual FPS/frame pacing, input latency, high-refresh displays, battery drain and multi-day stability remain unmeasured. Original synthetic cover fixtures support the separately reviewed app-only motion captures; the benchmark does not establish live-player artwork performance.
 
 All three CTest suites pass. Core: 11,682 checks; dashboard/models: 1,244 checks. Native regression passes nine stages including app-switch policy. External foreground/fullscreen integration was inconclusive because the QA helper did not obtain foreground activation; see `evidence/v0.4/foreground-integration.json`. Raw counters and captures are in `evidence/v0.4`.
+
+## v0.5 measured on 2026-09-23
+
+Final build on Windows 11. Media is disabled for reproducibility. CPU is process user+kernel time; percentages are one-core equivalents, not total-system or GPU usage.
+
+| Scenario | Elapsed | CPU time | One-core equivalent | Working set |
+|---|---:|---:|---:|---:|
+| idle | 15.005 s | 0.000000 s | 0.00% | 65.44 MiB |
+| dashboard | 15.017 s | 0.046875 s | 0.31% | 72.24 MiB |
+| 200 body retargets | 15.840 s | 1.343750 s | 8.48% | 67.57 MiB |
+
+Stress: 405 compositor commits, 225 surface redraws, zero queued activities at completion. Repeated Shell drag-image creation: GDI handles 38 → 38 after initialization across 40 iterations. A real Shell PNG thumbnail was loaded in the provider test.
+
+These short samples do not establish FPS, frame pacing, GPU use, battery drain or long-run stability. The retarget benchmark does not represent live scrubbing, physical headphone reconnection or external file dragging. Browser maximized visibility was recorded by the app; fullscreen entry/exit was not completed after Computer Use stopped for browser-URL confidence. Raw evidence is in `evidence/v0.5`.

@@ -5,8 +5,8 @@ struct AppSwitchPolicy {
         return enabled&&!pinned&&!dragging&&!dropping;
     }
     static bool fullscreen(long left,long top,long right,long bottom,
-                           long monitorLeft,long monitorTop,long monitorRight,long monitorBottom) {
-        return right>left&&bottom>top&&left<=monitorLeft&&top<=monitorTop&&right>=monitorRight&&bottom>=monitorBottom;
+                           long monitorLeft,long monitorTop,long monitorRight,long monitorBottom,bool decorated=false,bool maximized=false) {
+        return !decorated&&!maximized&&right>left&&bottom>top&&left<=monitorLeft&&top<=monitorTop&&right>=monitorRight&&bottom>=monitorBottom;
     }
 };
 }

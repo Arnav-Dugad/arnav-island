@@ -6,8 +6,9 @@
 #include <functional>
 #include <vector>
 #include <string>
+#include "Interaction/DashboardModel.h"
 namespace nexus {
-struct ShelfItem {enum class Kind{File,Text}kind=Kind::File;std::wstring value,label;};
+struct ShelfItem {enum class Kind{File,Text}kind=Kind::File;std::wstring value,label;std::shared_ptr<const Artwork> preview;};
 inline FORMATETC shelfFormat(CLIPFORMAT format){return {format,nullptr,DVASPECT_CONTENT,-1,TYMED_HGLOBAL};}
 inline bool shelfAccepts(IDataObject* data){if(!data)return false;auto files=shelfFormat(CF_HDROP),text=shelfFormat(CF_UNICODETEXT);return SUCCEEDED(data->QueryGetData(&files))||SUCCEEDED(data->QueryGetData(&text));}
 inline std::vector<ShelfItem> shelfRead(IDataObject* data){std::vector<ShelfItem> items;auto format=shelfFormat(CF_HDROP);STGMEDIUM medium{};
@@ -21,13 +22,22 @@ class ShelfDragSource final:public IDropSource {ULONG refs_=1;public:
  HRESULT STDMETHODCALLTYPE QueryContinueDrag(BOOL escape,DWORD keys)override{return escape?DRAGDROP_S_CANCEL:!(keys&MK_LBUTTON)?DRAGDROP_S_DROP:S_OK;}
  HRESULT STDMETHODCALLTYPE GiveFeedback(DWORD)override{return DRAGDROP_S_USEDEFAULTCURSORS;}
 };
-class ShelfDropTarget final:public IDropTarget {ULONG refs_=1;bool acceptable_=false;std::function<void(bool)> hover_;std::function<void(std::vector<ShelfItem>)> drop_;public:
- ShelfDropTarget(std::function<void(bool)> hover,std::function<void(std::vector<ShelfItem>)> drop):hover_(std::move(hover)),drop_(std::move(drop)){}
+class ShelfDropTarget final:public IDropTarget {ULONG refs_=1;bool acceptable_=false;HWND window_=nullptr;ComPtr<IDropTargetHelper> helper_;std::function<void(bool)> hover_;std::function<void(std::vector<ShelfItem>)> drop_;std::function<void(const std::vector<ShelfItem>&)> incoming_;public:
+ ShelfDropTarget(std::function<void(bool)> hover,std::function<void(std::vector<ShelfItem>)> drop):hover_(std::move(hover)),drop_(std::move(drop)){} void attach(HWND window,std::function<void(const std::vector<ShelfItem>&)> incoming){window_=window;incoming_=std::move(incoming);CoCreateInstance(CLSID_DragDropHelper,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&helper_));}
  HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid,void** p)override{if(!p)return E_POINTER;*p=nullptr;if(iid==IID_IUnknown||iid==IID_IDropTarget){*p=this;AddRef();return S_OK;}return E_NOINTERFACE;}
  ULONG STDMETHODCALLTYPE AddRef()override{return ++refs_;}ULONG STDMETHODCALLTYPE Release()override{auto n=--refs_;if(!n)delete this;return n;}
- HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data,DWORD,POINTL,DWORD* effect)override{try{acceptable_=shelfAccepts(data);*effect=acceptable_?(*effect&DROPEFFECT_COPY):DROPEFFECT_NONE;hover_(acceptable_);return S_OK;}catch(...){*effect=DROPEFFECT_NONE;return E_FAIL;}}
- HRESULT STDMETHODCALLTYPE DragOver(DWORD,POINTL,DWORD* effect)override{*effect=acceptable_?(*effect&DROPEFFECT_COPY):DROPEFFECT_NONE;return S_OK;}
- HRESULT STDMETHODCALLTYPE DragLeave()override{acceptable_=false;try{hover_(false);}catch(...){}return S_OK;}
- HRESULT STDMETHODCALLTYPE Drop(IDataObject* data,DWORD,POINTL,DWORD* effect)override{try{auto items=shelfRead(data);*effect=items.empty()?DROPEFFECT_NONE:(*effect&DROPEFFECT_COPY);if(*effect)drop_(std::move(items));hover_(false);return S_OK;}catch(...){*effect=DROPEFFECT_NONE;return E_FAIL;}}
+ HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data,DWORD,POINTL point,DWORD* effect)override{try{acceptable_=shelfAccepts(data);*effect=acceptable_?(*effect&DROPEFFECT_COPY):DROPEFFECT_NONE;hover_(acceptable_);if(acceptable_&&incoming_)incoming_(shelfRead(data));if(helper_){POINT p{point.x,point.y};helper_->DragEnter(window_,data,&p,*effect);}return S_OK;}catch(...){*effect=DROPEFFECT_NONE;return E_FAIL;}}
+ HRESULT STDMETHODCALLTYPE DragOver(DWORD,POINTL point,DWORD* effect)override{*effect=acceptable_?(*effect&DROPEFFECT_COPY):DROPEFFECT_NONE;if(helper_){POINT p{point.x,point.y};helper_->DragOver(&p,*effect);}return S_OK;}
+ HRESULT STDMETHODCALLTYPE DragLeave()override{if(helper_)helper_->DragLeave();acceptable_=false;try{hover_(false);}catch(...){}return S_OK;}
+ HRESULT STDMETHODCALLTYPE Drop(IDataObject* data,DWORD,POINTL point,DWORD* effect)override{try{auto items=shelfRead(data);*effect=items.empty()?DROPEFFECT_NONE:(*effect&DROPEFFECT_COPY);if(helper_){POINT p{point.x,point.y};helper_->Drop(data,&p,*effect);}if(*effect)drop_(std::move(items));hover_(false);return S_OK;}catch(...){*effect=DROPEFFECT_NONE;return E_FAIL;}}
 };
+}
+namespace nexus {
+inline void shelfDragImage(IDataObject* data,const std::shared_ptr<const Artwork>& image){
+    if(!image||!image->width||!image->height)return;ComPtr<IDragSourceHelper> helper;if(FAILED(CoCreateInstance(CLSID_DragDropHelper,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&helper))))return;
+    BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=96;info.bmiHeader.biHeight=-96;info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;info.bmiHeader.biCompression=BI_RGB;void* bits=nullptr;HBITMAP bitmap=CreateDIBSection(nullptr,&info,DIB_RGB_COLORS,&bits,nullptr,0);if(!bitmap)return;
+    memset(bits,0,96*96*4);auto* out=static_cast<BYTE*>(bits);double scale=std::min(96./image->width,96./image->height);unsigned w=std::max(1u,unsigned(image->width*scale)),h=std::max(1u,unsigned(image->height*scale));
+    for(unsigned y=0;y<h;++y)for(unsigned x=0;x<w;++x){unsigned sx=std::min(image->width-1,unsigned(x/scale)),sy=std::min(image->height-1,unsigned(y/scale));size_t source=(size_t(sy)*image->width+sx)*4,dest=(size_t(y+(96-h)/2)*96+x+(96-w)/2)*4;BYTE alpha=image->pixels[source+3];out[dest+3]=alpha;for(int c=0;c<3;++c)out[dest+c]=alpha?BYTE(std::min(255u,unsigned(image->pixels[source+c])*255/alpha)):0;}
+    SHDRAGIMAGE drag{{96,96},{48,48},bitmap,CLR_NONE};helper->InitializeFromBitmap(&drag,data);DeleteObject(bitmap);
+}
 }

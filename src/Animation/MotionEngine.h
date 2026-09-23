@@ -8,7 +8,7 @@
 namespace nexus {
 struct SpringSpec { double mass=1, stiffness=390, damping=36; };
 namespace MotionTokens {
-inline constexpr SpringSpec artwork{.7,420,30},artworkOpacity{1,500,44},icon{.65,640,35},iconPosition{.7,500,35},navigation{.8,450,33},handoff{1,120,22},ring{1,150,25},content{1,380,37};
+inline constexpr SpringSpec artwork{.7,420,30},artworkOpacity{1,500,44},icon{.65,640,35},iconPosition{.7,500,35},navigation{.8,450,33},handoff{1,120,22},ring{1,150,25},content{1,380,37},drop{1,190,28},dropFade{1,34,12};
 }
 enum class MotionPreset { Balanced, Fluid, Playful, Snappy, Calm };
 inline SpringSpec preset(MotionPreset p) {

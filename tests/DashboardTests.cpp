@@ -1,3 +1,4 @@
+#include "Interaction/DetailModels.h"
 #include "Interaction/AppSwitchPolicy.h"
 #include "Interaction/DashboardModel.h"
 #include "Persistence/Settings.h"
@@ -34,5 +35,9 @@ int main(){try{
     test(!AppSwitchPolicy::fullscreen(0,0,1920,1152,0,0,1920,1200),"maximized work area is not fullscreen");
     test(AppSwitchPolicy::fullscreen(-1920,0,0,1080,-1920,0,0,1080),"negative monitor coordinates");
     Settings taskPrefs;taskPrefs.collapseOnAppSwitch=false;taskPrefs.wheelVolume=true;std::stringstream taskStream;taskPrefs.write(taskStream);auto taskCopy=Settings::parse(taskStream);test(!taskCopy.collapseOnAppSwitch&&taskCopy.wheelVolume,"multitasking preferences persist");
+    test(!AppSwitchPolicy::fullscreen(0,0,1920,1200,0,0,1920,1200,true,false),"decorated monitor-sized browser stays visible");
+    test(!AppSwitchPolicy::fullscreen(0,0,1920,1200,0,0,1920,1200,false,true),"maximized browser stays visible with auto-hidden taskbar");
+    ScrubGesture scrub;scrub.begin(190,380,0,100);test(scrub.active&&scrub.value==50,"seek starts under pointer");scrub.move(228,0,380,0,100);test(std::abs(scrub.value-60)<1e-9,"direct seeking");scrub.move(266,80,380,0,100);test(std::abs(scrub.value-61.2)<1e-9,"fine seeking uses reduced gain without jumps");scrub.move(-999,0,380,0,100);test(scrub.value==0,"seek clamps before start");scrub.begin(1,0,0,0);test(!scrub.active,"unavailable timeline cannot seek");
+    RouteConfirmation route;test(!route.observe(L"speakers"),"initial audio enumeration is silent");test(!route.observe(L"speakers"),"volume does not trigger headphone animation");test(route.observe(L"headphones"),"confirmed route change triggers once");test(!route.observe(L"headphones"),"duplicate route events coalesce");test(!route.observe(L""),"missing route is not a confirmed output");
     std::cout<<"PASS "<<checks<<" dashboard, classification, timer, and migration checks\n";return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

@@ -14,11 +14,12 @@
 #include "Persistence/Settings.h"
 #include "FileShelf/FileShelf.h"
 #include "Audio/AudioProvider.h"
+#include "Interaction/DetailModels.h"
 
 namespace nexus {
 struct ContentSnapshot {
     Page page=Page::Overview;bool expanded=false,dropHover=false,glassActive=false,light=false;int layoutSlot=0;bool reducedMotion=false;int settingsPage=0,shelfOffset=0,audioOffset=0;std::wstring activity;std::vector<ShelfItem> shelf;std::vector<AudioDevice> outputs;std::wstring feedback;Action hovered=Action::None;bool pinned=false;
-    MediaSnapshot playback;SystemSnapshot system;Settings settings;FocusClock focus;
+    MediaSnapshot playback;SystemSnapshot system;Settings settings;FocusClock focus;ScrubGesture scrub;
     std::wstring headline=L"Your space, in rhythm.";
     std::wstring detail=L"A quieter home for the things happening now.";
     std::wstring media=L"No media session";
@@ -50,6 +51,13 @@ class Renderer {
     void icon(Action,Icon,float,float,float,UINT32,int stableSlot=-1);
     void updateArtwork(const ContentSnapshot&,UINT32);
     void updateRings(const ContentSnapshot&,UINT32,UINT32,UINT32);
+    ComPtr<IDCompositionVisual> timeline_,seekTrack_,seekFill_,seekThumb_,dropGhost_;
+    ComPtr<IDCompositionSurface> seekTrackSurface_,seekFillSurface_,seekThumbSurface_,dropSurface_;
+    ComPtr<IDCompositionScaleTransform> seekTrackScale_,seekFillScale_,seekThumbScale_,dropScale_;
+    ComPtr<IDCompositionEffectGroup> timelineEffect_,dropEffect_;
+    Spring seekEmphasis_{1};UINT32 seekColor_=0;bool seeking_=false;
+    void updateTimeline(const ContentSnapshot&,UINT32,UINT32);
+    void drawPreview(ID2D1RenderTarget*,const Artwork&,float,float,float,float);
     float dpi_=96,scale_=1;
     ComPtr<IDCompositionAnimation> animation(const Spring&,double,float factor=1,float bias=0);
     ComPtr<IDCompositionAnimation> visibility(const MotionEngine&,double,bool compact=false);
@@ -64,6 +72,6 @@ public:
     void redraw(const ContentSnapshot&,bool debug=false,bool headerOnly=false);
     void animate(const MotionEngine&,double);
     void iconFeedback(Action,bool pressed,bool enabled);
-    void commit(){check(device_->Commit());++commits;}
+    void absorb(const std::shared_ptr<const Artwork>&,float,float,float,float,bool); void routeConfirmed(bool,Action selected=Action::None); void commit(){check(device_->Commit());++commits;}
 };
 }

@@ -53,3 +53,7 @@ Two artwork surfaces blend with a critically damped scalar. An interrupted chang
 Content visibility depends smoothly on body height. Expanded content appears only when enough geometry is available, and the compact header appears as the body settles toward compact dimensions. The projected opacity and derivative are approximated with the existing adaptive Hermite curve mechanism, without a UI-thread frame loop. Sparse native motion captures confirmed removal of label/art overlap.
 
 Glance arcs use actual battery or elapsed timer snapshots. Their endpoint markers rotate on compositor springs; there is no fabricated continuously looping ring. Focus arc text/ring redraws at the timer's 1 Hz update cadence.
+
+## v0.5 details
+
+The seek bar and handle use retained compositor transforms, with the central icon spring for emphasis. Playback advancement uses time-based linear compositor animation; it does not rely on a per-frame UI timer. Interactive scrubbing follows pointer position without queuing seek commands. The drop tile uses centralized `MotionTokens::drop` and `dropFade`, shrinks into a shelf row and fades; reduced motion omits its spatial motion. Audio route feedback is one-shot and tied to confirmed state, not an optimistic click animation.
