@@ -35,3 +35,9 @@ G-Helper and LibreHardwareMonitor were researched only; neither is a dependency.
 The optional audio compatibility ABI slot order was cross-checked against EarTrumpet's public IPolicyConfig declaration:
 https://github.com/File-New-Project/EarTrumpet/blob/master/EarTrumpet/Interop/MMDeviceAPI/IPolicyConfig.cs
 The minimal slot-only interface here is independently authored; no EarTrumpet implementation or binary is included. EarTrumpet has its own license (including exclusions); it is not described as an unrestricted MIT dependency. UsageNotch was a visual reference only and is not bundled.
+
+Brand marks in `src/Design/Brands.h` are SVG paths from Simple Icons 16.32.0
+(https://github.com/simple-icons/simple-icons), released under CC0 1.0. The
+marks themselves are trademarks of their respective owners. They are used
+only to identify the app, service or device maker that Windows reports, and
+their use implies no endorsement. Simple Icons' own disclaimer applies.

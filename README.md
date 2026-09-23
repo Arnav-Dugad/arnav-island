@@ -2,31 +2,32 @@
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download v0.7.0-preview.1 for Windows x64](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.7.0-preview.1)
+[Download v0.8.0-preview.1 for Windows x64](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.8.0-preview.1)
 
-![Now playing with two sessions](images/v07-media-sessions.png)
+![Device connection card](images/v08-device-card.png)
 
-## v0.7 — glass, sound and a real Settings window
+## v0.8 — hidden until you reach for it
 
-- **Glass material.** Frosted or Clear glass genuinely blurs what is behind the island and morphs with it at your display's refresh rate, with a soft sheen and a light-catching rim. Solid is still available. Blur needs Windows *Transparency effects* turned on.
-- **Settings window.** Every preference in one window, applied to the island the moment you drag or toggle, and saved automatically.
-- **Every media session.** Swipe between simultaneous players (drag, touchpad swipe or tap). The artwork shows the playing app's own logo from Windows; YouTube and YouTube Music are marked when the browser confirms them.
-- **Live waveform** from the real system audio, resting when nothing plays.
-- **Per-app mixer** with volume, mute and live meters for each application.
-- **Volume and brightness indicator** — the resting island grows into a level bar.
-- Hover opening now ignores a pointer that is only passing by.
+- **Edge reveal.** The island stays tucked away until your pointer touches the screen edge where it lives, then slides in on a spring. Clicks pass through while it is hidden. On by default; turn it off in Settings → General.
+- **Real logos.** 88 vector brand marks. Web services such as YouTube, Spotify, Netflix, Twitch, JioSaavn and Prime Video are identified only when the browser's window title confirms them; otherwise you see the browser's icon.
+- **Bluetooth device cards.** Earbuds, headphones, controllers and keyboards announce themselves with the maker's logo, device type and battery. Stats → Devices lists every paired device, with one-tap connect for audio devices.
+- **Battery and charging.** A charging card with a one-shot energy sweep, battery health, a 24-hour graph, labelled time estimates and the current power mode. Charge history stays on your PC.
+- **ROG aware.** Shows your laptop model and opens Armoury Crate when it is installed. Read-only: nothing is sent to firmware.
+- **New motion.** Cards morph out of the island, logos pop in, stats tabs glide, and pages slide in the direction you navigate.
 
-![Frosted glass](images/v07-glass-live.png)
+![Edge reveal: hidden, sliding in, open, tucked away](images/v08-auto-hide-sequence.png)
 
-![Per-app mixer](images/v07-mixer.png)
+![Devices tab](images/v08-devices-tab.png)
 
-![Settings window](images/v07-settings-appearance.png)
+![Battery tab](images/v08-battery-tab.png)
 
-Extract the ZIP and run ArnavIsland.exe. No account, subscription, cloud, browser engine, driver or administrator access is required. Preferences and sign-in startup stay local to your Windows account.
+![Charging card](images/v08-charging-card-dark.png)
+
+Extract the ZIP and run ArnavIsland.exe. No account, subscription, cloud, browser engine, driver or administrator access is required. Preferences, charge history and sign-in startup stay local to your Windows account.
 
 [Quick start](QUICK_START.md) · [Release notes](RELEASE_NOTES.md) · [Design system](DESIGN_SYSTEM.md) · [Delivery phases](DELIVERY_PHASES.md) · [Future ideas](FUTURE_IDEAS.md)
 
-Screenshots use synthetic sessions built from stock Windows app icons. Real logos, artwork and controls depend on what each player publishes to Windows. Loopback analysis never records audio; protected playback may appear silent.
+Device screenshots use illustrative sample devices. Device battery appears only for devices that report it to Windows, and Windows offers no public API for the Bluetooth codec. Brand marks come from Simple Icons (CC0) and are trademarks of their owners, shown only to identify an app, service or device maker.
 
 This is an unsigned preview. Screen-reader support for the custom controls, measured 120–240 Hz presentation, GPU/power use and long-run stability remain unverified.
 
@@ -34,6 +35,6 @@ This public repository distributes releases and user documentation. Development 
 
 ## Earlier releases
 
-v0.6 introduced Mini Pill, Live Island and Command Center, 560-DIP compact width, shelf peek and display memory. v0.5 added precision seeking, shelf previews and audio handoff. v0.4 introduced the vector icon system and personal layouts.
+v0.7 added the glass material, the separate Settings window, multi-session media, the live waveform, the per-app mixer and the volume and brightness indicator. v0.6 introduced Mini Pill, Live Island and Command Center, 560-DIP compact width, shelf peek and display memory. v0.5 added precision seeking, shelf previews and audio handoff. v0.4 introduced the vector icon system and personal layouts.
 
-![Compact activity](images/compact.png)
+![Frosted glass](images/v07-glass-live.png)

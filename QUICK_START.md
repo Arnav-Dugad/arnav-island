@@ -6,7 +6,7 @@
 4. Drag a file or text onto the island to open Shelf. Drag a shelf row back out. Transfers are copy-only. Scroll to reach additional rows; Clear forgets references. Quit clears the shelf.
 5. Audio lists active Windows outputs. Choose one to switch, or use Windows sound settings. Direct switching is optional compatibility behavior, configurable under Settings → Media & sound.
 6. **Settings** opens in its own window (gear icon, the Settings navigation item, the tray menu, or double-click the tray icon). Every change applies to the island immediately and saves automatically.
-7. Enable or disable **Start at sign-in** in Settings → General. This registers the current executable path for your Windows account. If you move the app, toggle it off/on from the new location. The developer-installed copy already has this enabled.
+7. Enable or disable **Start at sign-in** in Settings → General. This registers the current executable path for your Windows account. If you move the app, toggle it off/on from the new location.
 8. Tab/Shift+Tab select controls after activation; Enter/Space activate; Escape collapses. Animation Lab is available from the right-click menu or Advanced preferences.
 
 Settings: `%LOCALAPPDATA%\ArnavIsland\settings.nexus`. Logs: same folder, `events.log`. No user media text, file paths or clipboard content are logged. The legacy Nexus settings are migrated by copy.
@@ -45,7 +45,7 @@ Hover a cached Shelf thumbnail for a larger preview. It fades and scales gently,
 
 Display selection, horizontal/vertical offset, width, scale and dock edge are remembered by display identity in `%LOCALAPPDATA%\ArnavIsland\displays.nexus`. Disconnected preferred displays fall back to primary; reconnect restores the preferred display. The active monitor's placement is saved with preference changes. Hardware docking across mixed-DPI monitors still needs acceptance testing.
 
-Larger requested integrations are tracked honestly in DELIVERY_PHASES.md in DELIVERY_PHASES.md; they are not represented by simulated controls in this release.
+Larger requested integrations are tracked honestly in DELIVERY_PHASES.md; they are not represented by simulated controls in this release.
 
 ## v0.7 glass, sound and Settings window
 
@@ -62,3 +62,13 @@ Larger requested integrations are tracked honestly in DELIVERY_PHASES.md in DELI
 **Mixer.** Open Audio → Apps. Drag a slider to set an app's volume, tap the speaker to mute; the thin line under each slider is its live level. Outputs lists output devices as before. Windows volume mixer opens the system page.
 
 **Volume and brightness indicator.** Changing volume or laptop brightness grows the resting island into a level bar for about two seconds. Turn it off in Compact → Volume and brightness indicator. The Windows volume flyout is not suppressed.
+
+## v0.8 edge reveal, devices and battery
+
+**Edge reveal.** The island starts tucked away. Push the pointer to the top edge of the screen above where the island sits (or the right edge if you docked it there) and it slides in; hover to open it. Move away and it tucks back after your collapse delay. Turn it off in Settings → General → *Hide until the pointer reaches the edge*. *Show alerts while hidden* lets device, charging and volume cards appear without reaching for it.
+
+**Device cards.** Connect earbuds, headphones, a controller or a keyboard and the island shows a card with the maker's logo and battery. Open **Stats → Devices** to see every paired device; audio devices have Connect/Disconnect. Scroll the list with the wheel.
+
+**Battery.** **Stats → Battery** shows health, full-charge energy, cycles (when the battery reports them), a 24-hour graph and time estimates. Plugging in shows a charging card. Settings → Devices & power controls the cards and the charge history.
+
+**ROG laptops.** With Armoury Crate installed, Stats → System and Settings → Devices & power have an Armoury Crate button.
