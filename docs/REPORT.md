@@ -47,3 +47,7 @@ Device screenshots use `--qa-sample` devices. Captures showing real device names
 ## Next
 
 Phase 4: opt-in clipboard shelf, microphone-in-use indicator, local commands and workspace presets. See DELIVERY_PHASES.md.
+
+## Publication and installation — 2026-09-23
+
+Published [v0.8.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.8.0-preview.1) from source commit `bcc4b7a`; public documentation commit `dd0b03f`. The anonymously downloaded ZIP and its executable match the tested build. The downloaded executable replaced the copy in `Desktop\Arnav Island\app`; the sign-in entry was already pointing there and was left as is. Existing preferences, display memory and charge history were kept; test files were removed. The app was relaunched through Explorer and started tucked away. Hashes are in `evidence/v0.8/public-verification.json`.
