@@ -66,7 +66,7 @@ bool GlassBackdrop::initialize(HWND window,float scale,float canvasWidth,float c
         check(as<SpriteShape>(impl->rimShape)->put_StrokeThickness(2*scale));
         ComPtr<wuc::IVisualCollection> children;check(impl->glass->get_Children(&children));
         for(auto& v:{ComPtr<IInspectable>(impl->backdrop),ComPtr<IInspectable>(impl->tint),ComPtr<IInspectable>(impl->sheen),impl->rim}){impl->fill(v);check(children->InsertAtTop(impl->visual(v).Get()));}
-        check(c->CreatePropertySet(&impl->properties));for(auto key:{L"t",L"w",L"h",L"r",L"dx",L"dy"}){String k(key);check(impl->properties->InsertScalar(k,0.f));}
+        check(c->CreatePropertySet(&impl->properties));for(auto key:{L"t",L"w",L"h",L"r",L"dx",L"dy",L"s"}){String k(key);check(impl->properties->InsertScalar(k,0.f));}
         check(impl->visual(impl->glass)->put_IsVisible(false));
         impl_=impl.release();available_=true;
     }catch(...){available_=false;}
@@ -103,12 +103,13 @@ void GlassBackdrop::animate(const MotionEngine& m,double now,int edge){
         ABI::Windows::Foundation::TimeSpan duration{LONGLONG(span*1e7)};check(as<KeyFrameAnimation>(clock)->put_Duration(duration));
         ComPtr<IInspectable> props;check(i.properties.As(&props));
         i.start(props,L"w",springExpression(SpringTerms::from(m.width,now),s));i.start(props,L"h",springExpression(SpringTerms::from(m.height,now),s));
-        i.start(props,L"r",springExpression(SpringTerms::from(m.radius,now),s));i.start(props,L"dx",springExpression(SpringTerms::from(m.dragX,now),s));i.start(props,L"dy",springExpression(SpringTerms::from(m.dragY,now),s));
+        i.start(props,L"r",springExpression(SpringTerms::from(m.radius,now),s));i.start(props,L"dx",springExpression(SpringTerms::from(m.dragX,now),s));i.start(props,L"dy",springExpression(SpringTerms::from(m.dragY,now),s));i.start(props,L"s",springExpression(SpringTerms::from(m.slide,now),1));
         check(as<wuc::ICompositionObject>(i.properties)->StartAnimation(t,as<wuc::ICompositionAnimation>(clock).Get()));
         if(edge!=i.edge){
             i.edge=edge;const std::wstring cw=number(i.canvasWidth*s),ch=number(i.canvasHeight*s);
             ComPtr<IInspectable> glass;check(i.glass.As(&glass));
-            i.start(glass,L"Offset",edge?L"Vector3("+cw+L"-p.w+p.dx,("+ch+L"-p.h)/2+p.dy,0)":L"Vector3(("+cw+L"-p.w)/2+p.dx,p.dy,0)");
+            i.start(glass,L"Offset",edge?L"Vector3("+cw+L"-p.w+p.dx+p.s*"+number(74*s)+L",("+ch+L"-p.h)/2+p.dy,0)":L"Vector3(("+cw+L"-p.w)/2+p.dx,p.dy-p.s*"+number(44*s)+L",0)");
+            i.start(glass,L"Opacity",L"1-Clamp((p.s-0.45)/0.55,0,1)*Clamp((p.s-0.45)/0.55,0,1)*(3-2*Clamp((p.s-0.45)/0.55,0,1))");
             i.start(glass,L"Size",L"Vector2(p.w,p.h)");
             i.start(i.geometry,L"Size",L"Vector2(p.w,p.h)");i.start(i.geometry,L"CornerRadius",L"Vector2(Min(p.r,Min(p.w,p.h)/2),Min(p.r,Min(p.w,p.h)/2))");
         }

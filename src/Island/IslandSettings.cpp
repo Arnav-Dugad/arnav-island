@@ -11,7 +11,7 @@ std::string narrow(const std::wstring& w){std::string s;for(wchar_t c:w)s+=c<128
 }
 SettingsContext IslandWindow::settingsContext(){
     SettingsContext c;int monitors=0;EnumDisplayMonitors(nullptr,nullptr,countMonitor,reinterpret_cast<LPARAM>(&monitors));c.monitors=std::max(1,monitors);
-    c.blur=GlassBackdrop::effectsEnabled();c.glassAvailable=renderer_&&renderer_->glassAvailable();c.version=appVersion;return c;
+    c.blur=GlassBackdrop::effectsEnabled();c.armoury=!content_.platform.armoury.empty();c.glassAvailable=renderer_&&renderer_->glassAvailable();c.version=appVersion;return c;
 }
 void IslandWindow::openSettings(int section){
     if(!settingsWindow_)settingsWindow_=std::make_unique<SettingsWindow>(window_);
@@ -28,7 +28,7 @@ void IslandWindow::receiveSettings(Settings next){
     const bool reposition=next.verticalOffset!=previous.verticalOffset||next.horizontalOffset!=previous.horizontalOffset||next.glassy()!=previous.glassy()||next.compactWidth!=previous.compactWidth;
     settings_=next;if(next.edge!=previous.edge){motion_.dragX.reset(0,now);motion_.dragY.reset(0,now);}
     if(!monitor)displays_.remember(currentDisplay_,settings_);
-    applySettings(rebuild,reposition);if(next.hideFullscreen!=previous.hideFullscreen)fullscreen();clockTimer();scheduleSave();
+    applySettings(rebuild,reposition);if(battery_)battery_->setHistory(settings_.batteryHistory);if(next.hideFullscreen!=previous.hideFullscreen)fullscreen();clockTimer();scheduleSave();
 }
 void IslandWindow::settingsAction(SettingAction action){
     switch(action){
@@ -39,6 +39,9 @@ void IslandWindow::settingsAction(SettingAction action){
     case SettingAction::ClearLogs:store_.clear();break;
     case SettingAction::DisplaySettings:ShellExecuteW(nullptr,L"open",L"ms-settings:display",nullptr,nullptr,SW_SHOWNORMAL);break;
     case SettingAction::SoundSettings:ShellExecuteW(nullptr,L"open",L"ms-settings:sound",nullptr,nullptr,SW_SHOWNORMAL);break;
+    case SettingAction::BluetoothSettings:ShellExecuteW(nullptr,L"open",L"ms-settings:bluetooth",nullptr,nullptr,SW_SHOWNORMAL);break;
+    case SettingAction::PowerSettings:ShellExecuteW(nullptr,L"open",L"ms-settings:powersleep",nullptr,nullptr,SW_SHOWNORMAL);break;
+    case SettingAction::OpenArmoury:if(!content_.platform.armoury.empty())ShellExecuteW(nullptr,L"open",(L"shell:AppsFolder\\"+content_.platform.armoury).c_str(),nullptr,nullptr,SW_SHOWNORMAL);break;
     case SettingAction::TransparencySettings:ShellExecuteW(nullptr,L"open",L"ms-settings:personalization-colors",nullptr,nullptr,SW_SHOWNORMAL);break;
     default:break;
     }
@@ -64,6 +67,8 @@ std::string IslandWindow::verifySetting(const SettingItem& item){
         interaction_=InteractionState::Rest;content_.pinned=false;transition(IslandState::Compact);if(opened!=settings_.hoverOpen)return fail("hover opening does not follow preference");}
     if(k=="startAtLogin"&&startupRequest_!=int(settings_.startAtLogin))return fail("sign-in startup request not issued");
     if(k=="accent"||k=="albumAccents"){UINT32 accents[]={0xa4deca,0xa6cafa,0xccb8f1,0xefc7a6};UINT32 expected=content_.light?0x487467:settings_.albumAccents&&content_.playback.artwork?content_.playback.artwork->accent:accents[settings_.accent];if(renderer_->accentColor()!=expected)return fail("accent color not applied");}
+    if(k=="autoHide"&&(settings_.autoHide!=autoHideTimer_&&!testing_))return fail("edge polling does not follow preference");
+    if(k=="autoHide"&&!settings_.autoHide&&motion_.slide.target()!=0)return fail("island stays hidden after auto-hide was turned off");
     if(k=="monitor"&&MonitorFromWindow(window_,MONITOR_DEFAULTTONULL)==nullptr)return fail("island left every display");
     if(content_.settings!=settings_)return fail("renderer did not receive preferences");
     return {};
@@ -78,7 +83,7 @@ void IslandWindow::settingsTestStep(){
         KillTimer(window_,21);settingsWindow_.reset();
         std::ostringstream out;out<<"Settings window end-to-end test: "<<(settingsTestFailures_?"FAIL":"PASS")<<" ("<<settingsTestLog_.size()<<" checks, "<<settingsTestFailures_<<" failures)\n";for(auto& l:settingsTestLog_)out<<l<<'\n';
         store_.submit([dir=store_.directory,text=out.str()]{std::ofstream(dir/L"settings-test.txt")<<text;});PostMessageW(window_,WM_CLOSE,0,0);};
-    if(++settingsTestWait_>400){log(false,"test timed out in phase "+std::to_string(settingsTestPhase_)+" item "+std::to_string(settingsTestItem_));finish();return;}
+    if(++settingsTestWait_>400){{std::string where;RECT client{};if(settings)GetClientRect(settings,&client);if(auto p=probe(settingsTestItem_))where=" rect "+std::to_string(p->rect.top)+".."+std::to_string(p->rect.bottom)+" client "+std::to_string(client.bottom)+" settled "+std::to_string(settingsWindow_->settled());log(false,"test timed out in phase "+std::to_string(settingsTestPhase_)+" item "+std::to_string(settingsTestItem_)+where);}finish();return;}
     switch(settingsTestPhase_){
     case 0:if(!settingsWindow_)openSettings(0);if(settingsWindow_->open()&&!settingsWindow_->probes().empty()){settingsTestItem_=-1;settingsTestPhase_=1;}return;
     case 1:{int next=settingsTestItem_+1;while(next<int(items.size())&&!testable(items[next]))++next;settingsTestItem_=next;settingsTestWait_=0;
@@ -117,9 +122,9 @@ void IslandWindow::settingsTestStep(){
         settingsTestWait_=0;settingsTestPhase_=twoMoves?30:1;return;}
     case 30:{if(!settingsWindow_->settled())return;settingsTestPhase_=6;return;}
     case 20:{Settings saved=store_.load(settingsFile_);log(saved==settings_,"persistence: settings-qa.nexus matches the live island");
-        // Keyboard path: focus the first section, Tab to its first control, toggle with Space.
+        // Keyboard path: focus the first section, Tab past every section to its first control, toggle with Space.
         bool before=settings_.startAtLogin;for(auto& p:settingsWindow_->probes())if(p.kind==SettingsWindow::Probe::Kind::Section&&p.index==0)click(p.rect);
-        SendMessageW(settings,WM_KEYDOWN,VK_TAB,0);for(int i=0;i<7;++i)SendMessageW(settings,WM_KEYDOWN,VK_TAB,0);SendMessageW(settings,WM_KEYDOWN,VK_SPACE,0);settingsTestValue_=before;settingsTestPhase_=21;settingsTestWait_=0;SetTimer(window_,21,90,nullptr);return;}
+        for(size_t i=0;i<settingSections().size();++i)SendMessageW(settings,WM_KEYDOWN,VK_TAB,0);SendMessageW(settings,WM_KEYDOWN,VK_SPACE,0);settingsTestValue_=before;settingsTestPhase_=21;settingsTestWait_=0;SetTimer(window_,21,90,nullptr);return;}
     case 21:{bool changed=settings_.startAtLogin!=bool(settingsTestValue_);if(!changed&&settingsTestWait_<30)return;log(changed,"keyboard: Tab focus and Space toggle reach the island");finish();return;}
     }
 }

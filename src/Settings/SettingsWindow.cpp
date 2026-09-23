@@ -18,8 +18,8 @@ namespace {
 constexpr UINT RefreshMessage=WM_APP+1,ShowMessage=WM_APP+2;
 constexpr float Sidebar=236,Pad=20,TitleTop=30,CardTop=112;
 constexpr SpringSpec Knob{1,520,36},Pill{.9,480,36},Hover{1,700,52},Page{1,300,32},Scroll{1,260,34},Indicator{.8,420,32};
-const wchar_t* subtitles[]={L"How the island behaves while you work",L"Size, position and everyday mode",L"Theme, glass and color",L"Springs, feedback and accessibility",L"What the resting island shows",L"Players, logos and audio output",L"Arrange the Command Center",L"Version, diagnostics and reset"};
-const Icon sectionIcons[]={Icon::Settings,Icon::Island,Icon::Sun,Icon::Spark,Icon::Stats,Icon::Music,Icon::Home,Icon::Info};
+const wchar_t* subtitles[]={L"How the island behaves while you work",L"Size, position and everyday mode",L"Theme, glass and color",L"Springs, feedback and accessibility",L"What the resting island shows",L"Players, logos and audio output",L"Bluetooth, battery and performance",L"Arrange the Command Center",L"Version, diagnostics and reset"};
+const Icon sectionIcons[]={Icon::Settings,Icon::Island,Icon::Sun,Icon::Spark,Icon::Stats,Icon::Music,Icon::Bluetooth,Icon::Home,Icon::Info};
 const UINT32 swatchColors[]={0xa4deca,0xa6cafa,0xccb8f1,0xefc7a6};
 struct Palette {UINT32 bg,card,border,ink,muted,accent,onAccent,pill;float bgAlpha,cardAlpha;bool light;};
 bool systemLight(){DWORD light=0,size=sizeof(light);RegGetValueW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",L"AppsUseLightTheme",RRF_RT_REG_DWORD,nullptr,&light,&size);return light!=0;}
@@ -58,7 +58,7 @@ private:
     Spring& spring(std::map<int,Spring>& map,int key,double initial){auto it=map.find(key);if(it==map.end())it=map.emplace(key,Spring(initial)).first;return it->second;}
     void aim(Spring& spring,double target,SpringSpec spec){double now=seconds();if(s_.reduceMotion)spring.reset(target,now);else if(std::abs(spring.target()-target)>1e-4)spring.retarget(target,now,spec);}
     double at(Spring& spring){return spring.sample(seconds()).position;}
-    std::vector<Hit> focusOrder();void refresh();
+    std::vector<Hit> focusOrder();void refresh();bool about()const{return section_==int(settingSections().size())-1;}
 };
 
 Palette SettingsUi::palette()const{
@@ -92,8 +92,8 @@ void SettingsUi::stroke(D2D1_RECT_F r,float radius,UINT32 color,float alpha,floa
 std::vector<D2D1_RECT_F> SettingsUi::navRects(){std::vector<D2D1_RECT_F> r;for(size_t i=0;i<settingSections().size();++i){float y=104+i*44.f;r.push_back({12,y,Sidebar-12,y+40});}return r;}
 std::vector<Row> SettingsUi::layout(float& contentHeight,std::vector<D2D1_RECT_F>* nav){
     if(nav)*nav=navRects();
-    std::vector<Row> rows;const float left=Sidebar+20,right=W()-32,R=right-Pad,scroll=float(at(scroll_));float y=CardTop-scroll+(section_==7?92:0);
-    for(size_t index=0;index<items_.size();++index){auto& item=items_[index];if(item.section!=section_)continue;
+    std::vector<Row> rows;const float left=Sidebar+20,right=W()-32,R=right-Pad,scroll=float(at(scroll_));float y=CardTop-scroll+(about()?92:0);
+    for(size_t index=0;index<items_.size();++index){auto& item=items_[index];if(item.section!=section_||(item.action==SettingAction::OpenArmoury&&!context_.armoury))continue;
         Row row;row.item=int(index);float h=item.control==SettingControl::Order?52:64;row.row={left,y,right,y+h};float cy=y+h/2;
         switch(item.control){
         case SettingControl::Toggle:row.control={R-44,cy-11,R,cy+11};row.parts={row.control};break;
@@ -151,6 +151,8 @@ void SettingsUi::activate(const Hit& h,float x){
     case SettingControl::Button:{
         if(item.action==SettingAction::TransparencySettings){ShellExecuteW(nullptr,L"open",L"ms-settings:personalization-colors",nullptr,nullptr,SW_SHOWNORMAL);break;}
         if(item.action==SettingAction::SoundSettings){ShellExecuteW(nullptr,L"open",L"ms-settings:sound",nullptr,nullptr,SW_SHOWNORMAL);break;}
+        if(item.action==SettingAction::BluetoothSettings){ShellExecuteW(nullptr,L"open",L"ms-settings:bluetooth",nullptr,nullptr,SW_SHOWNORMAL);break;}
+        if(item.action==SettingAction::PowerSettings){ShellExecuteW(nullptr,L"open",L"ms-settings:powersleep",nullptr,nullptr,SW_SHOWNORMAL);break;}
         bool destructive=item.action==SettingAction::ResetAll||item.action==SettingAction::ClearLogs;
         if(destructive&&!(confirmItem_==h.item&&seconds()<confirmUntil_)){confirmItem_=h.item;confirmUntil_=seconds()+4;dirty=true;SetTimer(hwnd_,1,4100,nullptr);break;}
         confirmItem_=-1;PostMessageW(island_,SettingsActionMessage,WPARAM(item.action),0);dirty=true;break;}
@@ -186,7 +188,8 @@ void SettingsUi::theme(){
     p=palette();COLORREF caption=mica_?DWMWA_COLOR_DEFAULT:RGB((p.bg>>16)&255,(p.bg>>8)&255,p.bg&255),ink=RGB((p.ink>>16)&255,(p.ink>>8)&255,p.ink&255);DwmSetWindowAttribute(hwnd_,DWMWA_CAPTION_COLOR,&caption,sizeof(caption));DwmSetWindowAttribute(hwnd_,DWMWA_TEXT_COLOR,&ink,sizeof(ink));
 }
 HWND SettingsUi::create(){
-    WNDCLASSEXW wc{sizeof(wc)};wc.lpfnWndProc=[](HWND h,UINT m,WPARAM w,LPARAM l)->LRESULT{auto self=reinterpret_cast<SettingsUi*>(GetWindowLongPtrW(h,GWLP_USERDATA));if(m==WM_NCCREATE){self=static_cast<SettingsUi*>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams);self->hwnd_=h;SetWindowLongPtrW(h,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(self));}if(self)try{return self->message(h,m,w,l);}catch(...){}return DefWindowProcW(h,m,w,l);};
+    // Messages sent from another thread are handled inside GetMessage without it returning, so wake the loop to render them.
+    WNDCLASSEXW wc{sizeof(wc)};wc.lpfnWndProc=[](HWND h,UINT m,WPARAM w,LPARAM l)->LRESULT{auto self=reinterpret_cast<SettingsUi*>(GetWindowLongPtrW(h,GWLP_USERDATA));if(m==WM_NCCREATE){self=static_cast<SettingsUi*>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams);self->hwnd_=h;SetWindowLongPtrW(h,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(self));}if(self)try{auto result=self->message(h,m,w,l);if((self->dirty||self->animating())&&InSendMessage())PostMessageW(h,WM_NULL,0,0);return result;}catch(...){}return DefWindowProcW(h,m,w,l);};
     wc.hInstance=GetModuleHandleW(nullptr);wc.lpszClassName=L"ArnavIsland.Settings";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.hIcon=LoadIconW(wc.hInstance,MAKEINTRESOURCEW(101));wc.hIconSm=wc.hIcon;RegisterClassExW(&wc);
     POINT cursor{};GetCursorPos(&cursor);HMONITOR monitor=MonitorFromPoint(cursor,MONITOR_DEFAULTTOPRIMARY);UINT dx=96,dy=96;GetDpiForMonitor(monitor,MDT_EFFECTIVE_DPI,&dx,&dy);MONITORINFO mi{sizeof(mi)};GetMonitorInfoW(monitor,&mi);
     float s=dx/96.f;RECT r{0,0,LONG(980*s),LONG(700*s)};AdjustWindowRectExForDpi(&r,WS_OVERLAPPEDWINDOW,FALSE,WS_EX_NOREDIRECTIONBITMAP,dx);int w=r.right-r.left,h=r.bottom-r.top;auto& work=mi.rcWork;w=std::min<int>(w,work.right-work.left);h=std::min<int>(h,work.bottom-work.top);
@@ -237,7 +240,7 @@ void SettingsUi::render(){
     const float left=Sidebar+20,right=W()-32,scroll=float(at(scroll_));
     ComPtr<ID2D1Layer> layer;dc_->CreateLayer(nullptr,&layer);dc_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),nullptr,D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,D2D1::IdentityMatrix(),in),layer.Get());
     text(settingSections()[section_],{left,TitleTop-scroll,right,TitleTop+40-scroll},28,p.ink,1,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(subtitles[section_],{left,TitleTop+42-scroll,right,TitleTop+64-scroll},13,p.muted);
-    if(section_==7){D2D1_RECT_F card{left,CardTop-scroll,right,CardTop+76-scroll};fill(card,10,p.card,p.cardAlpha);stroke(card,10,p.border,1);
+    if(about()){D2D1_RECT_F card{left,CardTop-scroll,right,CardTop+76-scroll};fill(card,10,p.card,p.cardAlpha);stroke(card,10,p.border,1);
         brush_->SetColor(D2D1::ColorF(p.ink));dc_->FillRoundedRectangle(D2D1::RoundedRect({left+20,card.top+26,left+64,card.top+50},12,12),brush_.Get());brush_->SetColor(D2D1::ColorF(p.accent));dc_->FillEllipse(D2D1::Ellipse({left+55,card.top+38},3,3),brush_.Get());
         text(L"Arnav Island "+context_.version,{left+80,card.top+14,right-20,card.top+38},15,p.ink,1,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(L"Native Windows preview · No account, cloud or telemetry upload. Preferences stay on this device.",{left+80,card.top+38,right-20,card.top+60},12,p.muted);}
     if(!rows.empty()){D2D1_RECT_F card{left,rows.front().row.top,right,rows.back().row.bottom};fill(card,10,p.card,p.cardAlpha);stroke(card,10,p.border,1);}
@@ -326,9 +329,11 @@ void SettingsWindow::run(Settings s,SettingsContext c,int section){
     CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
     {
         SettingsUi ui(island_,*state_,s,c,section);HWND h=ui.create();ShowWindow(h,SW_SHOW);SetForegroundWindow(h);ui.render();window_=h;
-        MSG msg{};bool running=true;
+        MSG msg{};bool running=true,moving=false;
         while(running){
-            if(ui.animating()){while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){if(msg.message==WM_QUIT){running=false;break;}TranslateMessage(&msg);DispatchMessageW(&msg);}if(running&&IsWindow(h))ui.render();}
+            if(ui.animating()){moving=true;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){if(msg.message==WM_QUIT){running=false;break;}TranslateMessage(&msg);DispatchMessageW(&msg);}if(running&&IsWindow(h))ui.render();}
+            // The last animated frame can land just before the springs settle; draw the resting frame once before blocking.
+            else if(moving){moving=false;if(IsWindow(h))ui.render();}
             else{if(GetMessageW(&msg,nullptr,0,0)<=0)break;TranslateMessage(&msg);DispatchMessageW(&msg);if(ui.dirty&&IsWindow(h))ui.render();}
         }
         window_=nullptr;

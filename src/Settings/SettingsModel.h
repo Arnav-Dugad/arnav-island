@@ -8,14 +8,14 @@ namespace nexus {
 // it, the island applies it, and tests walk it to prove each value is reachable,
 // persisted and bounded. Keys match the names written by Settings::write.
 enum class SettingControl { Toggle,Slider,Choice,Stepper,Swatch,Button,Order,Note };
-enum class SettingAction { None,OpenLab,ResetAll,OpenLogs,ClearLogs,TransparencySettings,ResetLayout,DisplaySettings,SoundSettings };
+enum class SettingAction { None,OpenLab,ResetAll,OpenLogs,ClearLogs,TransparencySettings,ResetLayout,DisplaySettings,SoundSettings,BluetoothSettings,PowerSettings,OpenArmoury };
 struct SettingItem {
     int section=0;std::wstring title,detail;SettingControl control=SettingControl::Toggle;std::string key;
     int lo=0,hi=1,step=1;std::vector<std::wstring> options;std::wstring unit;SettingAction action=SettingAction::None;
     std::function<int(const Settings&)> get;std::function<void(Settings&,int)> set;
     int clamp(int v)const{return std::clamp(v,lo,hi);}
 };
-inline const std::vector<std::wstring>& settingSections(){static const std::vector<std::wstring> names{L"General",L"Island",L"Appearance",L"Motion",L"Compact",L"Media & sound",L"Home & navigation",L"About"};return names;}
+inline const std::vector<std::wstring>& settingSections(){static const std::vector<std::wstring> names{L"General",L"Island",L"Appearance",L"Motion",L"Compact",L"Media & sound",L"Devices & power",L"Home & navigation",L"About"};return names;}
 inline const std::vector<std::wstring>& pageNames(){static const std::vector<std::wstring> names{L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio"};return names;}
 inline const std::vector<std::wstring>& metricNames(){static const std::vector<std::wstring> names{L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime"};return names;}
 inline void assignMetric(std::array<int,3>& metrics,int slot,int value){value=std::clamp(value,0,6);for(int i=0;i<3;++i)if(i!=slot&&metrics[i]==value)metrics[i]=metrics[slot];metrics[slot]=value;}
@@ -27,6 +27,8 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     using C=SettingControl;
     toggle(0,L"Start at sign-in",L"Open the island when you sign in to Windows",  "startAtLogin",&Settings::startAtLogin);
     toggle(0,L"Open on hover",L"Rest the pointer on the island to expand it",  "hoverOpen",&Settings::hoverOpen);
+    toggle(0,L"Hide until the pointer reaches the edge",L"The island tucks away and slides in when you touch its screen edge","autoHide",&Settings::autoHide);
+    toggle(0,L"Show alerts while hidden",L"Let connection, charging and volume cards slide in on their own","alertsReveal",&Settings::alertsReveal);
     number(0,C::Slider,L"Hover delay",L"How long the pointer rests before opening","hoverDelay",&Settings::hoverDelay,100,700,10,{},L" ms");
     number(0,C::Slider,L"Close delay",L"How long the island waits after you leave","collapseDelay",&Settings::collapseDelay,300,1600,50,{},L" ms");
     toggle(0,L"Hide in fullscreen",L"Stay out of games, videos and presentations","hideFullscreen",&Settings::hideFullscreen);
@@ -67,14 +69,20 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(5,L"Direct output switching",L"Change the default output from the island","directAudio",&Settings::directAudio);
     toggle(5,L"Shelf previews",L"Enlarge file thumbnails on hover","shelfPeek",&Settings::shelfPeek);
     button(5,L"Windows sound settings",L"Devices, spatial sound and more",L"Open",SettingAction::SoundSettings);
-    for(int slot=0;slot<7;++slot){SettingItem i;i.section=6;i.control=SettingControl::Order;i.key="nav"+std::to_string(slot);i.lo=0;i.hi=6;i.options=pageNames();i.title=L"Position "+std::to_wstring(slot+1);
+    toggle(6,L"Device connection cards",L"Headphones, controllers and other Bluetooth devices announce themselves","deviceCards",&Settings::deviceCards);
+    toggle(6,L"Charging card",L"Charge level, rate and time to full when you plug in or unplug","powerCards",&Settings::powerCards);
+    toggle(6,L"Keep charge history",L"A week of battery levels, stored only on this device","batteryHistory",&Settings::batteryHistory);
+    button(6,L"Bluetooth devices",L"Pair, remove and manage devices",L"Open",SettingAction::BluetoothSettings);
+    button(6,L"Power and battery",L"Power mode, battery saver and screen timeouts",L"Open",SettingAction::PowerSettings);
+    button(6,L"Armoury Crate",L"Performance profiles, GPU mode and lighting on ASUS ROG",L"Open",SettingAction::OpenArmoury);
+    for(int slot=0;slot<7;++slot){SettingItem i;i.section=7;i.control=SettingControl::Order;i.key="nav"+std::to_string(slot);i.lo=0;i.hi=6;i.options=pageNames();i.title=L"Position "+std::to_wstring(slot+1);
         i.get=[slot](const Settings& s){return s.navigation[slot];};i.set=[slot](Settings& s,int direction){int from=slot;moveNavigation(s.navigation,from,direction<0?-1:1);};v.push_back(std::move(i));}
-    for(int slot=0;slot<3;++slot){SettingItem i;i.section=6;i.control=SettingControl::Stepper;i.key="home"+std::to_string(slot);i.lo=0;i.hi=6;i.options=metricNames();i.title=std::wstring(L"Home statistic ")+wchar_t(L'1'+slot);i.detail=L"Values never repeat";
+    for(int slot=0;slot<3;++slot){SettingItem i;i.section=7;i.control=SettingControl::Stepper;i.key="home"+std::to_string(slot);i.lo=0;i.hi=6;i.options=metricNames();i.title=std::wstring(L"Home statistic ")+wchar_t(L'1'+slot);i.detail=L"Values never repeat";
         i.get=[slot](const Settings& s){return s.homeMetrics[slot];};i.set=[slot](Settings& s,int x){assignMetric(s.homeMetrics,slot,x);};v.push_back(std::move(i));}
-    button(6,L"Restore navigation and statistics",L"Other preferences stay as they are",L"Reset layout",SettingAction::ResetLayout);
-    button(7,L"Local logs",L"Diagnostics stay on this device",L"Open folder",SettingAction::OpenLogs);
-    button(7,L"Clear logs",L"Remove local diagnostic events",L"Clear",SettingAction::ClearLogs);
-    button(7,L"Reset all preferences",L"Sign-in startup is kept",L"Reset",SettingAction::ResetAll);
+    button(7,L"Restore navigation and statistics",L"Other preferences stay as they are",L"Reset layout",SettingAction::ResetLayout);
+    button(8,L"Local logs",L"Diagnostics stay on this device",L"Open folder",SettingAction::OpenLogs);
+    button(8,L"Clear logs",L"Remove local diagnostic events",L"Clear",SettingAction::ClearLogs);
+    button(8,L"Reset all preferences",L"Sign-in startup is kept",L"Reset",SettingAction::ResetAll);
     return v;
 }
 }

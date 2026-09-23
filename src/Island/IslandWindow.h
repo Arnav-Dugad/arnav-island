@@ -13,7 +13,12 @@
 #include "Audio/LoopbackAnalyzer.h"
 #include "Audio/SessionMixer.h"
 #include "Hardware/BrightnessProvider.h"
+#include "Hardware/BatteryProvider.h"
+#include "Hardware/BluetoothProvider.h"
+#include "Hardware/Platform.h"
+#include "Interaction/AutoHide.h"
 #include <memory>
+#include <thread>
 #include <vector>
 #include <commctrl.h>
 #include <shellapi.h>
@@ -24,7 +29,8 @@ class IslandWindow {
     HWND window_=nullptr,lab_=nullptr,qaMatte_=nullptr;HBRUSH qaBrush_=nullptr;HINSTANCE instance_{};HWINEVENTHOOK foregroundHook_=nullptr,locationHook_=nullptr;
     std::vector<HPOWERNOTIFY> powerNotifications_;
     std::unique_ptr<Renderer> renderer_;std::unique_ptr<AudioProvider> audio_;std::unique_ptr<MediaProvider> media_;
-    std::unique_ptr<SystemProvider> system_;std::unique_ptr<LoopbackAnalyzer> analyzer_;std::unique_ptr<SessionMixer> mixer_;std::unique_ptr<BrightnessProvider> brightness_;
+    std::thread platformThread_;std::unique_ptr<SystemProvider> system_;std::unique_ptr<LoopbackAnalyzer> analyzer_;std::unique_ptr<SessionMixer> mixer_;std::unique_ptr<BrightnessProvider> brightness_;std::unique_ptr<BatteryProvider> battery_;std::unique_ptr<BluetoothProvider> bluetooth_;std::unique_ptr<PowerModeWatcher> powerMode_;
+    AutoHide autoHide_;bool autoHideTimer_=false;void autoHideTick();void showNotice(int kind,const BluetoothDevice& device={});bool deviceRequest_=false;void updateBattery();
     std::wstring selectedSource_,followedSource_;double swipeAccumulator_=0,swipeTime_=0;bool mediaReachable_=false;
     void updateSessions();void switchSession(int delta,bool absolute=false);void updateProviders();void levelIndicator();void setMixerAt(LPARAM);bool systemRequested_=false,contentDirty_=true;Action pressedAction_=Action::None;
     void setVolumeAt(LPARAM);void scrubAt(LPARAM,bool begin=false);void endScrub(bool commit);void requestPreviews(const std::vector<ShelfItem>& incoming={});void perform(Action);Action hit(LPARAM);void refresh();void clockTimer();

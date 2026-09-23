@@ -1,4 +1,4 @@
-# Feature status — v0.7 preview
+# Feature status — v0.8 preview
 
 | Area | Implemented | Limits |
 |---|---|---|
@@ -7,7 +7,7 @@
 | Media | GSMTC thumbnail/metadata/transport/timeline; separate compact, Home, Music and Video destinations | All services not tested; only OS-exposed artwork; Auto cannot reliably classify every browser |
 | Shelf | File paths and Unicode text; copy-only OLE drop/drag-out; 32 entries with scroll, Shell thumbnails/file icons and drag images | In-memory; installed document handlers required; no virtual file/bitmap data, pre-entry attraction or persistence |
 | Audio | Endpoint events, volume/mute, output names, optional direct switching | Isolated undocumented setter; current-output reselection tested, physical headphones/speakers switching not exercised |
-| Power | Real percentage/AC state, event-driven charging pulse, low-battery priority | No invented runtime estimates or firmware access |
+| Power | Real percentage/AC state, event-driven charging pulse, low-battery priority; v0.8 battery driver readings (see below) | Estimates are labelled; no firmware access |
 | Compact | Media title/art, timer, volume activity, battery | One priority activity at a time; no waveform simulation |
 | Glass | v0.7: whole-island Frosted/Clear glass from the Windows.UI.Composition host backdrop brush, tint, sheen and rim; shape follows the body springs in the compositor | Blur needs Windows Transparency effects; off, battery saver or high contrast give tinted, unblurred glass. Glass always floats (no concave shoulders) |
 | Statistics | CPU/history, memory, physical network throughput, disk free, uptime, thread count | Adaptive 1 Hz while visible; no GPU/fan/temperature readings |
@@ -20,7 +20,7 @@
 | Accessibility | Keyboard controls, OS reduced motion, opaque fallback under high contrast | Full screen-reader tree, text scaling and complete high-contrast palette unfinished |
 | Safety | No injection, drivers, cloud, Explorer patching or arbitrary plugins | Provider recovery and GPU device-loss restoration unfinished |
 
-Brightness, ROG actions, clipboard history, external notifications, camera/microphone indicators and external download monitoring are not implemented. Empty or unavailable sensor values stay unavailable.
+Clipboard history, external notifications, camera/microphone indicators and external download monitoring are not implemented. Brightness (v0.7) and read-only ROG discovery (v0.8) are covered in the tables below. Empty or unavailable sensor values stay unavailable.
 
 | Feature | Implemented | Limits |
 |---|---|---|
@@ -46,3 +46,16 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Per-app mixer | IAudioSessionManager2 sessions grouped by process, ISimpleAudioVolume volume/mute, live IAudioMeterInformation peaks, real process icons | Default output only; apps that route to another device are not listed |
 | Level indicator | Volume (endpoint callback) and brightness (WmiMonitorBrightnessEvent) grow the compact island into a bar | Brightness works on panels that expose the WMI class (internal laptop panels); external monitors report unavailable |
 | Intent-aware hover | Fast pointer sweeps restart the hover delay | Threshold is fixed at 700 DIP/s |
+
+| v0.8 feature | Implemented | Limits |
+|---|---|---|
+| Edge reveal | On by default. Tucks the island past its docked edge; reveals only when the pointer is on the edge pixels within the island's band (±56 DIP); tucks after the collapse delay; open pages, pin, drags, drops and seeking keep it out; hidden island has an empty input region. Glass and region follow the slide spring | Checked every 33 ms while enabled (a cursor position read, no hooks). Alerts while hidden are off by default |
+| Brand marks | 88 Simple Icons 16.32.0 paths (CC0) parsed into Direct2D geometry; white plate for dark marks | Trademarks of their owners; used only to identify an app, service or device maker |
+| Web service identity | 44 rules matched against visible browser window titles, requiring the playing title or a Spotify-style "title • artist" match; brand-only titles accepted only when unique | A background tab, a renamed window or a title without the service name falls back to the browser icon |
+| Bluetooth cards | SetupAPI device properties for connection, battery and class of device; HCI connect/disconnect and device-node events; 60 s backstop check; maker from name keywords and vendor ID; type from class of device and name | Battery only when the device reports it to Windows. No codec, latency or signal strength (no public API). Names are matched at word starts |
+| Audio connect | One-shot connect/disconnect through the Bluetooth audio driver's KS property on the device's endpoint | Audio devices only; availability depends on the driver. Keyboards, mice and controllers are listed without buttons |
+| Battery tab | IOCTL_BATTERY_QUERY_* capacities, rate, voltage, cycles; health = full-charge/design; 24-hour graph from local history; estimates from the reported rate | Cycle count 0 is shown as unavailable. Relative-unit batteries hide energy values. This laptop reports rate 0 while holding charge |
+| Charge history | 7 days at 5-minute spacing in `battery-history.nexus`, atomic writes | On by default; turning it off deletes the file |
+| Charging card | AC change shows level, rate, time to full or battery-care state, one-shot energy sweep | No endless decorative loop; with reduced motion the sweep is skipped |
+| Power mode | PowerRegisterForEffectivePowerModeNotifications | Display only; the island never changes the power mode |
+| ROG | Manufacturer/model from the BIOS registry values; Armoury Crate detected in the Start menu app list and opened by its app ID | Read-only. No ACPI, WMI writes, GPU-mode, fan or profile control |

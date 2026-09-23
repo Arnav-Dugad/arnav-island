@@ -10,6 +10,9 @@
 #include "Audio/LoopbackAnalyzer.h"
 #include "Audio/SessionMixer.h"
 #include "Media/AppIdentity.h"
+#include "Hardware/BatteryProvider.h"
+#include "Hardware/BluetoothProvider.h"
+#include "Hardware/Platform.h"
 using namespace nexus;
 int main(int argc,char** argv){
     OleInitialize(nullptr);
@@ -31,6 +34,13 @@ int main(int argc,char** argv){
         auto frame=analyzer.frame();for(float b:frame.bands)if(!(b>=0&&b<=1))return 10;
         std::cout<<"cycle "<<i<<": mixer "<<(mixer.available?"available":"unavailable")<<" ("<<mixer.entries().size()<<" sources); loopback "<<(analyzer.available?"available":"unavailable")<<"; brightness "<<brightness.value.load()<<"\n";analyzer.setActive(false);}
     {auto calculator=resolveApp(L"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App");std::cout<<"AppsFolder identity: "<<(calculator.icon?"real icon":"no icon")<<", browser="<<calculator.browser<<"\n";if(calculator.browser)return 11;}
+    // Phase 3: battery driver, Bluetooth device nodes, audio reconnect plumbing (probe only: nothing connects).
+    {auto b=BatteryProvider::query();std::cout<<"Battery: present="<<b.present<<" percent="<<b.percent<<" design="<<b.designMwh<<" full="<<b.fullMwh<<" rate="<<b.rateMw<<" cycles="<<b.cycles<<" relative="<<b.relative<<"\n";if(b.present&&(b.percent<0||b.percent>100))return 12;}
+    {auto devices=BluetoothProvider::enumerate();int connected=0,withBattery=0,audio=0,branded=0;for(auto& d:devices){connected+=d.connected;withBattery+=d.battery>=0;audio+=d.audio;branded+=!d.brand.empty();if(d.name.empty()||d.battery>100)return 13;}
+        std::cout<<"Bluetooth: "<<devices.size()<<" paired, "<<connected<<" connected, "<<withBattery<<" with battery, "<<audio<<" audio, "<<branded<<" with brand marks\n";
+        for(auto& d:devices)if(d.audio){HRESULT hr=BluetoothProvider::audioConnection(d.name,true,true);std::cout<<"Reconnect path for an audio device: "<<(SUCCEEDED(hr)?"endpoint and KS control found":"not found")<<" (probe only)\n";break;}}
+    {BatteryProvider battery(window,{},false);BluetoothProvider bluetooth(window);double deadline=seconds()+1.5;MSG msg{};while(seconds()<deadline){while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE))DispatchMessageW(&msg);MsgWaitForMultipleObjects(0,nullptr,FALSE,15,QS_ALLINPUT);}std::cout<<"Battery and Bluetooth workers started and stopped; radio "<<(bluetooth.available?"present":"absent")<<"\n";}
+    {auto p=platformInfo();std::cout<<"Platform: "<<(p.rog?"ASUS ROG":p.asus?"ASUS":"other")<<", Armoury Crate "<<(p.armoury.empty()?"absent":"installed")<<"\n";}
     DestroyWindow(window);OleUninitialize();double elapsed=seconds()-start;
     std::cout<<"Five real provider start/stop cycles completed in "<<elapsed<<" seconds; no audio changes requested\n";
     return elapsed<15?0:1;

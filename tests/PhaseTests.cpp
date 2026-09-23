@@ -2,6 +2,11 @@
 #include "Audio/Spectrum.h"
 #include "Settings/SettingsModel.h"
 #include "Media/AppIdentity.h"
+#include "Design/SvgPath.h"
+#include "Design/BrandMatch.h"
+#include "Interaction/AutoHide.h"
+#include "Hardware/BatteryModel.h"
+#include "Hardware/BluetoothProvider.h"
 #include <iostream>
 #include <random>
 #include <set>
@@ -62,7 +67,46 @@ int main(){try{
     // Browser identity is exact enough not to capture unrelated apps.
     for(auto name:{L"Google Chrome",L"MSEdge",L"Microsoft Edge",L"firefox.exe",L"Brave",L"arc.exe"})test(isBrowserName(name),"browser recognized");
     for(auto name:{L"Spotify",L"Arcade Studio",L"Citizen",L"VLC media player",L"Apple Music",L"Search"})test(!isBrowserName(name),"non-browser not misclassified");
+    // Every embedded brand mark parses and stays inside its 24x24 view box.
+    struct Bounds:SvgSink{float x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;int segments=0;void add(float x,float y){x0=std::min(x0,x);y0=std::min(y0,y);x1=std::max(x1,x);y1=std::max(y1,y);++segments;}
+        void move(float x,float y)override{add(x,y);}void line(float x,float y)override{add(x,y);}void cubic(float,float,float,float,float x,float y)override{add(x,y);}void quad(float,float,float x,float y)override{add(x,y);}void arc(float,float,float,bool,bool,float x,float y)override{add(x,y);}void close()override{}};
+    for(auto& mark:brandMarks){Bounds b;test(SvgPathReader(mark.path).read(b),"brand path parses");test(b.segments>2&&b.x0>=-.6f&&b.y0>=-.6f&&b.x1<=24.6f&&b.y1<=24.6f,"brand path inside view box");}
+    test(std::size(brandMarks)>=80,"many real brand marks embedded");
+    {Bounds b;test(SvgPathReader("M2 2h4v4H2zm8 0l2 2-2 2a2 2 0 1 1 0-4Z").read(b)&&b.x0==2&&b.x1==12,"relative commands and arcs");Bounds bad;test(!SvgPathReader("M2 2 Lx").read(bad),"malformed path rejected");}
+    // Services: strong title matches win; brand-only titles need to be unique.
+    test(matchService({L"Lo-fi beats - YouTube - Google Chrome"},L"Lo-fi beats",L"")=="youtube","YouTube tab identified");
+    test(matchService({L"Blinding Lights - YouTube Music"},L"Blinding Lights",L"The Weeknd")=="youtubemusic","YouTube Music before YouTube");
+    test(matchService({L"Blinding Lights • The Weeknd - Google Chrome"},L"Blinding Lights",L"The Weeknd")=="spotify","Spotify web player title pattern");
+    test(matchService({L"Netflix - Microsoft Edge"},L"Episode 3",L"")=="netflix","brand-only service when unique");
+    test(matchService({L"Netflix",L"Prime Video: Home"},L"Episode 3",L"").empty(),"ambiguous brand-only titles give nothing");
+    test(matchService({L"Inbox - Outlook"},L"Episode 3",L"").empty(),"unrelated windows give nothing");
+    test(appBrand(L"Spotify.exe")=="spotify"&&appBrand(L"vlc media player")=="vlcmediaplayer"&&appBrand(L"Notepad").empty(),"app fallback marks");
+    for(auto& r:serviceRules)test(findBrand(r.slug)||r.monogram,"every service has a mark or a monogram");
+    // This laptop's paired devices classify sensibly.
+    test(deviceKind(0x240404,L"WH-1000XM4")==DeviceKind::Headphones&&deviceBrand(L"WH-1000XM4")=="sony","Sony headphones");
+    test(deviceKind(0,L"Sam's Buds3 Pro")==DeviceKind::Earbuds&&deviceBrand(L"Sam's Buds3 Pro")=="samsung","Galaxy Buds");
+    test(deviceKind(0,L"Stone 352 Pro")==DeviceKind::Speaker&&deviceBrand(L"Stone 352 Pro")=="boat"&&deviceBrand(L"PartyPal 400")=="boat","boAt speakers");
+    test(deviceKind(0x5a020c,L"Sam's S23+")==DeviceKind::Phone&&deviceBrand(L"Sam's S23+")=="samsung","Galaxy phone");
+    test(deviceKind(0x002508,L"Xbox Wireless Controller")==DeviceKind::Gamepad&&deviceKind(0,L"AULA-F75 5.0 KB")==DeviceKind::Keyboard,"controller and keyboard");
+    test(deviceBrand(L"Philips TAS2400").empty()&&deviceKind(0,L"Philips TAS2400")==DeviceKind::Other&&deviceBrand(L"Galaxy S24 Ultra")=="samsung","model numbers match only at word starts");
+    test(deviceBrand(L"Headset",0x054c,2)=="sony"&&deviceBrand(L"Buds",0x0075,1)=="samsung"&&deviceBrand(L"HBTS001").empty(),"vendor IDs and unknowns");
+    for(auto& d:{L"sony",L"samsung",L"boat",L"apple",L"bose",L"jbl"}){std::string slug;for(wchar_t c:std::wstring(d))slug+=char(c);test(findBrand(slug)!=nullptr,"device brand marks present");}
+    {BluetoothDevice a;a.name=L"WH-1000XM4";BluetoothDevice b=a;b.connected=true;auto on=bluetoothChanges({a},{b});test(on.size()==1&&on[0].connected,"connection event");auto off=bluetoothChanges({b},{a});test(off.size()==1&&!off[0].connected,"disconnection event");
+        test(bluetoothChanges({a},{a}).empty(),"no change no event");BluetoothDevice fresh;fresh.name=L"New";test(bluetoothChanges({},{fresh}).empty(),"newly paired but not connected is silent");test(bluetoothChanges({b},{}).size()==1,"removed while connected");}
+    // Auto-hide: only the edge reveals; leaving hides after the delay.
+    {AutoHide h;test(!h.update(true,false,false,true,0,.6),"visible while over island");test(!h.update(true,false,false,false,1,.6),"grace period");test(h.update(true,false,false,false,1.7,.6),"hides after delay");
+        test(h.update(true,false,false,true,2,.6),"passing over the hidden spot does not reveal");test(!h.update(true,false,true,false,2.1,.6),"touching the edge reveals");
+        h.update(true,false,false,false,3,.6);h.update(true,false,false,false,4,.6);test(h.hidden&&!h.update(true,true,false,false,4.1,.6),"expanded or alerting island is shown");test(!h.update(false,false,false,false,9,.6),"disabled never hides");}
+    test(atIslandEdge(960,0,0,0,1920,1080,0,960,160)&&!atIslandEdge(960,5,0,0,1920,1080,0,960,160)&&!atIslandEdge(400,0,0,0,1920,1080,0,960,160),"top edge band");
+    test(atIslandEdge(1919,540,0,0,1920,1080,1,540,130)&&!atIslandEdge(1900,540,0,0,1920,1080,1,540,130),"right edge band");
+    // Battery estimates never extrapolate from relative units.
+    {BatteryReading r;r.present=true;r.charging=true;r.fullMwh=75949;r.remainingMwh=60000;r.rateMw=45000;BatteryEstimate e;e.observe(r);test(e.minutesToFull(r)==21&&e.minutesRemaining(r)==-1,"time to full");
+        r.charging=false;r.rateMw=-15000;e.observe(r);test(e.minutesRemaining(r)==240&&e.minutesToFull(r)==-1,"time remaining");r.relative=true;e.observe(r);test(e.minutesRemaining(r)==-1,"relative units give no estimate");
+        BatteryReading h;h.designMwh=90001;h.fullMwh=75949;test(std::abs(h.health()-.8439)<.001,"health from capacities");h.designMwh=0;test(h.health()<0,"unknown design capacity");
+        test(durationText(65)==L"1 h 5 min"&&durationText(20)==L"20 min"&&durationText(-1)==L"—","durations");}
+    {BatteryHistory h;for(int i=0;i<3000;++i)h.add(i*300,50+i%50,i%2);test(h.samples.size()<=BatteryHistory::limit,"history bounded");test(!h.add(h.samples.back().time+10,40,false),"five-minute spacing");
+        std::stringstream io;h.write(io);auto back=BatteryHistory::read(io);test(back.samples.size()==h.samples.size()&&back.samples.back().percent==h.samples.back().percent,"history round trip");std::stringstream bad("battery_history 1\n5 50 0\n3 40 1\n");test(BatteryHistory::read(bad).samples.empty(),"out-of-order history rejected");}
     {Spectrum sp;std::vector<float> block(480,.1f);auto start=std::chrono::steady_clock::now();for(int i=0;i<2000;++i){sp.push(block.data(),480);sp.analyze(48000,.01f);}
         double us=std::chrono::duration<double,std::micro>(std::chrono::steady_clock::now()-start).count()/2000;std::cout<<"Spectrum analysis: "<<us<<" us per 1024-point step (100 steps/s while audio plays)\n";test(us<2000,"analysis fits comfortably in its 10 ms cadence");}
-    std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model and identity checks\n";return 0;
+    std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery and auto-hide checks\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

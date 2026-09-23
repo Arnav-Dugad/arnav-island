@@ -58,7 +58,7 @@ void MediaProvider::run(){
     {
     ComPtr<Manager> manager;INT64 currentToken=0,sessionsToken=0;bool currentSubscribed=false,sessionsSubscribed=false;
     ComPtr<Changed> managerChanged,listChanged,mediaChanged,playChanged,timeChanged;std::vector<Watched> watched;uint64_t revision=0;
-    std::map<std::wstring,AppIdentity> identities;std::map<std::wstring,MediaService> services;
+    std::map<std::wstring,AppIdentity> identities;std::map<std::wstring,std::string> services;std::map<std::string,std::shared_ptr<const Artwork>> serviceIcons;
     auto unsubscribe=[](Watched& w){if(w.subscribed[0])w.session->remove_MediaPropertiesChanged(w.media);if(w.subscribed[1])w.session->remove_PlaybackInfoChanged(w.play);if(w.subscribed[2])w.session->remove_TimelinePropertiesChanged(w.time);};
     try{
         HSTRING name=nullptr;const wchar_t* runtime=L"Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager";check(WindowsCreateString(runtime,UINT32(wcslen(runtime)),&name));
@@ -101,7 +101,9 @@ void MediaProvider::run(){
                     if(requested>=0&&snapshot.canSeek&&seekSource==snapshot.source&&seekTitle==snapshot.title){ComPtr<IInspectable> operation;session->TryChangePlaybackPositionAsync(start+INT64(std::clamp(requested,snapshot.seekMin,snapshot.seekMax)*1e7),&operation);requested=-1;}}
                 auto id=identities.find(snapshot.source);if(id==identities.end())id=identities.emplace(snapshot.source,resolveApp(snapshot.source)).first;
                 snapshot.appName=id->second.name;snapshot.appIcon=id->second.icon;snapshot.browser=id->second.browser;
-                if(snapshot.browser){auto key=snapshot.source+L"\n"+snapshot.title;auto found=services.find(key);if(found==services.end()){if(services.size()>64)services.clear();found=services.emplace(key,detectService(id->second,snapshot.title)).first;}snapshot.service=found->second;}
+                if(snapshot.browser){auto key=snapshot.source+L"\n"+snapshot.title;auto found=services.find(key);if(found==services.end()){if(services.size()>64)services.clear();found=services.emplace(key,detectService(id->second,snapshot.title,snapshot.artist)).first;}snapshot.service=found->second;
+                    // Services without a published mark use an installed app of the same name, if any.
+                    if(!snapshot.service.empty()&&!findBrand(snapshot.service)){auto icon=serviceIcons.find(snapshot.service);if(icon==serviceIcons.end()){auto* rule=findService(snapshot.service);icon=serviceIcons.emplace(snapshot.service,rule?installedAppIcon(std::wstring(rule->name)):nullptr).first;}snapshot.serviceIcon=icon->second;}}
                 snapshot.sampledAt=seconds();snapshot.revision=++revision;w.last=snapshot;result.push_back(std::move(snapshot));
             }
             publish(std::move(result));HANDLE events[]={stop_,changed_.get()};if(WaitForMultipleObjects(2,events,FALSE,INFINITE)==WAIT_OBJECT_0)break;

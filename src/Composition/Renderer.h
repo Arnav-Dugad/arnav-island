@@ -18,6 +18,10 @@
 #include "Audio/LoopbackAnalyzer.h"
 #include "Interaction/DetailModels.h"
 #include "Composition/GlassBackdrop.h"
+#include "Hardware/BatteryModel.h"
+#include "Hardware/BluetoothProvider.h"
+#include "Hardware/Platform.h"
+#include "Design/BrandDraw.h"
 
 namespace nexus {
 struct ContentSnapshot {
@@ -30,6 +34,9 @@ struct ContentSnapshot {
     int battery=-1,volume=0; bool charging=false,muted=false;
     std::vector<MediaSnapshot> sessions;int session=0;std::vector<MixerEntry> mixer;int audioTab=0,mixerOffset=0;
     int hud=0,brightness=-1;bool waveform=false;
+    // Phase 3: power, devices and the notification card (kind 1 connected, 2 disconnected, 3 charging, 4 unplugged).
+    bool card=false;int statsTab=0,deviceOffset=0,powerMode=-1,toFull=-1,remaining=-1;BatteryReading power;std::vector<float> history;
+    std::vector<BluetoothDevice> devices;std::wstring deviceFeedback;PlatformInfo platform;struct Notice{int kind=0;BluetoothDevice device;} notice;
 };
 
 class Renderer {
@@ -39,7 +46,7 @@ class Renderer {
     ComPtr<IDCompositionTarget> target_;
     ComPtr<ID2D1Factory> d2d_;
     ComPtr<IDWriteFactory> write_;
-    ComPtr<IDCompositionVisual> root_,body_,inner_,header_,content_,bar_,art_,wingLeft_,wingRight_,pulseVisual_,hoverVisual_;
+    ComPtr<IDCompositionVisual> stage_,root_,body_,inner_,header_,content_,bar_,art_,wingLeft_,wingRight_,pulseVisual_,hoverVisual_;
     ComPtr<IDCompositionRectangleClip> clip_,innerClip_,barClip_,artClip_;
     ComPtr<IDCompositionEffectGroup> contentEffect_,barEffect_,headerEffect_,artEffect_,pulseEffect_,hoverEffect_;
     ComPtr<IDCompositionSurface> baseSurface_,innerSurface_,headerSurface_,contentSurface_,barSurface_,artSurface_,leftSurface_,rightSurface_,pulseSurface_,hoverSurface_;
@@ -72,6 +79,10 @@ class Renderer {
     ComPtr<IDCompositionRectangleClip> hudClip_;Spring spectrumOpacity_{0},hudOpacity_{0},badgeOpacity_{0};UINT32 barColor_=0,meterColor_=0;int barMode_=-1,barCount_=0;float barInset_=0;
     std::shared_ptr<const Artwork> badgeIcon_;int badgeService_=-1;bool badgeLight_=false;int meterRows_=0;
     void updateSpectrumLayout(const ContentSnapshot&,UINT32 accent);void updateHud(const ContentSnapshot&,UINT32 accent,UINT32 track);void updateBadge(const ContentSnapshot&,UINT32 bg);
+    BrandPainter brands_;ComPtr<IDCompositionVisual> tabPill_,cardIcon_,energy_;ComPtr<IDCompositionSurface> tabSurface_,cardIconSurface_,energySurface_;ComPtr<IDCompositionEffectGroup> stageEffect_,tabEffect_,cardIconEffect_,energyEffect_;
+    ComPtr<IDCompositionScaleTransform> cardIconScale_;ComPtr<IDCompositionRotateTransform> energyRotation_;Spring tabX_{0},tabOpacity_{0},cardPop_{1},energySpin_{0},energyGlow_{0};int tabKey_=-1;UINT32 tabColor_=0;int cardKey_=-1;
+    void updateTabs(const ContentSnapshot&,float x,float y,int count,int selected,bool visible,UINT32 fill);void updateCard(const ContentSnapshot&,UINT32 accent,UINT32 raised,UINT32 ink);
+    void identity(ID2D1RenderTarget*,const MediaSnapshot&,float x,float y,float size,UINT32 plate);void deviceBadge(ID2D1RenderTarget*,const BluetoothDevice&,float x,float y,float size,UINT32 plate,UINT32 ink);
     void drawPreview(ID2D1RenderTarget*,const Artwork&,float,float,float,float);
     float dpi_=96,scale_=1;
     ComPtr<IDCompositionAnimation> animation(const Spring&,double,float factor=1,float bias=0);
@@ -88,7 +99,7 @@ public:
     void animate(const MotionEngine&,double);
     void iconFeedback(Action,bool pressed,bool enabled);
     bool glassAvailable()const{return glass_.available();}GlassStyle glassStyle()const{return glass_.current();}UINT32 accentColor()const{return accentColor_;}
-    void spectrum(const SpectrumFrame&);void meters(const std::vector<MixerEntry>&,int offset,bool visible);
+    void spectrum(const SpectrumFrame&);void energize(bool reduced,bool charging);void meters(const std::vector<MixerEntry>&,int offset,bool visible);
     void absorb(const std::shared_ptr<const Artwork>&,float,float,float,float,bool); void routeConfirmed(bool,Action selected=Action::None); void commit(){check(device_->Commit());++commits;}
 };
 }

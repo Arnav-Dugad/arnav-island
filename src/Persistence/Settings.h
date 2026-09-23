@@ -8,7 +8,7 @@
 #include "Design/Layout.h"
 namespace nexus {
 struct Settings {
-    static constexpr int currentVersion=6;
+    static constexpr int currentVersion=7;
     int version=currentVersion,uiMode=1,preset=1,monitor=0,verticalOffset=0,horizontalOffset=0,hoverDelay=180,mediaLayout=0;
     int scale=100,corner=22,edge=0,theme=0,compactWidth=196,collapseDelay=650,accent=0;
     int material=0,glassTint=50;
@@ -18,6 +18,7 @@ struct Settings {
     bool reduceMotion=false,hideFullscreen=true,hoverOpen=true,startAtLogin=true;
     bool albumAccents=true,magnetic=true,compactMedia=true,compactBattery=true,directAudio=true;
     bool waveform=true,appIcons=true,hud=true,followSession=true;
+    bool autoHide=true,alertsReveal=false,deviceCards=true,powerCards=true,batteryHistory=true;
     // Glass floats a few DIPs from the screen edge, like a physical island.
     bool glassy()const{return material!=0;}
     bool floating()const{return verticalOffset>0||glassy();}
@@ -34,14 +35,14 @@ struct Settings {
 #undef NUM
 #define FLAG(name) else if(key==#name)s.name=value!=0;
         FLAG(compactVolume) FLAG(compactTimer) FLAG(compactClock) FLAG(shelfPeek) FLAG(collapseOnAppSwitch) FLAG(wheelVolume) FLAG(animatedIcons) FLAG(trackHandoff) FLAG(reduceMotion) FLAG(hideFullscreen) FLAG(hoverOpen) FLAG(startAtLogin) FLAG(albumAccents) FLAG(magnetic) FLAG(compactMedia) FLAG(compactBattery) FLAG(directAudio)
-        FLAG(waveform) FLAG(appIcons) FLAG(hud) FLAG(followSession)
+        FLAG(waveform) FLAG(appIcons) FLAG(hud) FLAG(followSession) FLAG(autoHide) FLAG(alertsReveal) FLAG(deviceCards) FLAG(powerCards) FLAG(batteryHistory)
 #undef FLAG
         }if(!in.eof())throw std::runtime_error("Malformed settings");if(!validNavigation(s.navigation))s.navigation=defaultNavigation;auto metrics=s.homeMetrics;std::sort(metrics.begin(),metrics.end());if(std::adjacent_find(metrics.begin(),metrics.end())!=metrics.end())s.homeMetrics=defaultMetrics;return s;}
     void write(std::ostream& out)const{out<<"version "<<currentVersion<<'\n';for(int i=0;i<7;++i)out<<"nav"<<i<<' '<<navigation[i]<<'\n';for(int i=0;i<3;++i)out<<"home"<<i<<' '<<homeMetrics[i]<<'\n';
 #define WRITE(name) out<<#name<<' '<<name<<'\n';
         WRITE(uiMode) WRITE(compactVolume) WRITE(compactTimer) WRITE(compactClock) WRITE(shelfPeek) WRITE(collapseOnAppSwitch) WRITE(wheelVolume) WRITE(glanceRings) WRITE(animatedIcons) WRITE(trackHandoff) WRITE(preset) WRITE(monitor) WRITE(verticalOffset) WRITE(horizontalOffset) WRITE(hoverDelay) WRITE(mediaLayout) WRITE(scale) WRITE(corner) WRITE(edge) WRITE(theme) WRITE(compactWidth) WRITE(collapseDelay) WRITE(accent)
         WRITE(material) WRITE(glassTint) WRITE(reduceMotion) WRITE(hideFullscreen) WRITE(hoverOpen) WRITE(startAtLogin) WRITE(albumAccents) WRITE(magnetic) WRITE(compactMedia) WRITE(compactBattery) WRITE(directAudio)
-        WRITE(waveform) WRITE(appIcons) WRITE(hud) WRITE(followSession)
+        WRITE(waveform) WRITE(appIcons) WRITE(hud) WRITE(followSession) WRITE(autoHide) WRITE(alertsReveal) WRITE(deviceCards) WRITE(powerCards) WRITE(batteryHistory)
 #undef WRITE
     }
     bool operator==(const Settings&)const=default;

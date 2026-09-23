@@ -3,7 +3,7 @@
 #include <d2d1.h>
 #include <cmath>
 namespace nexus {
-enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous,Next,Pin,Close,Plus,Minus,Muted,Volume,Battery,Processor,Memory,Download,Upload,Disk,Clock,File,Text,Check,Chevron,ArrowLeft,ArrowRight,Reset,Sun,Spark,Power,Link,Island,Info,Sliders,ArrowUp,ArrowDown,Brightness,Apps};
+enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous,Next,Pin,Close,Plus,Minus,Muted,Volume,Battery,Processor,Memory,Download,Upload,Disk,Clock,File,Text,Check,Chevron,ArrowLeft,ArrowRight,Reset,Sun,Spark,Power,Link,Island,Info,Sliders,ArrowUp,ArrowDown,Brightness,Apps,Earbuds,Speaker,Phone,Keyboard,Mouse,Gamepad,Watch,Bluetooth,Bolt,Heart,Gauge};
 // Original 24-unit optical grid. Rounded stroke ends are consistent at every DPI.
 inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float x,float y,float size,UINT32 color,float opacity=1){
     D2D1_MATRIX_3X2_F saved;rt->GetTransform(&saved);rt->SetTransform(D2D1::Matrix3x2F::Scale(size/24,size/24)*D2D1::Matrix3x2F::Translation(x,y)*saved);
@@ -52,6 +52,17 @@ inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float
     case Icon::ArrowUp:path({{5,15},{12,8},{19,15}});break;
     case Icon::ArrowDown:path({{5,9},{12,16},{19,9}});break;
     case Icon::Brightness:circle(12,12,3.6f);for(int i=0;i<8;++i){float a=i*3.14159265f/4;line(12+std::cos(a)*6.6f,12+std::sin(a)*6.6f,12+std::cos(a)*9.2f,12+std::sin(a)*9.2f);}break;
+    case Icon::Earbuds:path({{7,4},{9.5f,4},{10.5f,6},{10.5f,10},{9,12},{9,19}});circle(7,8,3);path({{17,4},{14.5f,4},{13.5f,6},{13.5f,10},{15,12},{15,19}});circle(17,8,3);break;
+    case Icon::Speaker:rect(6,2,18,22,3);circle(12,15,3.5f);dot(12,7,1.3f);break;
+    case Icon::Phone:rect(7,2,17,22,3);line(10.5f,18.5f,13.5f,18.5f);break;
+    case Icon::Keyboard:rect(2,6,22,18,3);for(float x:{6.f,9.f,12.f,15.f,18.f})dot(x,10,.9f);line(7,14,17,14);break;
+    case Icon::Mouse:rect(7,3,17,21,5);line(12,6,12,10);break;
+    case Icon::Gamepad:path({{7,7},{17,7},{21,15},{19.5f,18},{16,17},{14,14},{10,14},{8,17},{4.5f,18},{3,15},{7,7}},true);line(7,10,7,12.5f);line(5.8f,11.2f,8.2f,11.2f);dot(16.5f,10.5f,.9f);dot(18,12.5f,.9f);break;
+    case Icon::Watch:rect(6,6,18,18,4);path({{8,6},{9,2},{15,2},{16,6}});path({{8,18},{9,22},{15,22},{16,18}});path({{12,9},{12,12},{14,13}});break;
+    case Icon::Bluetooth:path({{7,7},{17,17},{12,21},{12,3},{17,7},{7,17}});break;
+    case Icon::Bolt:path({{13,2},{5,13},{11,13},{10,22},{19,10},{13,10},{13,2}},true,true);break;
+    case Icon::Heart:path({{12,20},{4,12},{3.2f,8},{5,5},{8.5f,4.5f},{12,8},{15.5f,4.5f},{19,5},{20.8f,8},{20,12},{12,20}},true);break;
+    case Icon::Gauge:path({{4,17},{3,13},{4.5f,8.5f},{8,5.5f},{12,4.5f},{16,5.5f},{19.5f,8.5f},{21,13},{20,17}});line(12,14,16,9);dot(12,14,1.4f);break;
     case Icon::Apps:rect(4,4,10,10,2);rect(14,4,20,10,2);rect(4,14,10,20,2);rect(14,14,20,20,2);break;
     }
     rt->SetTransform(saved);

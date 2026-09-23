@@ -52,3 +52,12 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **Brightness:** reads the current panel brightness from Windows' WMI monitor classes. It never changes brightness.
 - **Settings window:** preferences are written to `settings.nexus` only. QA runs of `--settings-test` use a separate `settings-qa.nexus` and never touch sign-in startup.
 - Release screenshots are produced with synthetic sessions (`--qa-showcase`) built from stock Windows app icons, over an app-owned matte or colour pattern; no personal desktop content is published.
+
+## v0.8 devices, battery and logos
+
+- **Edge reveal** reads only the pointer position (GetCursorPos) about 30 times a second while enabled. No hooks, no input recording.
+- **Web service logos:** visible browser window titles are compared locally with the playing title. Only the matched service name (for example `youtube`) is kept in memory. Titles are never stored, logged or sent.
+- **Bluetooth:** device names, connection state, battery and class of device are read from Windows' device properties to draw cards and the Devices tab. They are kept in memory only. Logs record that a device card was shown, never the device name or address. Connect/Disconnect is sent only when you press the button.
+- **Battery:** readings come from the battery driver. `battery-history.nexus` stores time, percentage and charging state every 5 minutes for 7 days. It never leaves the device. Turning off *Keep charge history* deletes it.
+- **Platform:** manufacturer and model come from the firmware values Windows keeps in the registry; Armoury Crate is detected from the Start menu app list. Nothing is written.
+- Public screenshots of device cards use `--qa-sample`, which replaces real paired devices with illustrative ones.

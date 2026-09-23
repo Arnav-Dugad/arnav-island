@@ -18,7 +18,7 @@ Verification: settings migration, profile roundtrip and malformed data, Mini/Liv
 - Media logos: use application-provided icons where identity is reliable; review official branding/redistribution terms before bundling each service's real logo. A browser session alone does not establish Spotify/YouTube/Netflix identity. Keep a neutral browser icon for ambiguity. Metadata/thumbnail/control coverage requires real Spotify, Apple Music, YouTube, VLC and browser testing.
 - Volume HUD already complements Windows. Refine the compact level line; do not suppress system UI using hooks or patches.
 
-## Phase 3 — devices, brightness, power
+## Phase 3 — devices, brightness, power (delivered in v0.8)
 
 - Bluetooth device events and reconnect: supported Windows device enumeration and [Bluetooth APIs](https://learn.microsoft.com/en-us/windows/win32/bluetooth/about-bluetooth). Battery via supported device properties or advertised [GATT services](https://learn.microsoft.com/en-us/windows/uwp/devices-sensors/gatt-client). Do not equate paired with connected. Codec/battery/reconnect are capability-dependent; do not invent universal codec access or firmware control.
 - Headphone arrival: correlate device connection and confirmed default endpoint before showing a brief card; no unsolicited output switching. Existing v0.5 route feedback is smaller in scope.
@@ -45,3 +45,16 @@ Phase 2 shipped: multi-session carousel, per-app mixer, real loopback spectrum, 
 Also delivered outside the phase plan at the user's request: a separate live-applying Settings window, and a Frosted/Clear glass material built on the host backdrop brush.
 
 Next recommended phase: Phase 3 devices and power — Bluetooth connection cards with battery where devices expose it, headphone arrival correlated with the confirmed default endpoint, and a battery-health page limited to readings the battery driver actually supplies.
+
+## Status after v0.8 — 2026-09-23
+
+Phase 3 shipped: Bluetooth connection cards (SetupAPI connection/battery/class properties, HCI and device-node events), a Devices tab with one-shot audio connect/disconnect, the battery-health tab from battery IOCTLs with labelled estimates, local charge history, the charging card with a one-shot energy sweep, power-mode display, and read-only ROG discovery that opens Armoury Crate.
+
+Deviations from the plan above, each deliberate:
+- Charge history is on by default rather than opt-in, so the 24-hour graph is useful from day one. It stays on this device and turning it off deletes the file.
+- Headphone arrival shows when the Bluetooth device connects. It is not yet correlated with the default audio endpoint changing; the existing output-switch feedback still covers that.
+- Service logos are bundled (Simple Icons, CC0) instead of read from each service. They identify, and never imply endorsement.
+
+Also delivered at the user's request: edge reveal (hidden until the pointer touches the island's screen edge), 88 brand marks with window-title service detection, and new motion (card morph, logo pop, tab pill, directional page slide).
+
+Next recommended phase: Phase 4, productivity and privacy. Start with the opt-in clipboard shelf and microphone-in-use indicator, both scoped to documented signals as described above.

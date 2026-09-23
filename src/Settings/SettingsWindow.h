@@ -10,7 +10,7 @@ namespace nexus {
 // Messages posted to the island. SettingsChanged carries an owned Settings*;
 // SettingsAction carries a SettingAction in wParam.
 constexpr UINT SettingsChangedMessage=WM_APP+60,SettingsActionMessage=WM_APP+61;
-struct SettingsContext {int monitors=1;bool blur=true,glassAvailable=true;std::wstring version;};
+struct SettingsContext {int monitors=1;bool blur=true,glassAvailable=true,armoury=false;std::wstring version;};
 // A standalone preferences window on its own UI thread. Every edit is posted to
 // the island immediately, so the island restyles while you drag or toggle.
 class SettingsUi;

@@ -33,6 +33,34 @@ void IslandWindow::updateProviders(){
     if(delivering!=content_.waveform){content_.waveform=delivering;if(renderer_)refresh();}
     if(mixer_)mixer_->setMetering(visible&&state_!=IslandState::Compact&&!content_.live&&content_.page==Page::Audio&&content_.audioTab==0);
 }
+void IslandWindow::autoHideTick(){
+    if(!renderer_||!IsWindowVisible(window_))return;double now=seconds(),s=dpi_/96;POINT c{};GetCursorPos(&c);MONITORINFO mi{sizeof(mi)};GetMonitorInfoW(MonitorFromWindow(window_,MONITOR_DEFAULTTONEAREST),&mi);RECT w{};GetWindowRect(window_,&w);
+    // Resting geometry, not the animated pose, so the trigger never drifts.
+    const double bw=motion_.width.target(),bh=motion_.height.target();auto origin=bodyOrigin(bw,bh,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);
+    const double left=w.left+origin.x*s,top=w.top+origin.y*s,right=left+bw*s,bottom=top+bh*s;
+    const double center=settings_.edge?(top+bottom)/2:(left+right)/2,half=(settings_.edge?bh:bw)*s/2+56*s;
+    bool atEdge=atIslandEdge(c.x,c.y,mi.rcMonitor.left,mi.rcMonitor.top,mi.rcMonitor.right,mi.rcMonitor.bottom,settings_.edge,center,half);
+    bool over=settings_.edge?(c.x>=left-8*s&&c.y>=top-8*s&&c.y<=bottom+8*s):(c.x>=left-8*s&&c.x<=right+8*s&&c.y>=mi.rcMonitor.top&&c.y<=bottom+8*s);
+    bool engaged=state_!=IslandState::Compact||content_.pinned||interaction_!=InteractionState::Rest||content_.dropHover||content_.scrub.active||(settings_.alertsReveal&&events_.active().has_value());
+    bool before=autoHide_.hidden,hidden=autoHide_.update(settings_.autoHide,engaged,atEdge,over,now,settings_.collapseDelay/1000.);
+    if(hidden==before)return;
+    if(hidden){KillTimer(window_,7);KillTimer(window_,19);content_.hovered=Action::None;}
+    if(motion_.reduced)motion_.slide.reset(hidden?1:0,now);else motion_.slide.retarget(hidden?1:0,now,hidden?SpringSpec{1,300,34}:SpringSpec{.9,420,26});
+    animate();store_.log("Info",hidden?"island_tucked":"island_revealed_at_edge");
+}
+// Connection and charging cards: a short Notification-state island.
+void IslandWindow::showNotice(int kind,const BluetoothDevice& device){
+    if(!renderer_||(state_!=IslandState::Compact&&state_!=IslandState::Notification))return;
+    if(settings_.autoHide&&autoHide_.hidden&&!settings_.alertsReveal)return;
+    content_.notice={kind,device};events_.publish({kind>=3?ActivityKind::Power:ActivityKind::Device,"notice",60,double(kind),2.4,3.2},seconds());
+    transition(IslandState::Notification);presentActivity();store_.log("Info",kind>=3?"power_card_shown":"device_card_shown");
+}
+void IslandWindow::updateBattery(){
+    auto reading=battery_->reading();auto estimate=battery_->estimate();content_.power=reading;content_.toFull=estimate.minutesToFull(reading);content_.remaining=estimate.minutesRemaining(reading);
+    auto history=battery_->history();content_.history.clear();const auto now=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    for(auto& sample:history.samples)if(now-sample.time<=86400){content_.history.push_back(float(1-double(now-sample.time)/86400.));content_.history.push_back(sample.percent/100.f);}
+    if((state_==IslandState::Expanded&&content_.page==Page::System&&content_.statsTab==1)||(content_.card&&content_.notice.kind>=3))refresh();
+}
 // Volume and brightness changes grow the resting island into a level indicator.
 void IslandWindow::levelIndicator(){
     int hud=0;if(settings_.hud&&settings_.edge==0&&state_==IslandState::Compact&&events_.active()){auto kind=events_.active()->kind;hud=kind==ActivityKind::Volume?1:kind==ActivityKind::Brightness&&content_.brightness>=0?2:0;}

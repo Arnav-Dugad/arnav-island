@@ -12,7 +12,7 @@ constexpr UINT MediaMessage=WM_APP+11;
 struct MediaSnapshot {
     bool available=false,playing=false,canToggle=false,canPrevious=false,canNext=false,canSeek=false;
     std::wstring title=L"Nothing playing",artist=L"Play something to get started.",source,appName;
-    MediaKind kind=MediaKind::Unknown;std::shared_ptr<const Artwork> artwork,appIcon;MediaService service=MediaService::None;bool browser=false,current=false;
+    MediaKind kind=MediaKind::Unknown;std::shared_ptr<const Artwork> artwork,appIcon,serviceIcon;std::string service;bool browser=false,current=false;
     double position=0,duration=0,sampledAt=0,seekMin=0,seekMax=0;uint64_t revision=0;
 };
 // Every Windows media session, not only the one Windows marks as current, so

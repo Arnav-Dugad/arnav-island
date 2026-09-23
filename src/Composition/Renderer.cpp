@@ -12,7 +12,7 @@ void Renderer::initialize(HWND hwnd,float dpi) {
     check(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(write_.GetAddressOf())));
     check(device_->CreateTargetForHwnd(hwnd,TRUE,&target_));glass_.initialize(hwnd,scale_,canvasWidth,canvasHeight);
     for(auto* p:{std::addressof(root_),std::addressof(body_),std::addressof(inner_),std::addressof(header_),std::addressof(content_),std::addressof(bar_),std::addressof(art_),std::addressof(wingLeft_),std::addressof(wingRight_),std::addressof(pulseVisual_),std::addressof(hoverVisual_)})check(device_->CreateVisual(p->GetAddressOf()));
-    check(root_->AddVisual(wingLeft_.Get(),FALSE,nullptr));check(root_->AddVisual(wingRight_.Get(),FALSE,nullptr));check(target_->SetRoot(root_.Get()));check(root_->AddVisual(body_.Get(),FALSE,nullptr));
+    check(root_->AddVisual(wingLeft_.Get(),FALSE,nullptr));check(root_->AddVisual(wingRight_.Get(),FALSE,nullptr));check(device_->CreateVisual(&stage_));check(stage_->AddVisual(root_.Get(),FALSE,nullptr));check(target_->SetRoot(stage_.Get()));check(device_->CreateEffectGroup(&stageEffect_));check(stage_->SetEffect(stageEffect_.Get()));check(root_->AddVisual(body_.Get(),FALSE,nullptr));
     for(auto* p:{std::addressof(inner_),std::addressof(header_),std::addressof(content_),std::addressof(bar_),std::addressof(art_),std::addressof(pulseVisual_),std::addressof(hoverVisual_)})check(body_->AddVisual(p->Get(),FALSE,nullptr));
     check(device_->CreateRectangleClip(&clip_));check(clip_->SetLeft(0.f));check(clip_->SetTop(0.f));check(body_->SetClip(clip_.Get()));
     check(device_->CreateRectangleClip(&innerClip_));check(innerClip_->SetLeft(0.f));check(innerClip_->SetTop(0.f));check(inner_->SetClip(innerClip_.Get()));
@@ -50,6 +50,11 @@ void Renderer::initialize(HWND hwnd,float dpi) {
     check(device_->CreateRectangleClip(&hudClip_));hudClip_->SetLeft(0.f);hudClip_->SetTop(0.f);hudClip_->SetBottom(4*scale_);hudFill_->SetClip(hudClip_.Get());for(auto* v:{hudTrack_.Get(),hudFill_.Get()})v->SetOffsetY(std::round(15*scale_));
     for(auto& bar:bars_){check(device_->CreateVisual(&bar.visual));check(device_->CreateScaleTransform(&bar.scale));bar.scale->SetCenterY(10*scale_);bar.visual->SetTransform(bar.scale.Get());spectrum_->AddVisual(bar.visual.Get(),FALSE,nullptr);bar.glide.p1=.15;}
     meterLayer_->SetOffsetX(std::round((20+156)*scale_));for(size_t i=0;i<meters_.size();++i){auto& m=meters_[i];check(device_->CreateVisual(&m.visual));check(device_->CreateScaleTransform(&m.scale));m.visual->SetTransform(m.scale.Get());m.visual->SetOffsetY(std::round((38+62+i*36+24)*scale_));meterLayer_->AddVisual(m.visual.Get(),FALSE,nullptr);}
+    for(auto* v:{std::addressof(tabPill_),std::addressof(cardIcon_),std::addressof(energy_)})check(device_->CreateVisual(v->GetAddressOf()));
+    body_->AddVisual(tabPill_.Get(),FALSE,content_.Get());body_->AddVisual(cardIcon_.Get(),TRUE,content_.Get());body_->AddVisual(energy_.Get(),TRUE,cardIcon_.Get());
+    for(auto pair:{std::pair{std::addressof(tabEffect_),tabPill_.Get()},std::pair{std::addressof(cardIconEffect_),cardIcon_.Get()},std::pair{std::addressof(energyEffect_),energy_.Get()}}){check(device_->CreateEffectGroup(pair.first->GetAddressOf()));pair.second->SetEffect(pair.first->Get());pair.first->Get()->SetOpacity(0.f);}
+    check(device_->CreateScaleTransform(&cardIconScale_));cardIconScale_->SetCenterX(28*scale_);cardIconScale_->SetCenterY(28*scale_);cardIcon_->SetTransform(cardIconScale_.Get());cardIcon_->SetOffsetX(std::round(20*scale_));cardIcon_->SetOffsetY(std::round(16*scale_));
+    check(device_->CreateRotateTransform(&energyRotation_));energyRotation_->SetCenterX(36*scale_);energyRotation_->SetCenterY(36*scale_);energy_->SetTransform(energyRotation_.Get());
     surface(pulseSurface_,640,500,[](auto* rt){rt->Clear(D2D1::ColorF(0x80e8ba,.22f));});check(pulseVisual_->SetContent(pulseSurface_.Get()));
     surface(hoverSurface_,64,32,[](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(0xffffff,.10f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(0,0,64,32),10,10),b.Get());});check(hoverVisual_->SetContent(hoverSurface_.Get()));
 }
@@ -91,7 +96,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         surface(navSurface_,47,44,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink,s.light?.055f:.055f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,47,44},12,12),b.Get());});nav_->SetContent(navSurface_.Get());
     }
     wingLeft_->SetContent(attached&&!glass?leftSurface_.Get():nullptr);wingRight_->SetContent(attached&&!glass?rightSurface_.Get():nullptr);barEffect_->SetOpacity(s.page==Page::Overview&&s.expanded&&!s.live?1.f:0.f);
-    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
+    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateCard(s,accent,solidRaised,ink);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio;updateTabs(s,0,stats?-2.f:30.f,stats?3:2,stats?s.statsTab:s.audioTab,stats||audio,s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
     surface(headerSurface_,600,150,[&](auto* rt){
         if(s.expanded)return;
         if(edge_){text(rt,s.battery>=0?std::to_wstring(s.battery)+L"%":L"—",0,82,64,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_CENTER);text(rt,s.charging?L"Charging":L"Battery",0,105,64,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER);return;}
@@ -102,7 +107,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             drawIcon(rt,d2d_.Get(),brightness?Icon::Brightness:level==0?Icon::Muted:Icon::Volume,x,8,18,ink);text(rt,level>=0?std::to_wstring(level):L"—",x+186,0,32,11.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_TRAILING,34);return;}
         const bool bars=s.settings.waveform&&s.playback.playing&&s.waveform&&s.settings.compactMedia;
         if(mini){if(!s.playback.artwork||!s.settings.compactMedia){drawIcon(rt,d2d_.Get(),s.focus.running?Icon::Focus:s.charging?Icon::Power:Icon::Music,14,10,14,muted);}if(!bars)text(rt,s.activity.empty()?L"···":s.activity.starts_with(L"Volume")?std::to_wstring(s.volume):s.activity==L"Muted"?L"—":L"•",42,0,26,10,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER,34);return;}
-        bool hasArt=bool(s.playback.artwork)&&s.settings.compactMedia;float start=hasArt?42.f:14.f,end=width-(ringsEnabled_?(ringCount_==2?64:40):10)-(bars?32:0);
+        bool hasArt=bool(s.playback.artwork)&&s.settings.compactMedia,logo=!hasArt&&s.settings.compactMedia&&s.settings.appIcons&&s.playback.available;if(logo)identity(rt,s.playback,13,7,20,solidRaised);float start=hasArt||logo?42.f:14.f,end=width-(ringsEnabled_?(ringCount_==2?64:40):10)-(bars?32:0);
         auto chip=[&](Icon glyph,const std::wstring& value,float span){if(end-start<span+78)return;end-=span;drawIcon(rt,d2d_.Get(),glyph,end+3,11,12,muted);text(rt,value,end+19,0,span-21,10,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);end-=7;};
         if(s.settings.compactClock){SYSTEMTIME t{};GetLocalTime(&t);wchar_t value[12];swprintf(value,12,L"%02u:%02u",t.wHour,t.wMinute);chip(Icon::Clock,value,58);}
         if(s.settings.compactVolume)chip(s.muted?Icon::Muted:Icon::Volume,std::to_wstring(s.volume),48);
@@ -120,6 +125,17 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         auto button=[&](Action a,const std::wstring& value,float x,float y,float w,float h,bool selected=false,bool enabled=true){targets.push_back({a,x,y,w,h,enabled});box(x,y,w,h,selected?(s.light?0x262c34:0xe8ecf2):raised,9);label(value,x+6,y,w-12,h,11.5f,!enabled?muted:selected?(s.light?0xf8f8fa:0x171b22):ink);};
         auto iconButton=[&](Action a,Icon glyph,float x,float y,float w=32,float h=32,bool primary=false,bool enabled=true){targets.push_back({a,x,y,w,h,enabled});if(primary)box(x,y,w,h,!enabled?raised:s.light?0x252b33:0xe8ecf2,h/2);icon(a,glyph,x+(w-18)/2,y+(h-18)/2,18,!enabled?muted:primary?(s.light?0xffffff:0x161b22):ink);};
         auto value=[](double v,int precision=0){if(v<0)return std::wstring(L"—");wchar_t buf[48];swprintf(buf,48,precision?L"%.1f":L"%.0f",v);return std::wstring(buf);};
+        if(s.card&&s.notice.kind){
+            auto& n=s.notice;const bool power=n.kind>=3;const int percent=power?s.battery:n.device.battery;
+            drawRing(rt,d2d_.Get(),28,28,31,3,percent>=0?percent/100.:0,n.kind==3?0x5fd98a:accent,track);
+            const bool holding=n.kind==3&&s.power.present&&!s.power.charging;std::wstring title=power?(n.kind==3?(holding?L"Plugged in":L"Charging"):L"On battery"):n.device.name,detail;
+            if(n.kind==3){wchar_t w[32]{};if(!s.power.relative&&s.power.rateMw>0)swprintf(w,32,L"%.1f W",s.power.rateMw/1000.);detail=holding?L"Not charging right now":w[0]?std::wstring(w)+(s.toFull>=0?L"  ·  full in about "+durationText(s.toFull):L""):L"Power connected";}
+            else if(n.kind==4)detail=s.remaining>=0?L"About "+durationText(s.remaining)+L" left":L"Running on battery power";
+            else{const wchar_t* kinds[]={L"Device",L"Headphones",L"Earbuds",L"Speaker",L"Phone",L"Computer",L"Keyboard",L"Mouse",L"Controller",L"Watch",L"Audio"};detail=std::wstring(n.kind==1?L"Connected":L"Disconnected")+L"  ·  "+kinds[int(n.device.kind)];}
+            text(rt,title,72,6,percent>=0?186.f:256.f,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,detail,72,30,percent>=0?186.f:256.f,11,muted);
+            if(percent>=0){text(rt,std::to_wstring(percent)+L"%",256,2,76,24,ink,DWRITE_FONT_WEIGHT_LIGHT,DWRITE_TEXT_ALIGNMENT_TRAILING,32);text(rt,power?L"battery":L"device battery",236,32,96,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
+            return;
+        }
         if(s.live){
             const bool bars=s.settings.waveform&&s.playback.playing&&s.waveform;
             text(rt,s.playback.available?s.playback.title:s.focus.running?L"Focus in progress":L"A little space for now",68,0,bars?216.f:250.f,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
@@ -133,9 +149,12 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         }
         const wchar_t* titles[]={L"Your day, at a glance",L"Now playing",L"System overview",L"Make room for focus",L"Make it yours",L"Within reach",L"Sound, your way"};
         int chips=s.page==Page::Media?int(std::min<size_t>(5,s.sessions.size())):0;if(chips<2)chips=0;
-        text(rt,titles[int(s.page)],0,0,chips?340.f-chips*28:302.f,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);iconButton(Action::Close,Icon::Close,352,-4,28,28);
+        auto tabs=[&](std::initializer_list<std::pair<Action,const wchar_t*>> items,int selected,float y){int i=0;for(auto& [a,name]:items){float x=i*88.f;targets.push_back({a,x,y,82,26});label(name,x,y,82,26,11.5f,i==selected?(s.light?0xf8f8fa:0x171b22):muted,i==selected?DWRITE_FONT_WEIGHT_SEMI_BOLD:DWRITE_FONT_WEIGHT_MEDIUM);++i;}};
+        if(s.page==Page::System)tabs({{Action::StatsSystem,L"System"},{Action::StatsBattery,L"Battery"},{Action::StatsDevices,L"Devices"}},s.statsTab,-2);
+        else text(rt,titles[int(s.page)],0,0,chips?340.f-chips*28:302.f,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+        iconButton(Action::Close,Icon::Close,352,-4,28,28);
         for(int i=0;i<chips;++i){auto& session=s.sessions[i];float x=344-float(chips-i)*28;bool selected=i==s.session;box(x,-2,24,24,raised,12);
-            if(session.appIcon)drawPreview(rt,*session.appIcon,x+4,2,16,16);else drawIcon(rt,d2d_.Get(),Icon::Music,x+5,3,14,muted);
+            identity(rt,session,x+3,1,18,solidRaised);
             if(selected){b->SetColor(D2D1::ColorF(accent));rt->DrawEllipse(D2D1::Ellipse({x+12,10},12.5f,12.5f),b.Get(),1.6f);}
             targets.push_back({Action(int(Action::SessionBase)+i),x,-2,24,24});}
         if(s.page==Page::Overview){
@@ -147,15 +166,41 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         }else if(s.page==Page::Media){
             bool video=s.settings.mediaLayout==2||(s.settings.mediaLayout==0&&s.playback.kind==MediaKind::Video);float tx=video?166.f:118.f,tw=380-tx;
             if(!s.playback.artwork){box(0,video?30:44,video?148:100,video?148:100,raised,18);drawIcon(rt,d2d_.Get(),Icon::Music,video?56:34,video?85:77,32,muted);}
-            text(rt,s.playback.title,tx,45,tw,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.artist,tx,74,tw,11,muted);{std::wstring app=s.playback.service==MediaService::YouTube?L"YouTube":s.playback.service==MediaService::YouTubeMusic?L"YouTube Music":s.playback.appName;if(app.empty())app=video?L"Video":L"Music";
+            text(rt,s.playback.title,tx,45,tw,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.artist,tx,74,tw,11,muted);{auto* rule=findService(s.playback.service);std::wstring app=rule?std::wstring(rule->name):s.playback.appName;if(app.empty())app=video?L"Video":L"Music";
                 if(s.sessions.size()>1)app+=L"  ·  "+std::to_wstring(s.session+1)+L" of "+std::to_wstring(s.sessions.size());text(rt,app,tx,100,std::max(40.f,tw-(s.settings.waveform&&s.playback.playing&&s.waveform?104.f:0.f)),9.5f,muted);}
             iconButton(Action::Previous,Icon::Previous,tx,132,36,36,false,s.playback.canPrevious);iconButton(Action::Play,s.playback.playing?Icon::Pause:Icon::Play,tx+54,124,52,52,true,s.playback.canToggle);iconButton(Action::Next,Icon::Next,tx+124,132,36,36,false,s.playback.canNext);
             double position=std::clamp(s.playback.position+(s.playback.playing?std::max(0.,seconds()-s.playback.sampledAt):0.),0.,s.playback.duration);if(s.playback.canSeek)targets.push_back({Action::Seek,0,178,380,25});if(s.scrub.active){position=s.scrub.value;text(rt,L"Pull away for finer control",tx,176,tw,8.5f,muted);}text(rt,s.playback.duration>0?clockText(position):L"No timeline provided",0,200,160,10,muted);button(Action::MediaMode,s.settings.mediaLayout==0?L"Auto":s.settings.mediaLayout==1?L"Music":L"Video",167,199,54,22);text(rt,s.playback.duration>0?clockText(s.playback.duration):L"",300,200,80,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);
+        }else if(s.page==Page::System&&s.statsTab==1){
+            const auto& p=s.power;const int percent=s.battery;const bool charging=p.charging||(s.charging&&!p.present);
+            drawRing(rt,d2d_.Get(),58,100,40,4,percent>=0?percent/100.:0,charging?0x5fd98a:accent,track);
+            if(charging)drawIcon(rt,d2d_.Get(),Icon::Bolt,51,68,14,0x5fd98a);text(rt,percent>=0?std::to_wstring(percent)+L"%":L"—",18,86,80,20,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_CENTER,28);
+            wchar_t rate[32]{};if(p.present&&!p.relative&&p.rateMw!=0)swprintf(rate,32,L"  ·  %.1f W",std::abs(p.rateMw)/1000.);
+            text(rt,std::wstring(charging?L"Charging":s.charging?L"Plugged in":L"On battery")+rate,122,44,258,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+            text(rt,charging&&s.toFull>=0?L"Full in about "+durationText(s.toFull):!s.charging&&s.remaining>=0?L"About "+durationText(s.remaining)+L" left":s.charging&&percent>=99?L"Fully charged":s.charging&&!charging&&p.present?L"Charging paused, likely battery care":L"Time estimate appears once the rate settles",122,68,258,11,muted);
+            auto stat=[&](Icon glyph,const wchar_t* name,const std::wstring& number,float x){drawIcon(rt,d2d_.Get(),glyph,x,98,12,muted);text(rt,name,x+17,96,70,9,muted);text(rt,number,x,112,84,15,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);};
+            wchar_t full[32]{};if(p.fullMwh>0&&!p.relative)swprintf(full,32,L"%.1f Wh",p.fullMwh/1000.);double health=p.health();
+            stat(Icon::Heart,L"HEALTH",health>=0?std::to_wstring(int(std::lround(health*100)))+L"%":L"—",122);stat(Icon::Battery,L"FULL CHARGE",full[0]?full:L"—",208);stat(Icon::Reset,L"CYCLES",p.cycles?std::to_wstring(p.cycles):L"—",294);
+            text(rt,L"Last 24 hours",0,146,200,9.5f,muted);
+            if(s.history.size()>=8){ComPtr<ID2D1PathGeometry> path;d2d_->CreatePathGeometry(&path);ComPtr<ID2D1GeometrySink> sink;path->Open(&sink);auto point=[&](size_t i){return D2D1::Point2F(s.history[i]*380,196-s.history[i+1]*32);};
+                sink->BeginFigure({s.history[0]*380,196},D2D1_FIGURE_BEGIN_FILLED);for(size_t i=0;i+1<s.history.size();i+=2)sink->AddLine(point(i));sink->AddLine({s.history[s.history.size()-2]*380,196});sink->EndFigure(D2D1_FIGURE_END_CLOSED);sink->Close();
+                b->SetColor(D2D1::ColorF(accent,.14f));rt->FillGeometry(path.Get(),b.Get());b->SetColor(D2D1::ColorF(accent));for(size_t i=2;i+1<s.history.size();i+=2)rt->DrawLine(point(i-2),point(i),b.Get(),1.6f);}
+            else text(rt,L"History fills in as the day goes on",0,166,380,10,muted);
+            hairline(0,197,380);button(Action::PowerSettings,L"Power & battery",0,203,150,25);
+            {wchar_t about[64]{};if(p.designMwh>0&&!p.relative)swprintf(about,64,p.voltageMv>0?L"Design %.1f Wh  ·  %.1f V":L"Design %.1f Wh",p.designMwh/1000.,p.voltageMv/1000.);text(rt,about,160,210,220,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
+        }else if(s.page==Page::System&&s.statsTab==2){
+            if(s.devices.empty())label(L"No Bluetooth devices are paired",0,90,380,40,12,muted,DWRITE_FONT_WEIGHT_NORMAL);
+            for(int i=s.deviceOffset;i<std::min(s.deviceOffset+4,int(s.devices.size()));++i){float y=32+float(i-s.deviceOffset)*42;auto& d=s.devices[i];box(0,y,380,38,raised,11);
+                deviceBadge(rt,d,6,y+5,28,s.light?0xe4e6ea:0x2a2d34,ink);text(rt,d.name,44,y+3,d.audio?200.f:250.f,12,d.connected?ink:muted,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+                text(rt,std::wstring(d.connected?L"Connected":L"Not connected")+(d.battery>=0?L"  ·  "+std::to_wstring(d.battery)+L"%":L""),44,y+20,200,9.5f,muted);
+                if(d.battery>=0){float bx=d.audio?254.f:334.f;box(bx,y+15,36,9,track,4.5f);box(bx+1.5f,y+16.5f,33*std::clamp(d.battery/100.f,.04f,1.f),6,d.battery<=20?0xf06a6a:(d.connected?accent:muted),3);}
+                if(d.audio)button(Action(int(Action::DeviceConnectBase)+i),d.connected?L"Disconnect":L"Connect",298,y+7,78,24);}
+            hairline(0,197,380);button(Action::BluetoothSettings,L"Bluetooth settings",0,203,150,25);
+            {int connected=int(std::count_if(s.devices.begin(),s.devices.end(),[](auto& d){return d.connected;}));text(rt,s.deviceFeedback.empty()?std::to_wstring(s.devices.size())+L" paired  ·  "+std::to_wstring(connected)+L" connected":s.deviceFeedback,160,210,220,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
         }else if(s.page==Page::System){
             auto stat=[&](Icon glyph,const wchar_t* name,const std::wstring& number,float x,float y,float w){drawIcon(rt,d2d_.Get(),glyph,x,y,14,muted);text(rt,name,x+22,y-1,w-22,10,muted);text(rt,number,x,y+20,w,22,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);};
             stat(Icon::Processor,L"PROCESSOR",s.system.cpu<0?L"—":value(s.system.cpu)+L"%",0,42,180);stat(Icon::Memory,L"MEMORY / GB",s.system.ramTotalGiB?value(s.system.ramUsedGiB,1)+L" / "+value(s.system.ramTotalGiB,1):L"—",208,42,172);
             b->SetColor(D2D1::ColorF(accent));for(unsigned i=1;i<s.system.samples;++i){unsigned base=40-s.system.samples;rt->DrawLine({float((i-1)*380./39),125-s.system.cpuHistory[base+i-1]*.25f},{float(i*380./39),125-s.system.cpuHistory[base+i]*.25f},b.Get(),1.5f);}hairline(0,132,380);
-            stat(Icon::Download,L"DOWN",s.system.networkAvailable?rateText(s.system.download):L"—",0,147,120);stat(Icon::Upload,L"UP",s.system.networkAvailable?rateText(s.system.upload):L"—",132,147,120);stat(Icon::Disk,L"FREE",s.system.diskTotalGiB?value(s.system.diskFreeGiB)+L" GB":L"—",264,147,116);text(rt,std::to_wstring(s.system.logicalProcessors)+L" threads   /   Up "+clockText(double(s.system.uptime)),0,208,380,10,muted);
+            stat(Icon::Download,L"DOWN",s.system.networkAvailable?rateText(s.system.download):L"—",0,147,120);stat(Icon::Upload,L"UP",s.system.networkAvailable?rateText(s.system.upload):L"—",132,147,120);stat(Icon::Disk,L"FREE",s.system.diskTotalGiB?value(s.system.diskFreeGiB)+L" GB":L"—",264,147,116);{std::wstring line=s.platform.product.empty()?std::to_wstring(s.system.logicalProcessors)+L" threads  ·  up "+clockText(double(s.system.uptime)):s.platform.product+(s.powerMode>=0?L"  ·  "+std::wstring(powerModeName(s.powerMode)):L"");const bool armoury=!s.platform.armoury.empty();text(rt,line,0,208,armoury?262.f:380.f,10,muted);if(armoury)button(Action::Armoury,L"Armoury Crate",270,201,110,25);}
         }else if(s.page==Page::Focus){
             button(Action::Timer25,L"Focus",0,36,120,28,s.focus.mode==FocusClock::Mode::Focus);button(Action::Timer5,L"Break",130,36,120,28,s.focus.mode==FocusClock::Mode::Break);button(Action::Stopwatch,L"Stopwatch",260,36,120,28,s.focus.mode==FocusClock::Mode::Stopwatch);
             double progress=s.focus.mode==FocusClock::Mode::Stopwatch?std::fmod(s.focus.elapsed(seconds()),60.)/60.:normalizedProgress(s.focus.displayed(seconds()),s.focus.duration);drawRing(rt,d2d_.Get(),63,130,38,3,progress,accent,line);drawIcon(rt,d2d_.Get(),Icon::Focus,50,117,26,accent);
@@ -164,7 +209,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             if(s.shelf.empty()){box(0,40,380,151,raised,18);icon(Action::None,Icon::Shelf,172,57,36,accent);label(s.dropHover?L"Release to keep it close":L"A place to keep things close",20,105,340,28,15,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);label(L"Drop files or text. Drag them back out.",20,139,340,22,11,muted);}else for(size_t i=s.shelfOffset;i<std::min(size_t(s.shelfOffset+4),s.shelf.size());++i){float y=40+float(i-s.shelfOffset)*36;auto& item=s.shelf[i];Action a=Action(int(Action::ShelfItemBase)+int(i));targets.push_back({a,0,y,380,32});box(0,y,380,32,raised,9);if(item.preview)drawPreview(rt,*item.preview,6,y+3,32,26);else icon(a,item.kind==ShelfItem::Kind::File?Icon::File:Icon::Text,14,y+8,16,muted);text(rt,item.label,46,y+7,326,11,ink);}
             text(rt,std::to_wstring(s.shelf.size())+L" items  ·  Copy only",0,208,260,10,muted);button(Action::ShelfClear,L"Clear",316,201,64,25,false,!s.shelf.empty());
         }else if(s.page==Page::Audio){
-            const bool apps=s.audioTab==0;button(Action::AudioApps,L"Apps",0,30,82,26,apps);button(Action::AudioOutputs,L"Outputs",88,30,82,26,!apps);
+            const bool apps=s.audioTab==0;tabs({{Action::AudioApps,L"Apps"},{Action::AudioOutputs,L"Outputs"}},s.audioTab,30);
             if(apps){
                 text(rt,s.mixer.empty()?L"":std::to_wstring(s.mixer.size())+(s.mixer.size()==1?L" source":L" sources"),180,37,200,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);
                 if(s.mixer.empty())label(L"No apps are using audio right now",0,96,380,40,12,muted,DWRITE_FONT_WEIGHT_NORMAL);
@@ -214,7 +259,7 @@ void Renderer::animate(const MotionEngine& m,double now) {
     auto shoulder=animation(m.radius,now,1.f/32);for(auto p:{leftScale_.Get(),rightScale_.Get()}){check(p->SetScaleX(shoulder.Get()));check(p->SetScaleY(shoulder.Get()));p->SetCenterX(edge_?32*scale_:0.f);p->SetCenterY(0.f);}
     if(edge_){leftScale_->SetCenterY(32*scale_);wingLeft_->SetOffsetX((canvasWidth-32)*scale_);wingRight_->SetOffsetX((canvasWidth-32)*scale_);auto ly=animation(m.height,now,-scale_/2,(canvasHeight/2-32)*scale_),ry=animation(m.height,now,scale_/2,canvasHeight*scale_/2);wingLeft_->SetOffsetY(ly.Get());wingRight_->SetOffsetY(ry.Get());header_->SetOffsetX(expanded_?std::round(20*scale_):0.f);}
     else{leftScale_->SetCenterX(32*scale_);auto lx=animation(m.width,now,-scale_/2,(canvasWidth/2-32)*scale_),rx=animation(m.width,now,scale_/2,canvasWidth*scale_/2);wingLeft_->SetOffsetX(lx.Get());wingRight_->SetOffsetX(rx.Get());wingLeft_->SetOffsetY(0.f);wingRight_->SetOffsetY(0.f);auto hx=animation(m.width,now,expanded_?0.f:scale_/2,expanded_?20*scale_:float(-m.compactWidth/2)*scale_);if(m.width.settled(now))header_->SetOffsetX(std::round(float(expanded_?20*scale_:(m.width.target()-m.compactWidth)*scale_/2)));else header_->SetOffsetX(hx.Get());}
-    auto opacity=visibility(m,now);auto headerOpacity=visibility(m,now,!expanded_);headerEffect_->SetOpacity(headerOpacity.Get());check(contentEffect_->SetOpacity(opacity.Get()));check(iconEffect_->SetOpacity(opacity.Get()));if(m.live)navEffect_->SetOpacity(0.f);else check(navEffect_->SetOpacity(opacity.Get()));auto shift=animation(m.contentShift,now,scale_,std::round((m.live?20:38)*scale_));check(content_->SetOffsetY(shift.Get()));auto iconsShift=animation(m.contentShift,now,scale_,m.live?-18*scale_:0.f);iconLayer_->SetOffsetY(iconsShift.Get());
+    auto opacity=visibility(m,now);auto headerOpacity=visibility(m,now,!expanded_);headerEffect_->SetOpacity(headerOpacity.Get());check(contentEffect_->SetOpacity(opacity.Get()));check(iconEffect_->SetOpacity(opacity.Get()));if(m.live)navEffect_->SetOpacity(0.f);else check(navEffect_->SetOpacity(opacity.Get()));auto shift=animation(m.contentShift,now,scale_,std::round((m.card?16:m.live?20:38)*scale_));check(content_->SetOffsetY(shift.Get()));auto iconsShift=animation(m.contentShift,now,scale_,m.live?-18*scale_:0.f);iconLayer_->SetOffsetY(iconsShift.Get());
     auto barWidth=animation(m.volume,now,284*scale_);check(barClip_->SetRight(barWidth.Get()));
     auto ax=animation(m.artX,now,scale_),ay=animation(m.artY,now,scale_),size=animation(m.artSize,now,1.f/256),ao=animation(m.artOpacity,now);art_->SetOffsetX(ax.Get());art_->SetOffsetY(ay.Get());artScale_->SetScaleX(size.Get());artScale_->SetScaleY(size.Get());artEffect_->SetOpacity(ao.Get());
     auto blend=animation(handoff_.mix,now);incomingEffect_->SetOpacity(blend.Get());
@@ -226,6 +271,10 @@ void Renderer::animate(const MotionEngine& m,double now) {
     auto rx=animation(m.width,now,edge_&&!expanded_?0.f:scale_,edge_&&!expanded_?8*scale_:-58*scale_);rings_->SetOffsetX(rx.Get());rings_->SetOffsetY(edge_&&!expanded_?38*scale_:0.f);
     auto ba=animation(batteryAngle,now),ta=animation(timerAngle,now);batteryRotation_->SetAngle(ba.Get());timerRotation_->SetAngle(ta.Get());
     auto pulse=animation(m.pulse,now);pulseEffect_->SetOpacity(pulse.Get());glass_.animate(m,now,edge_);
+    {auto slide=animation(m.slide,now,edge_?74*scale_:-44*scale_);if(edge_){stage_->SetOffsetX(slide.Get());stage_->SetOffsetY(0.f);}else{stage_->SetOffsetY(slide.Get());stage_->SetOffsetX(0.f);}
+        ComPtr<IDCompositionAnimation> fade;check(device_->CreateAnimation(&fade));check(fade->SetAbsoluteBeginTime(ticks(now)));double duration=0;auto curve=approximateCurve([&](double t){return m.stageOpacity(t);},[&](double t){return m.slide.settled(t);},now,duration);
+        for(auto& c:curve)check(fade->AddCubic(c.time,float(c.p),float(c.v),float(c.quadratic),float(c.cubic)));check(fade->End(duration,float(m.stageOpacity(now+10).position)));stageEffect_->SetOpacity(fade.Get());}
+    if(m.card)cardIconEffect_->SetOpacity(opacity.Get());
     auto hoverX=animation(m.hoverX,now,scale_),hoverY=animation(m.hoverY,now,scale_),hoverW=animation(m.hoverW,now,1.f/64),hoverH=animation(m.hoverH,now,1.f/32),hoverOpacity=animation(m.hoverOpacity,now);hoverVisual_->SetOffsetX(hoverX.Get());hoverVisual_->SetOffsetY(hoverY.Get());hoverScale_->SetScaleX(hoverW.Get());hoverScale_->SetScaleY(hoverH.Get());hoverEffect_->SetOpacity(hoverOpacity.Get());
     commit();
 }

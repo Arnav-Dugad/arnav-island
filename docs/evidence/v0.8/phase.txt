@@ -1,0 +1,2 @@
+Spectrum analysis: 19.4925 us per 1024-point step (100 steps/s while audio plays)
+PASS 4784 glass expression, glide, spectrum, settings-model, identity, brand, device, battery and auto-hide checks

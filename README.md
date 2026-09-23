@@ -1,18 +1,19 @@
-# Arnav Island 0.7 — glass, sound and a real Settings window
+# Arnav Island 0.8 — hidden until you reach for it
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.7.0-preview.1)
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.8.0-preview.1)
 
-![Media page with two sessions](docs/evidence/v0.7/media-sessions.png)
+![Edge reveal: hidden, sliding in at the top edge, open, tucked away](docs/evidence/v0.8/auto-hide-sequence.png)
 
-- **Glass material** — Frosted or Clear glass that genuinely blurs what is behind the island and morphs with it at display refresh rate. Solid remains available.
-- **Settings window** — every preference in one place, applied live as you drag or toggle. Saved automatically.
-- **Every media session** — swipe between simultaneous players; real app logos from Windows; YouTube/YouTube Music identified only when confirmed.
-- **Live waveform** — bars driven by the real system audio (WASAPI loopback + FFT), resting in silence.
-- **Per-app mixer** — volume, mute and live meters for each application.
-- **Volume and brightness indicator** — the resting island grows into a level bar.
-- Carried forward: Mini Pill / Live Island / Command Center, hover-only opening (now intent-aware), precision seeking, file shelf with previews, focus timer, glance rings, statistics, output switching, display memory.
+- **Edge reveal**: the island stays tucked away until your pointer touches the screen edge where it lives, then slides in on a spring. Clicks pass through while it is hidden.
+- **Real logos**: 88 vector brand marks. Web services such as YouTube, Spotify, Netflix, Twitch and JioSaavn are identified only when the browser's window title confirms them.
+- **Bluetooth device cards**: maker logo, device type and battery when a device connects or disconnects, plus a Devices tab with one-tap connect for audio devices.
+- **Battery and charging**: charging card with a one-shot energy sweep, battery health, 24-hour graph, time estimates and power mode.
+- **ROG aware**: shows the laptop model and opens Armoury Crate when it is installed. Read-only; no firmware access.
+- Carried forward: glass material, live Settings window, multi-session media, live waveform, per-app mixer, volume and brightness indicator, hover-only opening, precision seeking, file shelf, focus timer, display memory.
+
+![Device connection card](docs/evidence/v0.8/device-card.png)
 
 No account, subscription, browser engine, cloud, driver or administrator access is required. Extract the ZIP and run ArnavIsland.exe.
 
@@ -20,4 +21,4 @@ No account, subscription, browser engine, cloud, driver or administrator access 
 
 Build with MinGW-w64 GCC 16 and CMake (`scripts/build.ps1 -Test`). Backend: Win32, DirectComposition, Direct2D/DirectWrite, plus Windows.UI.Composition for the glass backdrop. Unavailable values are shown as unavailable, never invented.
 
-![Frosted glass Live card](docs/evidence/v0.7/glass-live.png)
+![Devices tab with sample devices](docs/evidence/v0.8/devices-tab.png)

@@ -141,7 +141,7 @@ inline Geometry geometry(IslandState s) {
     case IslandState::Media:return {420,176,28};
     case IslandState::Hardware:return {440,230,28};
     case IslandState::Gaming:return {300,58,24};
-    case IslandState::Notification:return {440,138,26};
+    case IslandState::Notification:return {372,92,30};
     case IslandState::LiveActivity:return {360,154,22};
     default:return {300,64,26};
     }
@@ -149,20 +149,24 @@ inline Geometry geometry(IslandState s) {
 struct MotionEngine {
     Spring width{196},height{34},radius{17},lift{0},reveal{0},volume{.5},dragX{0},dragY{0};
     SpringSpec body=preset(MotionPreset::Balanced);
-    bool reduced=false,live=false;int edge=0;double compactWidth=196,corner=22;
-    Spring artX{12},artY{6},artSize{22},artOpacity{0},pulse{0},hoverX{20},hoverY{38},hoverW{40},hoverH{26},hoverOpacity{0},contentShift{0},swipe{0},level{0};
+    bool reduced=false,live=false,card=false;int edge=0;double compactWidth=196,corner=22;
+    Spring artX{12},artY{6},artSize{22},artOpacity{0},pulse{0},hoverX{20},hoverY{38},hoverW{40},hoverH{26},hoverOpacity{0},contentShift{0},swipe{0},level{0},slide{0};
+    // Auto-hide fades the island only in the last part of its slide.
+    PhysicalState stageOpacity(double now)const{auto s=slide.sample(now);double q=std::clamp((s.position-.45)/.55,0.,1.),dq=(s.position>.45&&s.position<1)?s.velocity/.55:0;return {1-q*q*(3-2*q),-6*q*(1-q)*dq};}
+    // A short sideways kick to the resting width when something new arrives.
+    void nudge(double now,double strength=160){if(reduced)return;auto s=width.sample(now);double target=width.target();width.reset(s.position,now,s.velocity+strength);width.retarget(target,now,{1,420,20});}
     PhysicalState visibility(double now,bool compactHeader=false)const {
-        auto h=height.sample(now),a=reveal.sample(now);double low=compactHeader?(edge?150.:34.):(live?76.:230.),range=compactHeader?100.:(live?68.:90.);double q=std::clamp((h.position-low)/range,0.,1.),gate=q*q*(3-2*q),speed=(q>0&&q<1)?6*q*(1-q)*h.velocity/range:0;
+        auto h=height.sample(now),a=reveal.sample(now);double low=compactHeader?(edge?150.:34.):(card?44.:live?76.:230.),range=compactHeader?100.:(card?40.:live?68.:90.);double q=std::clamp((h.position-low)/range,0.,1.),gate=q*q*(3-2*q),speed=(q>0&&q<1)?6*q*(1-q)*h.velocity/range:0;
         if(compactHeader)return {1-gate,-speed};return {gate*a.position,speed*a.position+gate*a.velocity};
     }
     void target(IslandState state,double now,bool hover=false,bool pressed=false) {
         auto g=geometry(state);if(state==IslandState::Compact)g=edge?Geometry{64,150,22}:Geometry{compactWidth,34,17};else if(state==IslandState::Expanded||state==IslandState::Dashboard)g={420,334,corner};
-        if(reduced){width.reset(g.width,now);height.reset(g.height,now);radius.reset(g.radius,now);reveal.retarget(state!=IslandState::Compact&&g.height>110?1:0,now,{1,1800,85});return;}
+        if(reduced){width.reset(g.width,now);height.reset(g.height,now);radius.reset(g.radius,now);reveal.retarget(state!=IslandState::Compact&&g.height>80?1:0,now,{1,1800,85});return;}
         auto s=reduced?SpringSpec{1,1800,85}:body;
         width.retarget(g.width+(hover?4:0)-(pressed?5:0),now,s);
         height.retarget(g.height-(pressed?2:0),now,s);
         radius.retarget(g.radius,now,s);
-        reveal.retarget(state!=IslandState::Compact&&g.height>110?1:0,now,{1,320,36});
+        reveal.retarget(state!=IslandState::Compact&&g.height>80?1:0,now,{1,320,36});
     }
 };
 }
