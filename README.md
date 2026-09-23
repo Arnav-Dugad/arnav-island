@@ -2,7 +2,7 @@
 
 A native Windows 11 island with original vector icons, restrained information design and responsive physical motion.
 
-[Download v0.5.0-preview.1 for Windows x64](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.5.0-preview.1)
+[Download v0.6.0-preview.1 for Windows x64](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.6.0-preview.1)
 
 ![Arnav Island](images/overview.png)
 
@@ -37,3 +37,13 @@ Maximized browsers stay visible beneath the island. The new timeline supports pr
 ![Shelf previews](images/previews.png)
 
 Document previews depend on Windows thumbnail handlers; unsupported files use icons. Seeking depends on the player's Windows media capabilities. Physical device changes, external drag sessions and fullscreen entry/exit still need broader acceptance testing.
+
+## Everyday scale — v0.6
+
+Choose Mini Pill, Live Island or Command Center. The daily hover card is smaller, compact width reaches 560 DIPs, and blank-space clicks no longer expand or pin the island. No product name is drawn on the surface. Compact content is configurable; Shelf peek and per-display placement memory are included. Artwork light blends through retained compositor springs.
+
+![Live hover card with original QA artwork](images/live.png)
+![Shelf hover preview](images/peek.png)
+![Wide compact details](images/wide.png)
+
+This is phase one. [Delivery phases and API research](DELIVERY_PHASES.md) distinguish the remaining audio, device, privacy and productivity integrations from shipped features. Actual high-refresh FPS and physical mixed-DPI docking remain unmeasured. The ZIP is an unsigned Windows 11 x64 preview.
