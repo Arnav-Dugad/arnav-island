@@ -17,6 +17,10 @@
 #include "Hardware/BluetoothProvider.h"
 #include "Hardware/Platform.h"
 #include "Interaction/AutoHide.h"
+#include "Productivity/Clipboard.h"
+#include "Productivity/Privacy.h"
+#include "Productivity/CommandService.h"
+#include <map>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -34,6 +38,13 @@ class IslandWindow {
     std::wstring selectedSource_;uint64_t selectedId_=0,followedId_=0;
     // With edge reveal, a pointer resting on the edge rows shows the compact island only;
     // the hover delay restarts once it moves onto the island itself.
+    // Phase 4: clipboard history (memory only), privacy indicators, command bar and workspaces.
+    ClipboardWatcher clipboard_;ClipboardHistory clips_;int clipRetries_=0;std::map<std::wstring,std::shared_ptr<const Artwork>> clipIcons_;std::wstring copyLabel_;
+    void onClipboard();void clipViews();void clearClips();void copyClip(size_t index);
+    std::unique_ptr<PrivacyProvider> privacy_;std::vector<PrivacyUse> privacyUses_;void updatePrivacy();void showPrivacyNotice(const PrivacyUse&);
+    std::unique_ptr<CommandService> commands_;WorkspaceStore workspaces_;bool hotkey_=false;int hotkeyChoice_=0;HWND commandReturn_=nullptr;uint64_t commandSeq_=0;
+    void syncProductivity();void syncHotkey();void openCommand();void closeCommand(bool restoreFocus=true);bool commandKey(WPARAM);void commandChar(wchar_t);void commandQuery();void commandResults();
+    bool productivityMessage(UINT,WPARAM,LPARAM,LRESULT&);void runCommand(size_t index);void commandStatus(std::wstring text,bool error=false,bool close=true);void saveWorkspaces();void commandSelect(int index);void commandShake();
     bool edgeHold_=false;bool pointerOffEdge();double swipeAccumulator_=0,swipeTime_=0;bool mediaReachable_=false;
     void updateSessions();void switchSession(int delta,bool absolute=false);void updateProviders();void levelIndicator();void setMixerAt(LPARAM);bool systemRequested_=false,contentDirty_=true;Action pressedAction_=Action::None;
     void setVolumeAt(LPARAM);void scrubAt(LPARAM,bool begin=false);void endScrub(bool commit);void requestPreviews(const std::vector<ShelfItem>& incoming={});void perform(Action);Action hit(LPARAM);void refresh();void clockTimer();

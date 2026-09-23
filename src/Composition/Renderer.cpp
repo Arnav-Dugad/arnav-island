@@ -54,13 +54,18 @@ void Renderer::initialize(HWND hwnd,float dpi) {
     meterLayer_->SetOffsetX(std::round((20+156)*scale_));for(size_t i=0;i<meters_.size();++i){auto& m=meters_[i];check(device_->CreateVisual(&m.visual));check(device_->CreateScaleTransform(&m.scale));m.visual->SetTransform(m.scale.Get());m.visual->SetOffsetY(std::round((38+62+i*36+24)*scale_));meterLayer_->AddVisual(m.visual.Get(),FALSE,nullptr);}
     for(auto* v:{std::addressof(tabPill_),std::addressof(cardIcon_),std::addressof(energy_),std::addressof(cardRing_)})check(device_->CreateVisual(v->GetAddressOf()));
     // The card's level ring is wider than the content surface's origin allows, so it is its own layer that fades and moves with the content.
-    check(content_->AddVisual(cardRing_.Get(),FALSE,nullptr));cardRing_->SetOffsetX(std::round(-8*scale_));cardRing_->SetOffsetY(std::round(-8*scale_));
+    check(content_->AddVisual(cardRing_.Get(),FALSE,nullptr));
+    for(auto* v:{std::addressof(caret_),std::addressof(privacyBand_)})check(device_->CreateVisual(v->GetAddressOf()));
+    for(auto pair:{std::pair{std::addressof(caretEffect_),caret_.Get()},std::pair{std::addressof(privacyEffect_),privacyBand_.Get()}}){check(device_->CreateEffectGroup(pair.first->GetAddressOf()));pair.second->SetEffect(pair.first->Get());pair.first->Get()->SetOpacity(0.f);}
+    check(content_->AddVisual(caret_.Get(),FALSE,nullptr));check(body_->AddVisual(privacyBand_.Get(),FALSE,nullptr));privacyBand_->SetOffsetX(std::round(20*scale_));privacyBand_->SetOffsetY(std::round(7*scale_));cardRing_->SetOffsetX(std::round(-8*scale_));cardRing_->SetOffsetY(std::round(-8*scale_));
     body_->AddVisual(tabPill_.Get(),FALSE,content_.Get());body_->AddVisual(cardIcon_.Get(),TRUE,content_.Get());body_->AddVisual(energy_.Get(),TRUE,cardIcon_.Get());
     for(auto pair:{std::pair{std::addressof(tabEffect_),tabPill_.Get()},std::pair{std::addressof(cardIconEffect_),cardIcon_.Get()},std::pair{std::addressof(energyEffect_),energy_.Get()}}){check(device_->CreateEffectGroup(pair.first->GetAddressOf()));pair.second->SetEffect(pair.first->Get());pair.first->Get()->SetOpacity(0.f);}
     check(device_->CreateScaleTransform(&cardIconScale_));cardIconScale_->SetCenterX(28*scale_);cardIconScale_->SetCenterY(28*scale_);cardIcon_->SetTransform(cardIconScale_.Get());cardIcon_->SetOffsetX(std::round(20*scale_));cardIcon_->SetOffsetY(std::round(16*scale_));
     check(device_->CreateRotateTransform(&energyRotation_));energyRotation_->SetCenterX(36*scale_);energyRotation_->SetCenterY(36*scale_);energy_->SetTransform(energyRotation_.Get());
     surface(pulseSurface_,640,500,[](auto* rt){rt->Clear(D2D1::ColorF(0x80e8ba,.22f));});check(pulseVisual_->SetContent(pulseSurface_.Get()));
-    surface(hoverSurface_,64,32,[](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(0xffffff,.10f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(0,0,64,32),10,10),b.Get());});check(hoverVisual_->SetContent(hoverSurface_.Get()));
+    // The hover highlight is a plain layer shaped by an animated rounded clip, so its corners stay true at any size.
+    check(device_->CreateRectangleClip(&hoverClip_));hoverClip_->SetLeft(0.f);hoverClip_->SetTop(0.f);{const float r=10*scale_;auto* c=hoverClip_.Get();c->SetTopLeftRadiusX(r);c->SetTopLeftRadiusY(r);c->SetTopRightRadiusX(r);c->SetTopRightRadiusY(r);c->SetBottomLeftRadiusX(r);c->SetBottomLeftRadiusY(r);c->SetBottomRightRadiusX(r);c->SetBottomRightRadiusY(r);}
+    check(hoverVisual_->SetClip(hoverClip_.Get()));
 }
 void Renderer::surface(ComPtr<IDCompositionSurface>& s,int w,int h,std::function<void(ID2D1RenderTarget*)> draw) {
     if(!s)check(device_->CreateSurface(UINT(std::ceil(w*scale_)),UINT(std::ceil(h*scale_)),DXGI_FORMAT_B8G8R8A8_UNORM,DXGI_ALPHA_MODE_PREMULTIPLIED,&s));
@@ -121,11 +126,12 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         surface(baseSurface_,640,500,[&](auto* rt){rt->Clear(D2D1::ColorF(bg));});body_->SetContent(glass?nullptr:baseSurface_.Get());
         surface(innerSurface_,640,500,[&](auto* rt){rt->Clear(D2D1::ColorF(bg));});inner_->SetContent(glass?nullptr:innerSurface_.Get());
         wings(wingRadius_>0?wingRadius_:17);
+        {const UINT32 tone=s.light?0x1c2230:0xffffff;if(hoverColor_!=tone){hoverColor_=tone;surface(hoverSurface_,440,360,[&](auto* rt){rt->Clear(D2D1::ColorF(tone,s.light?.065f:.10f));});hoverVisual_->SetContent(hoverSurface_.Get());}}
         surface(barSurface_,380,2,[&](auto* rt){rt->Clear(D2D1::ColorF(accent));});bar_->SetContent(barSurface_.Get());
         surface(navSurface_,47,44,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink,s.light?.055f:.055f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,47,44},12,12),b.Get());});nav_->SetContent(navSurface_.Get());
     }
     wingLeft_->SetContent(attached&&!glass?leftSurface_.Get():nullptr);wingRight_->SetContent(attached&&!glass?rightSurface_.Get():nullptr);barEffect_->SetOpacity(s.page==Page::Overview&&s.expanded&&!s.live?1.f:0.f);
-    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateCard(s,track,accent,solidRaised,ink);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio;updateTabs(s,0,stats?-2.f:30.f,stats?3:2,stats?s.statsTab:s.audioTab,stats||audio,s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
+    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateCard(s,track,accent,solidRaised,ink);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-2.f:30.f,stats?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||shelf,s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
     surface(headerSurface_,600,150,[&](auto* rt){
         if(s.expanded)return;
         if(edge_){text(rt,s.battery>=0?std::to_wstring(s.battery)+L"%":L"—",0,82,64,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_CENTER);text(rt,s.charging?L"Charging":L"Battery",0,105,64,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER);return;}
@@ -135,8 +141,11 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             float x=std::max(236.f,width)/2-109;bool brightness=s.hud==2;int level=brightness?s.brightness:(s.muted?0:s.volume);
             drawIcon(rt,d2d_.Get(),brightness?Icon::Brightness:level==0?Icon::Muted:Icon::Volume,x,8,18,ink);text(rt,level>=0?std::to_wstring(level):L"—",x+186,0,32,11.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_TRAILING,34);return;}
         const bool bars=s.settings.waveform&&s.playback.playing&&s.waveform&&s.settings.compactMedia;
-        if(mini){if(!s.playback.artwork||!s.settings.compactMedia){drawIcon(rt,d2d_.Get(),s.focus.running?Icon::Focus:s.charging?Icon::Power:Icon::Music,14,10,14,muted);}if(!bars)text(rt,s.activity.empty()?L"···":s.activity.starts_with(L"Volume")?std::to_wstring(s.volume):s.activity==L"Muted"?L"—":L"•",42,0,26,10,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER,34);return;}
-        bool hasArt=bool(s.playback.artwork)&&s.settings.compactMedia,logo=!hasArt&&s.settings.compactMedia&&s.settings.appIcons&&s.playback.available;if(logo)identity(rt,s.playback,13,7,20,solidRaised);float start=hasArt||logo?42.f:14.f,end=width-(ringsEnabled_?(ringCount_==2?64:40):10)-(bars?32:0);
+        // Privacy dots: green camera, orange microphone, blue location (in that order, once each).
+        std::vector<UINT32> dots;for(auto c:{Capability::Camera,Capability::Microphone,Capability::Location})if(std::any_of(s.privacy.begin(),s.privacy.end(),[&](auto& u){return u.capability==c;}))dots.push_back(c==Capability::Camera?0x30d158:c==Capability::Microphone?0xff9f0a:0x0a84ff);
+        auto drawDots=[&](float right){ComPtr<ID2D1SolidColorBrush> d;rt->CreateSolidColorBrush(D2D1::ColorF(0),&d);float x=right-float(dots.size())*9+4;for(auto color:dots){d->SetColor(D2D1::ColorF(color));rt->FillEllipse(D2D1::Ellipse({x+3,17},3.2f,3.2f),d.Get());x+=9;}};
+        if(mini){if(!s.playback.artwork||!s.settings.compactMedia){drawIcon(rt,d2d_.Get(),s.focus.running?Icon::Focus:s.charging?Icon::Power:Icon::Music,14,10,14,muted);}if(!dots.empty()&&s.activity.empty()){drawDots(66);return;}if(!bars)text(rt,s.activity.empty()?L"···":s.activity.starts_with(L"Volume")?std::to_wstring(s.volume):s.activity==L"Muted"?L"—":L"•",42,0,26,10,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER,34);return;}
+        bool hasArt=bool(s.playback.artwork)&&s.settings.compactMedia,logo=!hasArt&&s.settings.compactMedia&&s.settings.appIcons&&s.playback.available;if(logo)identity(rt,s.playback,13,7,20,solidRaised);float start=hasArt||logo?42.f:14.f,end=width-(ringsEnabled_?(ringCount_==2?64:40):10)-(bars?32:0);if(!dots.empty()){drawDots(end);end-=float(dots.size())*9+8;}
         auto chip=[&](Icon glyph,const std::wstring& value,float span){if(end-start<span+78)return;end-=span;drawIcon(rt,d2d_.Get(),glyph,end+3,11,12,muted);text(rt,value,end+19,0,span-21,10,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);end-=7;};
         if(s.settings.compactClock){SYSTEMTIME t{};GetLocalTime(&t);wchar_t value[12];swprintf(value,12,L"%02u:%02u",t.wHour,t.wMinute);chip(Icon::Clock,value,58);}
         if(s.settings.compactVolume)chip(s.muted?Icon::Muted:Icon::Volume,std::to_wstring(s.volume),48);
@@ -145,7 +154,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         std::wstring label=!s.activity.empty()?s.activity:s.settings.compactMedia&&s.playback.available?s.playback.title:s.settings.compactTimer&&s.focus.running?clockText(std::ceil(s.focus.displayed(seconds()))):L"Ready";
         text(rt,label,start,0,std::max(12.f,end-start),11.5f,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);
     });header_->SetContent(headerSurface_.Get());if(headerOnly){commit();return;}
-    drawingContent_=true;iconRequests_.clear();
+    drawingContent_=true;iconRequests_.clear();caretTarget_=42;
     surface(contentSurface_,380,284,[&](auto* rt){
         ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink),&b);
         auto box=[&](float x,float y,float w,float h,UINT32 color,float radius=12){b->SetColor(D2D1::ColorF(color,color==raised?raisedAlpha:1.f));rt->FillRoundedRectangle(D2D1::RoundedRect({x,y,x+w,y+h},radius,radius),b.Get());};
@@ -154,6 +163,40 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         auto button=[&](Action a,const std::wstring& value,float x,float y,float w,float h,bool selected=false,bool enabled=true){targets.push_back({a,x,y,w,h,enabled});box(x,y,w,h,selected?(s.light?0x262c34:0xe8ecf2):raised,9);label(value,x+6,y,w-12,h,11.5f,!enabled?muted:selected?(s.light?0xf8f8fa:0x171b22):ink);};
         auto iconButton=[&](Action a,Icon glyph,float x,float y,float w=32,float h=32,bool primary=false,bool enabled=true){targets.push_back({a,x,y,w,h,enabled});if(primary)box(x,y,w,h,!enabled?raised:s.light?0x252b33:0xe8ecf2,h/2);icon(a,glyph,x+(w-18)/2,y+(h-18)/2,18,!enabled?muted:primary?(s.light?0xffffff:0x161b22):ink);};
         auto value=[](double v,int precision=0){if(v<0)return std::wstring(L"—");wchar_t buf[48];swprintf(buf,48,precision?L"%.1f":L"%.0f",v);return std::wstring(buf);};
+        if(s.card&&s.command.active){
+            const auto& c=s.command;box(0,0,380,42,raised,14);drawIcon(rt,d2d_.Get(),Icon::Search,14,12,18,c.text.empty()?muted:ink);
+            // The typed line scrolls left when it is wider than the field, keeping the caret visible.
+            const float field=320;float width=measure(c.text,14),before=measure(c.text.substr(0,std::min(c.caret,c.text.size())),14),shift=std::max(0.f,std::min(width-field,before-field+8));
+            if(c.text.empty())text(rt,L"Type a command, app or search",46,0,field,14,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);
+            else{rt->PushAxisAlignedClip(D2D1::RectF(42,0,42+field+4,42),D2D1_ANTIALIAS_MODE_ALIASED);text(rt,c.text,42-shift,0,width+40,14,ink,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);rt->PopAxisAlignedClip();}
+            caretTarget_=42+before-shift;
+            auto glyph=[](CommandKind k){switch(k){case CommandKind::Volume:case CommandKind::VolumeStep:case CommandKind::Unmute:return Icon::Volume;case CommandKind::Mute:return Icon::Muted;case CommandKind::Play:return Icon::Play;case CommandKind::Pause:return Icon::Pause;
+                case CommandKind::Next:return Icon::Next;case CommandKind::Previous:return Icon::Previous;case CommandKind::Timer:return Icon::Focus;case CommandKind::Stopwatch:return Icon::Clock;case CommandKind::StopTimer:return Icon::Reset;case CommandKind::OpenApp:return Icon::Apps;
+                case CommandKind::SearchFiles:return Icon::Search;case CommandKind::OpenSettings:return Icon::Settings;case CommandKind::Workspace:case CommandKind::SaveWorkspace:case CommandKind::DeleteWorkspace:return Icon::Workspace;
+                case CommandKind::Clipboard:case CommandKind::ClearClipboard:return Icon::Clipboard;case CommandKind::Lock:return Icon::Lock;default:return Icon::Info;}};
+            if(c.results.empty()){
+                // Nothing typed yet: a few things to try.
+                const std::pair<Icon,const wchar_t*> hints[]={{Icon::Volume,L"volume 40  \u00b7  mute  \u00b7  next"},{Icon::Focus,L"focus 25  \u00b7  timer 10 min  \u00b7  stopwatch"},{Icon::Search,L"open spotify  \u00b7  find budget pdfs from last month"}};
+                for(int i=0;i<3;++i){float y=52+i*40.f;drawIcon(rt,d2d_.Get(),hints[i].first,14,y+10,16,muted);text(rt,hints[i].second,46,y,330,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,38);}
+            }
+            for(int i=0;i<int(std::min<size_t>(3,c.results.size()));++i){const auto& r=c.results[i];float y=52+i*40.f;Action a=Action(int(Action::CommandResultBase)+i);targets.push_back({a,0,y,380,38,r.kind!=CommandKind::None});
+                const auto* icon=size_t(i)<c.icons.size()?c.icons[i].get():nullptr;
+                if(icon)drawPreview(rt,*icon,7,y+5,28,28);else{box(6,y+4,30,30,raised,15);drawIcon(rt,d2d_.Get(),glyph(r.kind),13,y+11,16,r.kind==CommandKind::None?muted:ink);}
+                const bool keycap=i==c.selected&&r.kind!=CommandKind::None;const wchar_t* cap=c.armed?L"Enter again":L"Enter";const float capWidth=keycap?measure(cap,9.5f,DWRITE_FONT_WEIGHT_SEMI_BOLD)+14:0;const float room=(keycap?372-capWidth-8:374)-46;
+                text(rt,r.title,46,y+2,room,12.5f,r.kind==CommandKind::None?muted:ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,r.detail,46,y+21,room,10,muted);
+                if(keycap){box(372-capWidth,y+10,capWidth,19,s.light?0xffffff:0x2c323c,6);label(cap,372-capWidth,y+10,capWidth,19,9.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}}
+            const float footer=commandFooterY(c.results.empty()?3:int(std::min<size_t>(3,c.results.size())));
+            if(!c.status.empty()){drawIcon(rt,d2d_.Get(),c.error?Icon::Info:c.armed?Icon::Workspace:Icon::Check,2,footer+6,14,c.error?0xe5484d:accent);text(rt,c.status,22,footer,356,10.5f,c.error?0xe5484d:ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,26);}
+            else{float x=0;for(auto [cap,what]:{std::pair{L"Enter",L"Run"},std::pair{L"\u2191 \u2193",L"Choose"},std::pair{L"Esc",L"Close"}}){float w=measure(cap,9,DWRITE_FONT_WEIGHT_SEMI_BOLD)+12;box(x,footer+4,w,18,raised,5);label(cap,x,footer+4,w,18,9,muted,DWRITE_FONT_WEIGHT_SEMI_BOLD);x+=w+6;float t=measure(what,10)+2;text(rt,what,x,footer,t,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,26);x+=t+16;}}
+            return;
+        }
+        if(s.card&&s.notice.kind>=5){
+            // Privacy card: the app's own icon in a ring of the capability's colour.
+            const auto& n=s.notice;const wchar_t* what=n.kind==5?L"Camera in use":n.kind==6?L"Microphone in use":L"Location in use";
+            text(rt,what,72,6,196,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.app.empty()?std::wstring(L"An app"):n.app,72,30,196,11,muted);
+            const UINT32 color=n.kind==5?0x30d158:n.kind==6?0xff9f0a:0x0a84ff;box(292,10,40,40,raised,20);drawIcon(rt,d2d_.Get(),n.kind==5?Icon::Camera:n.kind==6?Icon::Microphone:Icon::Location,302,20,20,color);
+            return;
+        }
         if(s.card&&s.notice.kind){
             auto& n=s.notice;const bool power=n.kind>=3;const int percent=power?s.battery:n.device.battery;
             const bool holding=n.kind==3&&s.power.present&&!s.power.charging;std::wstring title=power?(n.kind==3?(holding?L"Plugged in":L"Charging"):L"On battery"):n.device.name,detail;
@@ -180,7 +223,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         auto tabs=[&](std::initializer_list<std::pair<Action,const wchar_t*>> items,int selected,float y){int i=0;for(auto& [a,name]:items){float x=i*88.f;targets.push_back({a,x,y,82,26});label(name,x,y,82,26,11.5f,i==selected?(s.light?0xf8f8fa:0x171b22):muted,i==selected?DWRITE_FONT_WEIGHT_SEMI_BOLD:DWRITE_FONT_WEIGHT_MEDIUM);++i;}};
         if(s.page==Page::System)tabs({{Action::StatsSystem,L"System"},{Action::StatsBattery,L"Battery"},{Action::StatsDevices,L"Devices"}},s.statsTab,-2);
         else text(rt,titles[int(s.page)],0,0,chips?340.f-chips*28:302.f,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
-        iconButton(Action::Close,Icon::Close,352,-4,28,28);
+        iconButton(Action::Close,Icon::Close,352,-4,28,28);if(s.page==Page::Overview)iconButton(Action::CommandOpen,Icon::Search,318,-4,28,28);
         for(int i=0;i<chips;++i){auto& session=s.sessions[i];float x=344-float(chips-i)*28;bool selected=i==s.session;box(x,-2,24,24,raised,12);
             identity(rt,session,x+3,1,18,solidRaised);
             if(selected){b->SetColor(D2D1::ColorF(accent));rt->DrawEllipse(D2D1::Ellipse({x+12,10},12.5f,12.5f),b.Get(),1.6f);}
@@ -234,8 +277,23 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             double progress=s.focus.mode==FocusClock::Mode::Stopwatch?std::fmod(s.focus.elapsed(seconds()),60.)/60.:normalizedProgress(s.focus.displayed(seconds()),s.focus.duration);drawRing(rt,d2d_.Get(),63,130,38,3,progress,accent,line);drawIcon(rt,d2d_.Get(),Icon::Focus,50,117,26,accent);
             text(rt,clockText(std::ceil(s.focus.displayed(seconds()))),124,91,252,42,ink,DWRITE_FONT_WEIGHT_LIGHT);text(rt,s.focus.finished?L"A moment well spent":s.focus.running?L"One thing at a time":L"A little space to begin",127,144,245,11,muted);iconButton(Action::TimerToggle,s.focus.running?Icon::Pause:Icon::Play,130,180,42,42,true);iconButton(Action::TimerReset,Icon::Reset,190,183,36,36);text(rt,s.focus.running?L"Pause session":L"Start session",238,193,142,10,muted);
         }else if(s.page==Page::Shelf){
-            if(s.shelf.empty()){box(0,40,380,151,raised,18);icon(Action::None,Icon::Shelf,172,57,36,accent);label(s.dropHover?L"Release to keep it close":L"A place to keep things close",20,105,340,28,15,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);label(L"Drop files or text. Drag them back out.",20,139,340,22,11,muted);}else for(size_t i=s.shelfOffset;i<std::min(size_t(s.shelfOffset+4),s.shelf.size());++i){float y=40+float(i-s.shelfOffset)*36;auto& item=s.shelf[i];Action a=Action(int(Action::ShelfItemBase)+int(i));targets.push_back({a,0,y,380,32});box(0,y,380,32,raised,9);if(item.preview)drawPreview(rt,*item.preview,6,y+3,32,26);else icon(a,item.kind==ShelfItem::Kind::File?Icon::File:Icon::Text,14,y+8,16,muted);text(rt,item.label,46,y+7,326,11,ink);}
-            text(rt,std::to_wstring(s.shelf.size())+L" items  ·  Copy only",0,208,260,10,muted);button(Action::ShelfClear,L"Clear",316,201,64,25,false,!s.shelf.empty());
+            tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"}},s.shelfTab,30);
+            const bool status=!s.clipStatus.empty()&&seconds()<s.clipStatusUntil;
+            if(s.shelfTab==0){
+                if(s.shelf.empty()){box(0,62,380,130,raised,18);icon(Action::None,Icon::Shelf,172,76,36,accent);label(s.dropHover?L"Release to keep it close":L"A place to keep things close",20,118,340,28,15,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);label(L"Drop files or text. Drag them back out.",20,148,340,22,11,muted);}else for(size_t i=s.shelfOffset;i<std::min(size_t(s.shelfOffset+4),s.shelf.size());++i){float y=62+float(i-s.shelfOffset)*36;auto& item=s.shelf[i];Action a=Action(int(Action::ShelfItemBase)+int(i));targets.push_back({a,0,y,380,32});box(0,y,380,32,raised,9);if(item.preview)drawPreview(rt,*item.preview,6,y+3,32,26);else icon(a,item.kind==ShelfItem::Kind::File?Icon::File:Icon::Text,14,y+8,16,muted);text(rt,item.label,46,y+7,326,11,ink);}
+                text(rt,std::to_wstring(s.shelf.size())+L" items  \u00b7  Copy only",0,208,260,10,muted);button(Action::ShelfClear,L"Clear",316,201,64,25,false,!s.shelf.empty());
+            }else if(!s.settings.clipboardHistory){
+                box(0,62,380,130,raised,18);drawIcon(rt,d2d_.Get(),Icon::Clipboard,176,74,28,accent);label(L"Keep what you copy close",20,106,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+                label(L"Your last 24 copies, in memory only. Private copies are skipped.",20,130,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);button(Action::ClipboardEnable,L"Turn on",150,156,80,26,true);
+                text(rt,L"Off  \u00b7  Nothing is read until you turn it on",0,208,380,10,muted);
+            }else{
+                if(s.clips.empty()){box(0,62,380,130,raised,18);drawIcon(rt,d2d_.Get(),Icon::Clipboard,176,80,28,muted);label(s.clipsPaused?L"Paused":L"Copy something to keep it here",20,116,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);label(L"Click a copy to put it back on the clipboard",20,142,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);}
+                for(int i=s.clipOffset;i<std::min(s.clipOffset+4,int(s.clips.size()));++i){float y=62+float(i-s.clipOffset)*36;auto& c=s.clips[size_t(i)];Action a=Action(int(Action::ClipBase)+(i-s.clipOffset));targets.push_back({a,0,y,380,32});box(0,y,380,32,raised,9);
+                    if(c.thumbnail)drawPreview(rt,*c.thumbnail,6,y+3,32,26);else drawIcon(rt,d2d_.Get(),c.kind==int(ClipEntry::Kind::Link)?Icon::Link:c.kind==int(ClipEntry::Kind::Files)?Icon::File:Icon::Text,14,y+8,16,muted);
+                    text(rt,c.preview,46,y+2,c.icon?300.f:326.f,11,ink);text(rt,c.meta,46,y+17,300,9,muted);if(c.icon)drawPreview(rt,*c.icon,352,y+8,16,16);}
+                text(rt,status?s.clipStatus:s.clipsPaused?std::wstring(L"Paused  \u00b7  new copies are not kept"):std::to_wstring(s.clips.size())+(s.clips.size()==1?L" copy":L" copies")+L"  \u00b7  memory only",0,208,236,10,status?ink:muted);
+                button(Action::ClipboardPause,s.clipsPaused?L"Resume":L"Pause",244,201,64,25);button(Action::ClipboardClear,L"Clear",316,201,64,25,false,!s.clips.empty());
+            }
         }else if(s.page==Page::Audio){
             const bool apps=s.audioTab==0;tabs({{Action::AudioApps,L"Apps"},{Action::AudioOutputs,L"Outputs"}},s.audioTab,30);
             if(apps){
@@ -257,7 +315,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         const wchar_t* labels[]={L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio"};const Action actions[]={Action::Overview,Action::Media,Action::System,Action::Focus,Action::Settings,Action::Shelf,Action::Audio};const Icon glyphs[]={Icon::Home,Icon::Music,Icon::Stats,Icon::Focus,Icon::Settings,Icon::Shelf,Icon::Audio};
         for(int slot=0;slot<7;++slot){int p=s.settings.navigation[slot];float x=std::round((slot*navStep+4)*scale_)/scale_;bool selected=int(s.page)==p;targets.push_back({actions[p],x,navY,47,44});icon(actions[p],glyphs[p],x+14,navY+5,19,selected?ink:muted,p);label(labels[p],x,navY+26,47,16,9.5f,selected?ink:muted);if(selected){if(s.reducedMotion)navX.reset(x,seconds());else if(navX.target()!=x)navX.retarget(x,seconds(),MotionTokens::navigation);}}
         if(debug){b->SetColor(D2D1::ColorF(0xf98585));for(auto& target:targets)rt->DrawRectangle({target.x,target.y,target.x+target.width,target.y+target.height},b.Get());}
-    });drawingContent_=false;for(auto request:iconRequests_)icon(request.action,request.glyph,request.x,request.y,request.size,request.color,request.slot);content_->SetContent(contentSurface_.Get());for(auto& item:icons_)if(!item.used)item.effect->SetOpacity(0.f);auto nx=animation(navX,seconds(),scale_,20*scale_);nav_->SetOffsetX(nx.Get());nav_->SetOffsetY((38+navY)*scale_);commit();
+    });drawingContent_=false;updateCaret(s,caretTarget_,accent);for(auto request:iconRequests_)icon(request.action,request.glyph,request.x,request.y,request.size,request.color,request.slot);content_->SetContent(contentSurface_.Get());for(auto& item:icons_)if(!item.used)item.effect->SetOpacity(0.f);auto nx=animation(navX,seconds(),scale_,20*scale_);nav_->SetOffsetX(nx.Get());nav_->SetOffsetY((38+navY)*scale_);commit();
 }
 
 ComPtr<IDCompositionAnimation> Renderer::animation(const Spring& s,double now,float factor,float bias) {
@@ -304,7 +362,7 @@ void Renderer::animate(const MotionEngine& m,double now) {
     else{leftScale_->SetCenterX(along);leftScale_->SetCenterY(0.f);rightScale_->SetCenterX(1.f);rightScale_->SetCenterY(0.f);wingLeft_->SetOffsetY(0.f);wingRight_->SetOffsetY(0.f);
         if(m.width.settled(now)){wingLeft_->SetOffsetX(restX-along);wingRight_->SetOffsetX(restX+restW-1);}
         else{auto lx=animation(m.width,now,-scale_/2,canvasWidth*scale_/2-along),rx=animation(m.width,now,scale_/2,canvasWidth*scale_/2-1);wingLeft_->SetOffsetX(lx.Get());wingRight_->SetOffsetX(rx.Get());}auto hx=animation(m.width,now,expanded_?0.f:scale_/2,expanded_?20*scale_:float(-m.compactWidth/2)*scale_);if(m.width.settled(now))header_->SetOffsetX(std::round(float(expanded_?20*scale_:(m.width.target()-m.compactWidth)*scale_/2)));else header_->SetOffsetX(hx.Get());}
-    auto opacity=visibility(m,now);auto headerOpacity=visibility(m,now,!expanded_);headerEffect_->SetOpacity(headerOpacity.Get());check(contentEffect_->SetOpacity(opacity.Get()));check(iconEffect_->SetOpacity(opacity.Get()));if(m.live)navEffect_->SetOpacity(0.f);else check(navEffect_->SetOpacity(opacity.Get()));auto shift=animation(m.contentShift,now,scale_,std::round((m.card?16:m.live?20:38)*scale_));check(content_->SetOffsetY(shift.Get()));auto iconsShift=animation(m.contentShift,now,scale_,m.live?-18*scale_:0.f);iconLayer_->SetOffsetY(iconsShift.Get());
+    auto opacity=visibility(m,now);auto headerOpacity=visibility(m,now,!expanded_);headerEffect_->SetOpacity(headerOpacity.Get());check(contentEffect_->SetOpacity(opacity.Get()));if(privacyVisible_)privacyEffect_->SetOpacity(opacity.Get());else privacyEffect_->SetOpacity(0.f);check(iconEffect_->SetOpacity(opacity.Get()));if(m.live)navEffect_->SetOpacity(0.f);else check(navEffect_->SetOpacity(opacity.Get()));auto shift=animation(m.contentShift,now,scale_,std::round((m.card?16:m.live?20:38)*scale_));check(content_->SetOffsetY(shift.Get()));auto iconsShift=animation(m.contentShift,now,scale_,m.live?-18*scale_:0.f);iconLayer_->SetOffsetY(iconsShift.Get());
     auto barWidth=animation(m.volume,now,262*scale_);check(barClip_->SetRight(barWidth.Get()));
     auto ax=animation(m.artX,now,scale_),ay=animation(m.artY,now,scale_),size=animation(m.artSize,now,1.f/256),ao=animation(m.artOpacity,now);art_->SetOffsetX(ax.Get());art_->SetOffsetY(ay.Get());artScale_->SetScaleX(size.Get());artScale_->SetScaleY(size.Get());artEffect_->SetOpacity(ao.Get());
     auto blend=animation(handoff_.mix,now);incomingEffect_->SetOpacity(blend.Get());
@@ -320,7 +378,7 @@ void Renderer::animate(const MotionEngine& m,double now) {
         ComPtr<IDCompositionAnimation> fade;check(device_->CreateAnimation(&fade));check(fade->SetAbsoluteBeginTime(ticks(now)));double duration=0;auto curve=approximateCurve([&](double t){return m.stageOpacity(t);},[&](double t){return m.slide.settled(t);},now,duration);
         for(auto& c:curve)check(fade->AddCubic(c.time,float(c.p),float(c.v),float(c.quadratic),float(c.cubic)));check(fade->End(duration,float(m.stageOpacity(now+10).position)));stageEffect_->SetOpacity(fade.Get());}
     if(m.card)cardIconEffect_->SetOpacity(opacity.Get());
-    auto hoverX=animation(m.hoverX,now,scale_),hoverY=animation(m.hoverY,now,scale_),hoverW=animation(m.hoverW,now,1.f/64),hoverH=animation(m.hoverH,now,1.f/32),hoverOpacity=animation(m.hoverOpacity,now);hoverVisual_->SetOffsetX(hoverX.Get());hoverVisual_->SetOffsetY(hoverY.Get());hoverScale_->SetScaleX(hoverW.Get());hoverScale_->SetScaleY(hoverH.Get());hoverEffect_->SetOpacity(hoverOpacity.Get());
+    auto hoverX=animation(m.hoverX,now,scale_),hoverY=animation(m.hoverY,now,scale_),hoverW=animation(m.hoverW,now,scale_),hoverH=animation(m.hoverH,now,scale_),hoverOpacity=animation(m.hoverOpacity,now);hoverVisual_->SetOffsetX(hoverX.Get());hoverVisual_->SetOffsetY(hoverY.Get());hoverClip_->SetRight(hoverW.Get());hoverClip_->SetBottom(hoverH.Get());hoverEffect_->SetOpacity(hoverOpacity.Get());
     commit();
 }
 }

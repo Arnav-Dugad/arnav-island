@@ -129,7 +129,7 @@ struct Glide {
 inline double rubberBand(double displacement,double limit=90) {
     return std::copysign(limit*(1-1/(std::abs(displacement)/limit+1)),displacement);
 }
-enum class IslandState { Dot,Compact,Standard,LiveActivity,Expanded,Dashboard,FileDrop,Notification,Media,Hardware,Gaming };
+enum class IslandState { Dot,Compact,Standard,LiveActivity,Expanded,Dashboard,FileDrop,Notification,Media,Hardware,Gaming,Command };
 struct Geometry {double width,height,radius;};
 inline Geometry geometry(IslandState s) {
     switch(s) {
@@ -143,13 +143,14 @@ inline Geometry geometry(IslandState s) {
     case IslandState::Gaming:return {300,58,24};
     case IslandState::Notification:return {372,92,30};
     case IslandState::LiveActivity:return {360,154,22};
+    case IslandState::Command:return {420,224,26};
     default:return {300,64,26};
     }
 }
 struct MotionEngine {
     Spring width{196},height{34},radius{17},lift{0},reveal{0},volume{.5},dragX{0},dragY{0};
     SpringSpec body=preset(MotionPreset::Balanced);
-    bool reduced=false,live=false,card=false;int edge=0;double compactWidth=196,corner=22;
+    bool reduced=false,live=false,card=false;int edge=0;double compactWidth=196,corner=22,commandHeight=224;
     Spring artX{12},artY{6},artSize{22},artOpacity{0},pulse{0},hoverX{20},hoverY{38},hoverW{40},hoverH{26},hoverOpacity{0},contentShift{0},swipe{0},level{0},slide{0};
     // Auto-hide fades the island only in the last part of its slide.
     PhysicalState stageOpacity(double now)const{auto s=slide.sample(now);double q=std::clamp((s.position-.45)/.55,0.,1.),dq=(s.position>.45&&s.position<1)?s.velocity/.55:0;return {1-q*q*(3-2*q),-6*q*(1-q)*dq};}
@@ -160,7 +161,7 @@ struct MotionEngine {
         if(compactHeader)return {1-gate,-speed};return {gate*a.position,speed*a.position+gate*a.velocity};
     }
     void target(IslandState state,double now,bool hover=false,bool pressed=false) {
-        auto g=geometry(state);if(state==IslandState::Compact)g=edge?Geometry{64,150,22}:Geometry{compactWidth,34,17};else if(state==IslandState::Expanded||state==IslandState::Dashboard)g={420,334,corner};
+        auto g=geometry(state);if(state==IslandState::Compact)g=edge?Geometry{64,150,22}:Geometry{compactWidth,34,17};else if(state==IslandState::Expanded||state==IslandState::Dashboard)g={420,334,corner};else if(state==IslandState::Command)g.height=commandHeight;
         if(reduced){width.reset(g.width,now);height.reset(g.height,now);radius.reset(g.radius,now);reveal.retarget(state!=IslandState::Compact&&g.height>80?1:0,now,{1,1800,85});return;}
         auto s=reduced?SpringSpec{1,1800,85}:body;
         width.retarget(g.width+(hover?4:0)-(pressed?5:0),now,s);

@@ -19,8 +19,8 @@ namespace {
 constexpr UINT RefreshMessage=WM_APP+1,ShowMessage=WM_APP+2;
 constexpr float Sidebar=236,Pad=20,TitleTop=30,CardTop=112;
 constexpr SpringSpec Knob{1,520,36},Pill{.9,480,36},Hover{1,700,52},Page{1,300,32},Scroll{1,260,34},Indicator{.8,420,32};
-const wchar_t* subtitles[]={L"How the island behaves while you work",L"Size, position and everyday mode",L"Theme, glass and color",L"Springs, feedback and accessibility",L"What the resting island shows",L"Players, logos and audio output",L"Bluetooth, battery and performance",L"Arrange the Command Center",L"Version, diagnostics and reset"};
-const Icon sectionIcons[]={Icon::Settings,Icon::Island,Icon::Sun,Icon::Spark,Icon::Stats,Icon::Music,Icon::Bluetooth,Icon::Home,Icon::Info};
+const wchar_t* subtitles[]={L"How the island behaves while you work",L"Size, position and everyday mode",L"Theme, glass and color",L"Springs, feedback and accessibility",L"What the resting island shows",L"Players, logos and audio output",L"Bluetooth, battery and performance",L"Arrange the Command Center",L"Clipboard, privacy dots, commands and workspaces",L"Version, diagnostics and reset"};
+const Icon sectionIcons[]={Icon::Settings,Icon::Island,Icon::Sun,Icon::Spark,Icon::Stats,Icon::Music,Icon::Bluetooth,Icon::Home,Icon::Shield,Icon::Info};
 const UINT32 swatchColors[]={0xa4deca,0xa6cafa,0xccb8f1,0xefc7a6};
 struct Palette {UINT32 bg,card,border,ink,muted,accent,onAccent,pill;float bgAlpha,cardAlpha;bool light;};
 bool systemLight(){DWORD light=0,size=sizeof(light);RegGetValueW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",L"AppsUseLightTheme",RRF_RT_REG_DWORD,nullptr,&light,&size);return light!=0;}
@@ -77,6 +77,7 @@ bool SettingsUi::enabled(const SettingItem& i)const{
 std::wstring SettingsUi::detail(const SettingItem& i)const{
     if(i.action==SettingAction::TransparencySettings)return context_.blur?L"On — glass blurs what is behind the island":L"Off — glass is tinted but not blurred until you turn it on";
     if(i.key=="material"&&!context_.glassAvailable)return L"Glass needs Windows 11 composition support";
+    if(i.key=="commandShortcut"&&context_.shortcutTaken)return L"Another app already uses this shortcut \u2014 choose another";
     return i.detail;
 }
 IDWriteTextFormat* SettingsUi::format(float size,DWRITE_FONT_WEIGHT weight){
@@ -154,7 +155,8 @@ void SettingsUi::activate(const Hit& h,float x){
         if(item.action==SettingAction::SoundSettings){ShellExecuteW(nullptr,L"open",L"ms-settings:sound",nullptr,nullptr,SW_SHOWNORMAL);break;}
         if(item.action==SettingAction::BluetoothSettings){ShellExecuteW(nullptr,L"open",L"ms-settings:bluetooth",nullptr,nullptr,SW_SHOWNORMAL);break;}
         if(item.action==SettingAction::PowerSettings){ShellExecuteW(nullptr,L"open",L"ms-settings:powersleep",nullptr,nullptr,SW_SHOWNORMAL);break;}
-        bool destructive=item.action==SettingAction::ResetAll||item.action==SettingAction::ClearLogs;
+        if(item.action==SettingAction::PrivacySettings){ShellExecuteW(nullptr,L"open",L"ms-settings:privacy",nullptr,nullptr,SW_SHOWNORMAL);break;}
+        bool destructive=item.action==SettingAction::ResetAll||item.action==SettingAction::ClearLogs||item.action==SettingAction::ClearClipboard||item.action==SettingAction::ClearWorkspaces;
         if(destructive&&!(confirmItem_==h.item&&seconds()<confirmUntil_)){confirmItem_=h.item;confirmUntil_=seconds()+4;dirty=true;SetTimer(hwnd_,1,4100,nullptr);break;}
         confirmItem_=-1;PostMessageW(island_,SettingsActionMessage,WPARAM(item.action),0);dirty=true;break;}
     default:break;

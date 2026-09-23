@@ -29,7 +29,7 @@ int main(){try{
     for(int i=0;i<1000;++i)events.publish({ActivityKind::Notification,std::to_string(i),0,0,.2,2},2);
     require(events.depth()<=64,"Storm queue bounded");
     Settings settings;settings.preset=4;settings.verticalOffset=9;std::stringstream serial;settings.write(serial);auto round=Settings::parse(serial);require(round.preset==4&&round.verticalOffset==9,"Settings round trip");
-    bool rejected=false;try{std::stringstream input("version 8\n");Settings::parse(input);}catch(...){rejected=true;}require(rejected,"Future settings rejected");
+    bool rejected=false;try{std::stringstream input("version "+std::to_string(Settings::currentVersion+1)+"\n");Settings::parse(input);}catch(...){rejected=true;}require(rejected,"Future settings rejected");
     std::stringstream invalid("version 1\npreset 999\nverticalOffset -100\n");auto clamped=Settings::parse(invalid);require(clamped.preset==4&&clamped.verticalOffset==0,"Settings bounds");
     for(int i=0;i<=10;++i){auto g=geometry(IslandState(i));require(g.width>0&&g.height>0&&g.radius<=std::min(g.width,g.height)/2,"Geometry valid");}
     require(rubberBand(10000)<90&&rubberBand(-10000)>-90,"Drag resistance bounded");

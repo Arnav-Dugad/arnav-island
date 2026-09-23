@@ -7,6 +7,10 @@
 #include "Interaction/AutoHide.h"
 #include "Hardware/BatteryModel.h"
 #include "Hardware/BluetoothProvider.h"
+#include "Productivity/Commands.h"
+#include "Productivity/ClipboardModel.h"
+#include "Productivity/Workspaces.h"
+#include "Productivity/Privacy.h"
 #include <iostream>
 #include <random>
 #include <set>
@@ -130,5 +134,68 @@ int main(){try{
         std::stringstream io;h.write(io);auto back=BatteryHistory::read(io);test(back.samples.size()==h.samples.size()&&back.samples.back().percent==h.samples.back().percent,"history round trip");std::stringstream bad("battery_history 1\n5 50 0\n3 40 1\n");test(BatteryHistory::read(bad).samples.empty(),"out-of-order history rejected");}
     {Spectrum sp;std::vector<float> block(480,.1f);auto start=std::chrono::steady_clock::now();for(int i=0;i<2000;++i){sp.push(block.data(),480);sp.analyze(48000,.01f);}
         double us=std::chrono::duration<double,std::micro>(std::chrono::steady_clock::now()-start).count()/2000;std::cout<<"Spectrum analysis: "<<us<<" us per 1024-point step (100 steps/s while audio plays)\n";test(us<2000,"analysis fits comfortably in its 10 ms cadence");}
-    std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery and auto-hide checks\n";return 0;
+    // ---- Phase 4: command language -------------------------------------------------
+    {const std::vector<InstalledApp> apps{{L"Microsoft Edge",L"MSEdge"},{L"Visual Studio Code",L"Microsoft.VisualStudioCode"},{L"Spotify",L"SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify"},{L"Uninstall Spotify",L"u"},{L"Calculator",L"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"}};
+    const std::vector<std::wstring> saved{L"Study",L"Games"};const std::wstring scope=L"C:\\Users\\Sam";
+    auto first=[&](const std::wstring& t){auto r=parseCommand(t,apps,saved,scope);return r.empty()?CommandResult{}:r.front();};
+    test(parseCommand(L"   ",apps,saved,scope).empty(),"empty command has no results");
+    test(first(L"volume 30").kind==CommandKind::Volume&&first(L"volume 30").value==30&&first(L"Set volume to 45%").value==45,"volume levels");
+    test(first(L"volume up").kind==CommandKind::VolumeStep&&first(L"volume up").value==10&&first(L"quieter").value==-10,"volume steps");
+    test(first(L"volume 130").kind==CommandKind::None&&first(L"volume").kind==CommandKind::None,"out-of-range and bare volume do nothing");
+    test(first(L"mute").kind==CommandKind::Mute&&first(L"unmute").kind==CommandKind::Unmute&&first(L"PLAY").kind==CommandKind::Play&&first(L"skip").kind==CommandKind::Next&&first(L"prev").kind==CommandKind::Previous,"playback words");
+    test(first(L"timer 10 min").value==600&&first(L"timer 90s").value==90&&first(L"timer 1 hour").value==3600&&first(L"timer for 5").value==300,"timer durations");
+    test(first(L"focus").value==1500&&first(L"break").value==300&&first(L"focus 50").value==3000&&first(L"break 10").target==L"break","focus and break defaults");
+    test(first(L"timer 10 min extra").kind!=CommandKind::Timer&&first(L"timer 13h").kind!=CommandKind::Timer&&first(L"timer 0").kind!=CommandKind::Timer,"malformed timers are not accepted");
+    test(first(L"stopwatch").kind==CommandKind::Stopwatch&&first(L"stop timer").kind==CommandKind::StopTimer&&first(L"timer cancel").kind==CommandKind::StopTimer,"stopwatch and stop");
+    test(first(L"open edge").kind==CommandKind::OpenApp&&first(L"open edge").target==L"MSEdge"&&first(L"edge").appId==L"MSEdge","apps by name");
+    test(first(L"vsc").target==L"Microsoft.VisualStudioCode"&&first(L"calc").target.ends_with(L"!App"),"apps by initials and prefix");
+    {auto r=parseCommand(L"spotify",apps,saved,scope);test(r.size()==1&&r[0].target.ends_with(L"!Spotify"),"uninstallers are never offered");}
+    test(first(L"open zzzz").kind==CommandKind::None&&first(L"zzzz").kind==CommandKind::None,"unknown text does nothing");
+    {auto r=first(L"find budget pdfs from last month");test(r.kind==CommandKind::SearchFiles&&r.target.starts_with(L"search-ms:query=")&&r.target.find(L"ext%3A.pdf")!=std::wstring::npos&&r.target.find(L"datemodified%3Alast%20month")!=std::wstring::npos&&r.target.ends_with(L"crumb=location:C%3A%5CUsers%5CSam"),"file search URI with filters and scope");}
+    {auto r=first(L"search a&b;c|d \"e\"");test(r.kind==CommandKind::SearchFiles&&r.target.find_first_of(L"&;|\" ",16)==r.target.find(L"&crumb"),"typed search text is percent-encoded, never raw");}
+    {auto q=fileQuery(L"report pdfs from last week");test(q.words==L"report"&&q.aqs==L"report datemodified:last week ext:.pdf","file query words and filters");auto p=fileQuery(L"photos today");test(p.words.empty()&&p.aqs==L"datemodified:today kind:picture","filters only");}
+    test(percentEncode(L"caf\u00e9 \U0001F600")==L"caf%C3%A9%20%F0%9F%98%80","UTF-8 percent encoding");
+    test(first(L"bluetooth settings").target==L"ms-settings:bluetooth"&&first(L"settings display").target==L"ms-settings:display"&&first(L"settings").target==L"ms-settings:","Settings pages");
+    test(first(L"focus settings").target==L"ms-settings:quiethours","a Settings page wins over a malformed timer");
+    test(first(L"save workspace Deep Work").kind==CommandKind::SaveWorkspace&&first(L"save workspace Deep Work").target==L"Deep Work"&&first(L"save workspace").kind==CommandKind::None,"save workspace");
+    test(first(L"workspace st").kind==CommandKind::Workspace&&first(L"workspace st").target==L"Study"&&first(L"workspace st").confirm&&first(L"study").kind==CommandKind::Workspace,"open workspace by prefix or name, with confirmation");
+    test(parseCommand(L"workspaces",apps,saved,scope).size()==2&&first(L"delete workspace games").kind==CommandKind::DeleteWorkspace&&first(L"delete workspace nope").kind==CommandKind::None,"list and delete workspaces");
+    test(first(L"clipboard").kind==CommandKind::Clipboard&&first(L"clear clipboard").kind==CommandKind::ClearClipboard&&first(L"lock").kind==CommandKind::Lock,"clipboard and lock");
+    for(auto t:{L"open calc & del *",L"run cmd /c format",L"powershell -enc AAAA"}){for(auto& r:parseCommand(t,apps,saved,scope))test(r.kind==CommandKind::None||r.kind==CommandKind::OpenApp,"nothing typed becomes a shell command");}
+    test(appScore(L"Visual Studio Code",L"code")==70&&appScore(L"Calculator",L"calculator")==100&&appScore(L"Uninstall Tool",L"uninstall")==0,"app scores");}
+    // ---- Phase 4: clipboard model ---------------------------------------------------
+    {test(isLink(L" https://example.com/a?b=1 ")&&isLink(L"www.example.org")&&isLink(L"mailto:sam@example.com")&&!isLink(L"https://")&&!isLink(L"see https://example.com")&&!isLink(L"www.nodot"),"link detection");
+    test(clipPreview(L"  one\n\n two\t three  ")==L"one two three"&&clipPreview(std::wstring(300,L'a'),10).size()==11&&clipPreview(L" \n\t ").empty(),"preview collapses whitespace and shortens");
+    test(privateSource(L"C:\\Program Files\\KeePassXC\\KeePassXC.exe")&&privateSource(L"1Password.exe")&&privateSource(L"Bitwarden")&&!privateSource(L"notepad.exe"),"password managers are private sources");
+    ClipboardHistory h;auto text=[](std::wstring t){ClipEntry e;e.text=std::move(t);return e;};
+    test(h.add(text(L"alpha"),1)&&h.add(text(L"beta"),2)&&h.entries().front().text==L"beta","newest first");
+    auto alphaId=h.entries().back().id;h.add(text(L"alpha"),3);test(h.entries().size()==2&&h.entries().front().text==L"alpha"&&h.entries().front().id==alphaId&&h.entries().front().time==3,"copying again moves to the top, keeping its id");
+    test(!h.add(text(L"   \n "),4)&&h.entries().size()==2,"blank copies are ignored");
+    h.paused=true;test(!h.add(text(L"gamma"),5)&&h.entries().size()==2,"paused history keeps nothing");h.paused=false;
+    for(int i=0;i<40;++i)h.add(text(L"item "+std::to_wstring(i)),10+i);test(h.entries().size()==ClipboardHistory::limit&&h.entries().front().text==L"item 39","bounded to 24 entries");
+    {ClipEntry big;big.kind=ClipEntry::Kind::Image;big.dib.resize(ClipboardHistory::memoryLimit+1);test(!h.add(std::move(big),60),"oversized images are refused");}
+    {ClipboardHistory m;for(int i=0;i<5;++i){ClipEntry e;e.kind=ClipEntry::Kind::Image;e.dib.assign(ClipboardHistory::memoryLimit/3,uint8_t(i));m.add(std::move(e),i);}size_t total=0;for(auto& e:m.entries())total+=e.bytes();test(total<=ClipboardHistory::memoryLimit&&m.entries().front().dib[0]==4,"memory bound drops the oldest");}
+    auto id=h.entries()[3].id;h.remove(id);test(!h.find(id)&&h.entries().size()==ClipboardHistory::limit-1,"remove by id");h.clear();test(h.entries().empty(),"clear");
+    test(ageText(10)==L"Just now"&&ageText(240)==L"4 min"&&ageText(7300)==L"2 h"&&ageText(3*86400+5)==L"3 d","ages");}
+    // ---- Phase 4: workspaces ---------------------------------------------------------
+    {WorkspaceStore w;test(w.save({L"Study",{{L"Edge",L"MSEdge",true},{L"Notes",L"C:\\Tools\\notes.exe",false}}})&&w.find(L"study")&&w.index(L"STUDY")==0,"save and case-insensitive find");
+    test(w.save({L"study",{{L"Edge",L"MSEdge",true}}})&&w.list().size()==1&&w.list()[0].apps.size()==1,"same name replaces");
+    for(int i=0;i<10;++i)w.save({L"W"+std::to_wstring(i),{}});test(w.list().size()==WorkspaceStore::maxWorkspaces&&!w.save({L"Extra",{}}),"at most 8 workspaces");
+    {Workspace many{L"Big",{}};for(int i=0;i<20;++i)many.apps.push_back({L"a",L"t"+std::to_wstring(i),false});WorkspaceStore b;b.save(many);test(b.list()[0].apps.size()==WorkspaceStore::maxApps,"at most 12 apps");}
+    test(w.remove(L"STUDY")&&!w.find(L"Study")&&!w.remove(L"missing"),"remove");
+    WorkspaceStore u;u.save({L"Caf\u00e9 \U0001F3B5\tnight",{{L"M\u00fcsic",L"C:\\M\u00fcsic\\app.exe",false},{L"Edge",L"MSEdge",true}}});std::stringstream io;u.write(io);auto back=WorkspaceStore::read(io);
+    test(back.list().size()==1&&back.list()[0].name==L"Caf\u00e9 \U0001F3B5 night"&&back.list()[0].apps==u.list()[0].apps,"round trip with Unicode (tabs become spaces)");
+    std::stringstream bad("workspaces 1\nworkspace\tA\napp\t2\tx\ty\napp\t1\tEdge\tMSEdge\nworkspace\ta\napp\t1\tLeak\tL\nnonsense\n");auto r=WorkspaceStore::read(bad);test(r.list().size()==1&&r.list()[0].apps.size()==1&&r.list()[0].apps[0].target==L"MSEdge","malformed lines skipped; duplicate names never take apps");
+    std::stringstream wrong("workspaces 9\nworkspace\tA\n");test(WorkspaceStore::read(wrong).list().empty(),"unknown versions are ignored");
+    test(appSummary({{L"Edge",L"e",true}})==L"Edge"&&appSummary({{L"Edge",L"e",true},{L"Spotify",L"s",true}})==L"Edge and Spotify"&&appSummary({{L"A",L"1"},{L"B",L"2"},{L"C",L"3"},{L"D",L"4"},{L"E",L"5"}})==L"A, B, C and 2 more","app summaries");}
+    // ---- Phase 4: privacy records -----------------------------------------------------
+    {test(consentPath(L"C:#Program Files#App#app.exe")==L"C:\\Program Files\\App\\app.exe","classic program keys decode to paths");
+    std::set<std::wstring> paths{L"c:\\program files\\app\\app.exe"},families{L"microsoft.windowscamera_8wekyb3d8bbwe"};
+    test(inUse({Capability::Camera,L"C:#Program Files#App#app.exe",false,5,0},paths,families),"running classic app in use");
+    test(!inUse({Capability::Camera,L"C:#Program Files#App#app.exe",false,5,9},paths,families)&&!inUse({Capability::Camera,L"C:#Other#x.exe",false,5,0},paths,families),"stopped or not running is not in use");
+    test(inUse({Capability::Microphone,L"Microsoft.WindowsCamera_8wekyb3d8bbwe",true,5,0},paths,families)&&!inUse({Capability::Microphone,L"Microsoft.WindowsCamera_8wekyb3d8bbwe",true,0,0},paths,families),"packaged apps by family name; never-started is not in use");}
+    // ---- Phase 4: settings v8 --------------------------------------------------------
+    {std::stringstream v7("version 7\nautoHide 1\n");auto old=Settings::parse(v7);test(!old.clipboardHistory&&old.privacyDots&&old.privacyCards&&old.commandShortcut==1&&old.clipboardConfirm,"v7 files get the v8 defaults (clipboard history off)");
+    Settings changed;changed.clipboardHistory=true;changed.commandShortcut=3;std::stringstream out;changed.write(out);auto again=Settings::parse(out);test(again==changed,"v8 round trip");}
+    std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery, auto-hide, command, clipboard, workspace and privacy checks\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

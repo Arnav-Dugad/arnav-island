@@ -12,6 +12,9 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR command,int){
     HRESULT hr=OleInitialize(nullptr);
     int result=1;
     try{nexus::IslandWindow app;result=app.run(instance,command?command:L"");}
-    catch(const std::exception& e){MessageBoxA(nullptr,e.what(),"Arnav Island could not start",MB_ICONERROR);}
+    catch(const std::exception& e){
+        // Keep the reason next to the logs, so a failed start can be diagnosed without the dialog.
+        wchar_t base[MAX_PATH]{};if(GetEnvironmentVariableW(L"LOCALAPPDATA",base,MAX_PATH)){std::wstring path=std::wstring(base)+L"\\ArnavIsland\\last-error.txt";if(FILE* f=_wfopen(path.c_str(),L"w")){fputs(e.what(),f);fclose(f);}}
+        MessageBoxA(nullptr,e.what(),"Arnav Island could not start",MB_ICONERROR);}
     if(SUCCEEDED(hr))OleUninitialize();if(single)CloseHandle(single);return result;
 }

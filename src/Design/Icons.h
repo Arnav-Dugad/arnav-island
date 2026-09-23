@@ -3,7 +3,7 @@
 #include <d2d1.h>
 #include <cmath>
 namespace nexus {
-enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous,Next,Pin,Close,Plus,Minus,Muted,Volume,Battery,Processor,Memory,Download,Upload,Disk,Clock,File,Text,Check,Chevron,ArrowLeft,ArrowRight,Reset,Sun,Spark,Power,Link,Island,Info,Sliders,ArrowUp,ArrowDown,Brightness,Apps,Earbuds,Speaker,Phone,Keyboard,Mouse,Gamepad,Watch,Bluetooth,Bolt,Heart,Gauge};
+enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous,Next,Pin,Close,Plus,Minus,Muted,Volume,Battery,Processor,Memory,Download,Upload,Disk,Clock,File,Text,Check,Chevron,ArrowLeft,ArrowRight,Reset,Sun,Spark,Power,Link,Island,Info,Sliders,ArrowUp,ArrowDown,Brightness,Apps,Earbuds,Speaker,Phone,Keyboard,Mouse,Gamepad,Watch,Bluetooth,Bolt,Heart,Gauge,Shield,Camera,Microphone,Location,Clipboard,Search,Lock,Image,Workspace};
 // Original 24-unit optical grid. Rounded stroke ends are consistent at every DPI.
 inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float x,float y,float size,UINT32 color,float opacity=1){
     D2D1_MATRIX_3X2_F saved;rt->GetTransform(&saved);rt->SetTransform(D2D1::Matrix3x2F::Scale(size/24,size/24)*D2D1::Matrix3x2F::Translation(x,y)*saved);
@@ -60,6 +60,15 @@ inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float
     case Icon::Gamepad:path({{7,7},{17,7},{21,15},{19.5f,18},{16,17},{14,14},{10,14},{8,17},{4.5f,18},{3,15},{7,7}},true);line(7,10,7,12.5f);line(5.8f,11.2f,8.2f,11.2f);dot(16.5f,10.5f,.9f);dot(18,12.5f,.9f);break;
     case Icon::Watch:rect(6,6,18,18,4);path({{8,6},{9,2},{15,2},{16,6}});path({{8,18},{9,22},{15,22},{16,18}});path({{12,9},{12,12},{14,13}});break;
     case Icon::Bluetooth:path({{7,7},{17,17},{12,21},{12,3},{17,7},{7,17}});break;
+    case Icon::Shield:path({{12,2.5f},{19.5f,5.5f},{19.5f,11},{18,15.5f},{12,21.5f},{6,15.5f},{4.5f,11},{4.5f,5.5f},{12,2.5f}},true);path({{8.5f,12},{11,14.5f},{15.5f,9.5f}});break;
+    case Icon::Camera:rect(2.5f,7,15.5f,17,3);path({{15.5f,10.5f},{21.5f,7.5f},{21.5f,16.5f},{15.5f,13.5f}},true);break;
+    case Icon::Microphone:rect(9,2.5f,15,14,3);path({{5.5f,11},{6.5f,15},{9,17.6f},{12,18.5f},{15,17.6f},{17.5f,15},{18.5f,11}});line(12,18.5f,12,21.5f);line(8.5f,21.5f,15.5f,21.5f);break;
+    case Icon::Location:path({{12,21.5f},{7,15},{5.5f,11},{6.5f,6.5f},{9,4},{12,3},{15,4},{17.5f,6.5f},{18.5f,11},{17,15},{12,21.5f}},true);circle(12,10.5f,2.6f);break;
+    case Icon::Clipboard:rect(5,4,19,21.5f,2.5f);rect(9,2.5f,15,6,1.5f);line(8.5f,11,15.5f,11);line(8.5f,15,13.5f,15);break;
+    case Icon::Search:circle(10.5f,10.5f,6.5f);line(15.3f,15.3f,20.5f,20.5f);break;
+    case Icon::Lock:rect(5,10.5f,19,21,2.5f);path({{8,10.5f},{8,7.5f},{9.5f,4.5f},{12,3.5f},{14.5f,4.5f},{16,7.5f},{16,10.5f}});dot(12,15.5f,1.2f);break;
+    case Icon::Image:rect(3,5,21,19,2.5f);circle(8.5f,9.8f,1.8f);path({{3.5f,17},{9,12},{13,15.5f},{16,13},{20.5f,17}});break;
+    case Icon::Workspace:rect(3,3.5f,10.5f,10.5f,2);rect(13.5f,3.5f,21,10.5f,2);rect(3,13.5f,10.5f,20.5f,2);rect(13.5f,13.5f,21,20.5f,2);break;
     case Icon::Bolt:path({{13,2},{5,13},{11,13},{10,22},{19,10},{13,10},{13,2}},true,true);break;
     case Icon::Heart:path({{12,20},{4,12},{3.2f,8},{5,5},{8.5f,4.5f},{12,8},{15.5f,4.5f},{19,5},{20.8f,8},{20,12},{12,20}},true);break;
     case Icon::Gauge:path({{4,17},{3,13},{4.5f,8.5f},{8,5.5f},{12,4.5f},{16,5.5f},{19.5f,8.5f},{21,13},{20,17}});line(12,14,16,9);dot(12,14,1.4f);break;

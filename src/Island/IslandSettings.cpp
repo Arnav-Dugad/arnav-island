@@ -11,7 +11,7 @@ std::string narrow(const std::wstring& w){std::string s;for(wchar_t c:w)s+=c<128
 }
 SettingsContext IslandWindow::settingsContext(){
     SettingsContext c;int monitors=0;EnumDisplayMonitors(nullptr,nullptr,countMonitor,reinterpret_cast<LPARAM>(&monitors));c.monitors=std::max(1,monitors);
-    c.blur=GlassBackdrop::effectsEnabled();c.armoury=!content_.platform.armoury.empty();c.glassAvailable=renderer_&&renderer_->glassAvailable();c.version=appVersion;return c;
+    c.blur=GlassBackdrop::effectsEnabled();c.armoury=!content_.platform.armoury.empty();c.glassAvailable=renderer_&&renderer_->glassAvailable();c.shortcutTaken=settings_.commandShortcut!=0&&!hotkey_&&!testing_;c.version=appVersion;return c;
 }
 void IslandWindow::openSettings(int section){
     if(!settingsWindow_)settingsWindow_=std::make_unique<SettingsWindow>(window_);
@@ -28,7 +28,7 @@ void IslandWindow::receiveSettings(Settings next){
     const bool reposition=next.verticalOffset!=previous.verticalOffset||next.horizontalOffset!=previous.horizontalOffset||next.glassy()!=previous.glassy()||next.compactWidth!=previous.compactWidth;
     settings_=next;if(next.edge!=previous.edge){motion_.dragX.reset(0,now);motion_.dragY.reset(0,now);}
     if(!monitor)displays_.remember(currentDisplay_,settings_);
-    applySettings(rebuild,reposition);if(battery_)battery_->setHistory(settings_.batteryHistory);if(next.hideFullscreen!=previous.hideFullscreen)fullscreen();clockTimer();scheduleSave();
+    applySettings(rebuild,reposition);if(battery_)battery_->setHistory(settings_.batteryHistory);syncProductivity();if(next.hideFullscreen!=previous.hideFullscreen)fullscreen();clockTimer();scheduleSave();
 }
 void IslandWindow::settingsAction(SettingAction action){
     switch(action){
@@ -42,6 +42,10 @@ void IslandWindow::settingsAction(SettingAction action){
     case SettingAction::BluetoothSettings:ShellExecuteW(nullptr,L"open",L"ms-settings:bluetooth",nullptr,nullptr,SW_SHOWNORMAL);break;
     case SettingAction::PowerSettings:ShellExecuteW(nullptr,L"open",L"ms-settings:powersleep",nullptr,nullptr,SW_SHOWNORMAL);break;
     case SettingAction::OpenArmoury:if(!content_.platform.armoury.empty())ShellExecuteW(nullptr,L"open",(L"shell:AppsFolder\\"+content_.platform.armoury).c_str(),nullptr,nullptr,SW_SHOWNORMAL);break;
+    case SettingAction::PrivacySettings:ShellExecuteW(nullptr,L"open",L"ms-settings:privacy",nullptr,nullptr,SW_SHOWNORMAL);break;
+    case SettingAction::ClearClipboard:clearClips();break;
+    case SettingAction::ClearWorkspaces:{workspaces_=WorkspaceStore{};saveWorkspaces();store_.log("Info","workspaces_cleared");break;}
+    case SettingAction::OpenCommand:openCommand();break;
     case SettingAction::TransparencySettings:ShellExecuteW(nullptr,L"open",L"ms-settings:personalization-colors",nullptr,nullptr,SW_SHOWNORMAL);break;
     default:break;
     }

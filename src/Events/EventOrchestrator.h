@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 namespace nexus {
-enum class ActivityKind { Volume,Media,Power,Device,Notification,Timer,Download,Brightness };
+enum class ActivityKind { Volume,Media,Power,Device,Notification,Timer,Download,Brightness,Clipboard };
 struct Activity {
     ActivityKind kind; std::string key; int priority=0; double value=0;
     double minimum=0.6, maximum=3; bool persistent=false;

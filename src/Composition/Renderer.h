@@ -23,6 +23,9 @@
 #include "Hardware/BluetoothProvider.h"
 #include "Hardware/Platform.h"
 #include "Design/BrandDraw.h"
+#include "Productivity/Commands.h"
+#include "Productivity/Privacy.h"
+#include "Productivity/ClipboardModel.h"
 
 namespace nexus {
 struct ContentSnapshot {
@@ -37,7 +40,13 @@ struct ContentSnapshot {
     int hud=0,brightness=-1;bool waveform=false;
     // Phase 3: power, devices and the notification card (kind 1 connected, 2 disconnected, 3 charging, 4 unplugged).
     bool card=false;int statsTab=0,deviceOffset=0,powerMode=-1,toFull=-1,remaining=-1;BatteryReading power;std::vector<float> history;
-    std::vector<BluetoothDevice> devices;std::wstring deviceFeedback;PlatformInfo platform;struct Notice{int kind=0;BluetoothDevice device;} notice;
+    std::vector<BluetoothDevice> devices;std::wstring deviceFeedback;PlatformInfo platform;
+    // Notice kinds 5-7: camera, microphone and location use (app and icon below).
+    struct Notice{int kind=0;BluetoothDevice device;std::wstring app;std::shared_ptr<const Artwork> icon;} notice;
+    // Phase 4: clipboard history on the Shelf, privacy indicators and the command bar.
+    int shelfTab=0,clipOffset=0;bool clipsPaused=false;std::wstring clipStatus;double clipStatusUntil=0;struct Clip{uint64_t id=0;int kind=0;std::wstring preview,meta;std::shared_ptr<const Artwork> thumbnail,icon;};std::vector<Clip> clips;
+    std::vector<PrivacyUse> privacy;
+    struct Command{bool active=false,armed=false,error=false;std::wstring text,status;size_t caret=0;int selected=0;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;} command;
 };
 
 class Renderer {
@@ -48,7 +57,7 @@ class Renderer {
     ComPtr<ID2D1Factory> d2d_;
     ComPtr<IDWriteFactory> write_;ComPtr<IDWriteRenderingParams> textParams_;
     ComPtr<IDCompositionVisual> stage_,root_,body_,inner_,header_,content_,bar_,art_,wingLeft_,wingRight_,pulseVisual_,hoverVisual_;
-    ComPtr<IDCompositionRectangleClip> clip_,innerClip_,barClip_,artClip_;
+    ComPtr<IDCompositionRectangleClip> clip_,innerClip_,barClip_,artClip_,hoverClip_;UINT32 hoverColor_=1;
     ComPtr<IDCompositionEffectGroup> contentEffect_,barEffect_,headerEffect_,artEffect_,pulseEffect_,hoverEffect_;
     ComPtr<IDCompositionSurface> baseSurface_,innerSurface_,headerSurface_,contentSurface_,barSurface_,artSurface_,leftSurface_,rightSurface_,pulseSurface_,hoverSurface_;
     ComPtr<IDCompositionScaleTransform> artScale_,leftScale_,rightScale_,hoverScale_;
@@ -82,6 +91,11 @@ class Renderer {
     void updateSpectrumLayout(const ContentSnapshot&,UINT32 accent);void updateHud(const ContentSnapshot&,UINT32 accent,UINT32 track);void updateBadge(const ContentSnapshot&,UINT32 bg);
     BrandPainter brands_;ComPtr<IDCompositionVisual> tabPill_,cardIcon_,energy_,cardRing_;ComPtr<IDCompositionSurface> tabSurface_,cardIconSurface_,energySurface_,cardRingSurface_;int cardRingKey_=-1;ComPtr<IDCompositionEffectGroup> stageEffect_,tabEffect_,cardIconEffect_,energyEffect_;
     ComPtr<IDCompositionScaleTransform> cardIconScale_;ComPtr<IDCompositionRotateTransform> energyRotation_;Spring tabX_{0},tabOpacity_{0},cardPop_{1},energySpin_{0},energyGlow_{0};int tabKey_=-1;UINT32 tabColor_=0;int cardKey_=-1;
+    // Phase 4: blinking caret for the command bar, privacy band on expanded pages.
+    ComPtr<IDCompositionVisual> caret_,privacyBand_;ComPtr<IDCompositionSurface> caretSurface_,privacySurface_;ComPtr<IDCompositionEffectGroup> caretEffect_,privacyEffect_;
+    Spring caretX_{42};float caretTarget_=42;/* drawn after the content surface, never inside its draw */UINT32 caretColor_=1;std::wstring privacyKey_;bool privacyVisible_=false;
+    void updateCaret(const ContentSnapshot&,float x,UINT32 accent);void updatePrivacyBand(const ContentSnapshot&,UINT32 ink,UINT32 muted,UINT32 raised);
+    float measure(const std::wstring&,float size,DWRITE_FONT_WEIGHT weight=DWRITE_FONT_WEIGHT_NORMAL);
     void updateTabs(const ContentSnapshot&,float x,float y,int count,int selected,bool visible,UINT32 fill);void updateCard(const ContentSnapshot&,UINT32 track,UINT32 accent,UINT32 raised,UINT32 ink);
     void identity(ID2D1RenderTarget*,const MediaSnapshot&,float x,float y,float size,UINT32 plate);void deviceBadge(ID2D1RenderTarget*,const BluetoothDevice&,float x,float y,float size,UINT32 plate,UINT32 ink);
     void drawPreview(ID2D1RenderTarget*,const Artwork&,float,float,float,float);

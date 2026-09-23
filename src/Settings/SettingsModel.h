@@ -8,14 +8,14 @@ namespace nexus {
 // it, the island applies it, and tests walk it to prove each value is reachable,
 // persisted and bounded. Keys match the names written by Settings::write.
 enum class SettingControl { Toggle,Slider,Choice,Stepper,Swatch,Button,Order,Note };
-enum class SettingAction { None,OpenLab,ResetAll,OpenLogs,ClearLogs,TransparencySettings,ResetLayout,DisplaySettings,SoundSettings,BluetoothSettings,PowerSettings,OpenArmoury };
+enum class SettingAction { None,OpenLab,ResetAll,OpenLogs,ClearLogs,TransparencySettings,ResetLayout,DisplaySettings,SoundSettings,BluetoothSettings,PowerSettings,OpenArmoury,ClearClipboard,PrivacySettings,ClearWorkspaces,OpenCommand };
 struct SettingItem {
     int section=0;std::wstring title,detail;SettingControl control=SettingControl::Toggle;std::string key;
     int lo=0,hi=1,step=1;std::vector<std::wstring> options;std::wstring unit;SettingAction action=SettingAction::None;
     std::function<int(const Settings&)> get;std::function<void(Settings&,int)> set;
     int clamp(int v)const{return std::clamp(v,lo,hi);}
 };
-inline const std::vector<std::wstring>& settingSections(){static const std::vector<std::wstring> names{L"General",L"Island",L"Appearance",L"Motion",L"Compact",L"Media & sound",L"Devices & power",L"Home & navigation",L"About"};return names;}
+inline const std::vector<std::wstring>& settingSections(){static const std::vector<std::wstring> names{L"General",L"Island",L"Appearance",L"Motion",L"Compact",L"Media & sound",L"Devices & power",L"Home & navigation",L"Privacy & productivity",L"About"};return names;}
 inline const std::vector<std::wstring>& pageNames(){static const std::vector<std::wstring> names{L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio"};return names;}
 inline const std::vector<std::wstring>& metricNames(){static const std::vector<std::wstring> names{L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime"};return names;}
 inline void assignMetric(std::array<int,3>& metrics,int slot,int value){value=std::clamp(value,0,6);for(int i=0;i<3;++i)if(i!=slot&&metrics[i]==value)metrics[i]=metrics[slot];metrics[slot]=value;}
@@ -80,9 +80,18 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     for(int slot=0;slot<3;++slot){SettingItem i;i.section=7;i.control=SettingControl::Stepper;i.key="home"+std::to_string(slot);i.lo=0;i.hi=6;i.options=metricNames();i.title=std::wstring(L"Home statistic ")+wchar_t(L'1'+slot);i.detail=L"Values never repeat";
         i.get=[slot](const Settings& s){return s.homeMetrics[slot];};i.set=[slot](Settings& s,int x){assignMetric(s.homeMetrics,slot,x);};v.push_back(std::move(i));}
     button(7,L"Restore navigation and statistics",L"Other preferences stay as they are",L"Reset layout",SettingAction::ResetLayout);
-    button(8,L"Local logs",L"Diagnostics stay on this device",L"Open folder",SettingAction::OpenLogs);
-    button(8,L"Clear logs",L"Remove local diagnostic events",L"Clear",SettingAction::ClearLogs);
-    button(8,L"Reset all preferences",L"Sign-in startup is kept",L"Reset",SettingAction::ResetAll);
+    toggle(8,L"Clipboard history",L"Keep your last 24 copies on the Shelf, in memory only. Private copies and password managers are skipped","clipboardHistory",&Settings::clipboardHistory);
+    toggle(8,L"Copy confirmation",L"The island briefly shows what you copied","clipboardConfirm",&Settings::clipboardConfirm);
+    button(8,L"Clear clipboard history",L"Forget every kept copy now",L"Clear",SettingAction::ClearClipboard);
+    toggle(8,L"Privacy indicators",L"Dots when an app uses the camera, microphone or location","privacyDots",&Settings::privacyDots);
+    toggle(8,L"Privacy cards",L"Announce which app just started using the camera or microphone","privacyCards",&Settings::privacyCards);
+    button(8,L"Windows privacy settings",L"Choose which apps may use the camera, microphone and location",L"Open",SettingAction::PrivacySettings);
+    number(8,C::Choice,L"Command shortcut",L"Opens the command bar from anywhere","commandShortcut",&Settings::commandShortcut,0,3,1,{L"Off",L"Alt+Shift+Space",L"Ctrl+Alt+Space",L"Win+Alt+Space"});
+    button(8,L"Command bar",L"Volume, timers, apps, file search, settings and workspaces by typing",L"Open",SettingAction::OpenCommand);
+    button(8,L"Saved workspaces",L"Remove every saved app set; open apps are not affected",L"Remove",SettingAction::ClearWorkspaces);
+    button(9,L"Local logs",L"Diagnostics stay on this device",L"Open folder",SettingAction::OpenLogs);
+    button(9,L"Clear logs",L"Remove local diagnostic events",L"Clear",SettingAction::ClearLogs);
+    button(9,L"Reset all preferences",L"Sign-in startup is kept",L"Reset",SettingAction::ResetAll);
     return v;
 }
 }

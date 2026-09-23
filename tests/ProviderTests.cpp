@@ -13,6 +13,11 @@
 #include "Hardware/BatteryProvider.h"
 #include "Hardware/BluetoothProvider.h"
 #include "Hardware/Platform.h"
+#include "Media/BrowserTabs.h"
+#include "Productivity/Clipboard.h"
+#include "Productivity/Privacy.h"
+#include "Productivity/CommandService.h"
+#include <thread>
 using namespace nexus;
 int main(int argc,char** argv){
     OleInitialize(nullptr);
@@ -40,6 +45,23 @@ int main(int argc,char** argv){
         std::cout<<"Bluetooth: "<<devices.size()<<" paired, "<<connected<<" connected, "<<withBattery<<" with battery, "<<audio<<" audio, "<<branded<<" with brand marks\n";
         for(auto& d:devices)if(d.audio){HRESULT hr=BluetoothProvider::audioConnection(d.name,true,true);std::cout<<"Reconnect path for an audio device: "<<(SUCCEEDED(hr)?"endpoint and KS control found":"not found")<<" (probe only)\n";break;}}
     {BatteryProvider battery(window,{},false);BluetoothProvider bluetooth(window);double deadline=seconds()+1.5;MSG msg{};while(seconds()<deadline){while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE))DispatchMessageW(&msg);MsgWaitForMultipleObjects(0,nullptr,FALSE,15,QS_ALLINPUT);}std::cout<<"Battery and Bluetooth workers started and stopped; radio "<<(bluetooth.available?"present":"absent")<<"\n";}
+    // Phase 4 against the real system. Nothing is printed that names an app, file or copy.
+    {auto records=PrivacyProvider::records();auto now=PrivacyProvider::current();std::cout<<"Privacy: "<<records.size()<<" consent records, "<<now.size()<<" capabilities in use now\n";}
+    {auto open=openApps(nullptr);size_t ids=0;for(auto& a:open)ids+=a.appId;std::cout<<"Workspace capture: "<<open.size()<<" open apps ("<<ids<<" by app ID)\n";if(open.size()>WorkspaceStore::maxApps)return 30;}
+    {auto t0=std::chrono::steady_clock::now();auto tabs=browserTabTitles();std::cout<<"Browser tabs: "<<tabs.size()<<" titles in "<<std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-t0).count()<<" ms\n";}
+    {CommandService service(window,L"C:\\Users\\Public");service.query(L"volume 30",{});std::vector<CommandResult> r;std::vector<std::shared_ptr<const Artwork>> icons;uint64_t seq=0;
+        for(int i=0;i<200&&seq<1;++i){Sleep(25);seq=service.results(r,icons);}if(seq<1||r.empty()||r[0].kind!=CommandKind::Volume||r[0].value!=30)return 31;
+        service.query(L"open edge",{});for(int i=0;i<400&&seq<2;++i){Sleep(25);seq=service.results(r,icons);}
+        std::cout<<"Command service: parsed on its worker; \"open edge\" gave "<<r.size()<<" result(s)"<<(!r.empty()&&r[0].kind==CommandKind::OpenApp?", an installed app with "+std::string(icons[0]?"its icon":"no icon"):std::string())<<"\n";}
+    // Clipboard round trip, only when the clipboard holds plain text that can be restored.
+    {std::wstring original;bool text=false;if(OpenClipboard(window)){if(IsClipboardFormatAvailable(CF_UNICODETEXT)){if(HANDLE h=GetClipboardData(CF_UNICODETEXT))if(auto* p=static_cast<const wchar_t*>(GlobalLock(h))){original=p;text=true;GlobalUnlock(h);}}else if(CountClipboardFormats()==0)text=true;CloseClipboard();}
+        if(!text)std::cout<<"Clipboard: skipped (holds something other than text)\n";
+        else{STARTUPINFOW si{sizeof(si)};PROCESS_INFORMATION pi{};wchar_t cmd[]=L"powershell -NoProfile -Command Set-Clipboard -Value 'Island QA copy'";si.dwFlags=STARTF_USESHOWWINDOW;si.wShowWindow=SW_HIDE;
+            if(!CreateProcessW(nullptr,cmd,nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&si,&pi))return 32;WaitForSingleObject(pi.hProcess,20000);CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
+            ClipboardWatcher w;w.start(window);ClipEntry e;auto read=w.capture(e);bool captured=read==ClipboardWatcher::Read::Captured&&e.kind==ClipEntry::Kind::Text&&e.text==L"Island QA copy";
+            ClipEntry back;back.text=L"Island QA copy again";bool copied=w.copy(back);ClipEntry echo;bool ignoresOwn=w.capture(echo)==ClipboardWatcher::Read::Skipped;
+            ClipEntry restore;restore.text=original;if(original.empty()){if(OpenClipboard(window)){EmptyClipboard();CloseClipboard();}}else w.copy(restore);w.stop();
+            if(!captured||!copied||!ignoresOwn)return 33;std::cout<<"Clipboard: another app's copy captured, copied back, own copy ignored, original restored\n";}}
     {auto p=platformInfo();std::cout<<"Platform: "<<(p.rog?"ASUS ROG":p.asus?"ASUS":"other")<<", Armoury Crate "<<(p.armoury.empty()?"absent":"installed")<<"\n";}
     DestroyWindow(window);OleUninitialize();double elapsed=seconds()-start;
     std::cout<<"Five real provider start/stop cycles completed in "<<elapsed<<" seconds; no audio changes requested\n";
