@@ -57,3 +57,10 @@ Glance arcs use actual battery or elapsed timer snapshots. Their endpoint marker
 ## v0.5 details
 
 The seek bar and handle use retained compositor transforms, with the central icon spring for emphasis. Playback advancement uses time-based linear compositor animation; it does not rely on a per-frame UI timer. Interactive scrubbing follows pointer position without queuing seek commands. The drop tile uses centralized `MotionTokens::drop` and `dropFade`, shrinks into a shelf row and fades; reduced motion omits its spatial motion. Audio route feedback is one-shot and tied to confirmed state, not an optimistic click animation.
+## v0.6: small surfaces and continuous atmosphere
+
+Live card geometry: 360 × 154 DIP. Mini resting geometry: 72 × 34 DIP. Body shape still uses the existing velocity-preserving spring. A separate low-height content gate lets Live controls emerge as space becomes available. Command Center navigation remains in the large state. Moving from the small card to another page replaces its content at the gate; this is not yet a shared-element transition for every label.
+
+Shelf peek uses MotionTokens::peek for scale/opacity. Artwork atmosphere uses MotionTokens::atmosphere for three retained gradient channels. Changing color mid-animation samples the current channel spring; it preserves velocity and never starts a color redraw loop. Reduced motion resolves both immediately. Existing album cover handoff remains separate from the background atmosphere.
+
+Additional cadence tests evaluate the analytical/Hermite trajectory at 60/90/120/144/165/240 Hz and enforce <0.004 DIP approximation error. They do not measure monitor presentation, FPS, VRR, input latency or dropped frames. Visual animations are sampled by DirectComposition; the transient 30 ms HWND input-region timer is not a render loop.

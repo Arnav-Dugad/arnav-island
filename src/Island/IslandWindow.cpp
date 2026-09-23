@@ -4,6 +4,7 @@
 #include <dwmapi.h>
 #include <uxtheme.h>
 #include <psapi.h>
+#include <shellscalingapi.h>
 #include <sstream>
 #include <iomanip>
 #include <array>
@@ -14,21 +15,27 @@ static IslandWindow* foregroundOwner=nullptr;
 static constexpr UINT TrayMessage=WM_APP+1,FullscreenMessage=WM_APP+2;
 static constexpr UINT_PTR SettleTimer=1,ActivityTimer=2,HudTimer=3,ScenarioTimer=4;
 static HFONT uiFont(int height,int weight=FW_NORMAL){return CreateFontW(height,0,0,0,weight,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");}
+static std::string monitorIdentity(HMONITOR monitor){
+    MONITORINFOEXW info{};info.cbSize=sizeof(info);if(!GetMonitorInfoW(monitor,&info))return {};
+    UINT32 pathCount=0,modeCount=0;std::wstring id;
+    for(int attempt=0;attempt<3;++attempt){if(GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS,&pathCount,&modeCount)!=ERROR_SUCCESS)break;std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);auto result=QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS,&pathCount,paths.data(),&modeCount,modes.data(),nullptr);if(result==ERROR_INSUFFICIENT_BUFFER)continue;if(result!=ERROR_SUCCESS)break;for(UINT32 i=0;i<pathCount;++i){auto& p=paths[i];DISPLAYCONFIG_SOURCE_DEVICE_NAME source{};source.header={DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,sizeof(source),p.sourceInfo.adapterId,p.sourceInfo.id};if(DisplayConfigGetDeviceInfo(&source.header)!=ERROR_SUCCESS||wcscmp(source.viewGdiDeviceName,info.szDevice))continue;DISPLAYCONFIG_TARGET_DEVICE_NAME target{};target.header={DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME,sizeof(target),p.targetInfo.adapterId,p.targetInfo.id};if(DisplayConfigGetDeviceInfo(&target.header)==ERROR_SUCCESS)id=target.monitorDevicePath;break;}break;}
+    if(id.empty())return {};int length=WideCharToMultiByte(CP_UTF8,0,id.data(),int(id.size()),nullptr,0,nullptr,nullptr);std::string result(length,'\0');WideCharToMultiByte(CP_UTF8,0,id.data(),int(id.size()),result.data(),length,nullptr,nullptr);return result;
+}
 static BOOL CALLBACK collectMonitor(HMONITOR m,HDC,LPRECT,LPARAM p){reinterpret_cast<std::vector<HMONITOR>*>(p)->push_back(m);return TRUE;}
 
 int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
-    instance_=instance;visibilityAudit_=cmd.find(L"--visibility-audit")!=std::wstring::npos;motionStudy_=cmd.find(L"--motion-study")!=std::wstring::npos;testing_=cmd.find(L"--capture")!=std::wstring::npos||cmd.find(L"--benchmark")!=std::wstring::npos||cmd.find(L"--ui-test")!=std::wstring::npos;settings_=store_.load();if(cmd.find(L"--ui-test")!=std::wstring::npos)settings_=Settings{};settings_.startAtLogin=startup::enabled();if(cmd.find(L"--enable-startup")!=std::wstring::npos&&!testing_){settings_.startAtLogin=startup::apply(true);store_.save(settings_);}motion_.body=preset(MotionPreset(settings_.preset));
+    instance_=instance;visibilityAudit_=cmd.find(L"--visibility-audit")!=std::wstring::npos;motionStudy_=cmd.find(L"--motion-study")!=std::wstring::npos;testing_=cmd.find(L"--capture")!=std::wstring::npos||cmd.find(L"--benchmark")!=std::wstring::npos||cmd.find(L"--ui-test")!=std::wstring::npos;settings_=store_.load();if(!testing_){std::ifstream profiles(store_.directory/L"displays.nexus");if(profiles)displays_=DisplayProfiles::read(profiles);}if(cmd.find(L"--ui-test")!=std::wstring::npos){settings_=Settings{};settings_.uiMode=2;}settings_.startAtLogin=startup::enabled();if(cmd.find(L"--enable-startup")!=std::wstring::npos&&!testing_){settings_.startAtLogin=startup::apply(true);store_.save(settings_);}motion_.body=preset(MotionPreset(settings_.preset));
     BOOL animations=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animations,0);motion_.reduced=settings_.reduceMotion||!animations;
     WNDCLASSW wc{};wc.hInstance=instance;wc.lpfnWndProc=procedure;wc.lpszClassName=L"ArnavIsland.Surface";wc.hCursor=LoadCursor(nullptr,IDC_ARROW);wc.hIcon=LoadIconW(instance_,MAKEINTRESOURCEW(101));check(RegisterClassW(&wc)?S_OK:HRESULT_FROM_WIN32(GetLastError()));
     window_=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_TOPMOST|WS_EX_NOREDIRECTIONBITMAP|WS_EX_NOACTIVATE,wc.lpszClassName,L"Arnav Island",WS_POPUP,0,0,760,480,nullptr,nullptr,instance,this);
     if(!window_)throw std::runtime_error("Island window creation failed");
-    position();renderer_=std::make_unique<Renderer>();renderer_->initialize(window_,dpi_);power(false);applySettings();
+    position();renderer_=std::make_unique<Renderer>();renderer_->initialize(window_,dpi_);power(false);applySettings();if(!testing_){displays_.remember(currentDisplay_,settings_);saveDisplays();}
     audio_=std::make_unique<AudioProvider>(window_);if(cmd.find(L"--capture-safe")==std::wstring::npos)media_=std::make_unique<MediaProvider>(window_);system_=std::make_unique<SystemProvider>(window_);content_.settings=settings_;
     for(auto id:{&GUID_ACDC_POWER_SOURCE,&GUID_BATTERY_PERCENTAGE_REMAINING}){
         auto registration=RegisterPowerSettingNotification(window_,id,DEVICE_NOTIFY_WINDOW_HANDLE);if(registration)powerNotifications_.push_back(registration);
     }
     tray_.cbSize=sizeof(tray_);tray_.hWnd=window_;tray_.uID=1;tray_.uFlags=NIF_MESSAGE|NIF_ICON|NIF_TIP;tray_.uCallbackMessage=TrayMessage;tray_.hIcon=LoadIconW(instance_,MAKEINTRESOURCEW(101));wcscpy_s(tray_.szTip,L"Arnav Island — right-click for controls");Shell_NotifyIconW(NIM_ADD,&tray_);
-    previews_=std::make_unique<ShelfPreviews>(window_);dropTarget_.Attach(new ShelfDropTarget([this](bool hover){content_.dropHover=hover;if(hover){KillTimer(window_,8);content_.page=Page::Shelf;transition(IslandState::Expanded);}refresh();},[this](std::vector<ShelfItem> items){size_t first=content_.shelf.size();auto preview=items.empty()?nullptr:previews_->get(items.front().value);for(auto& item:items){if(content_.shelf.size()>=32)break;bool exists=std::any_of(content_.shelf.begin(),content_.shelf.end(),[&](auto& existing){return existing.kind==item.kind&&existing.value==item.value;});if(!exists)content_.shelf.push_back(std::move(item));}content_.pinned=true;motion_.pulse.reset(.45,seconds());motion_.pulse.retarget(0,seconds(),{1,95,22});requestPreviews();refresh();animate();if(content_.shelf.size()>first){POINT p{};GetCursorPos(&p);ScreenToClient(window_,&p);auto origin=bodyOrigin(motion_.width.sample(seconds()).position,motion_.height.sample(seconds()).position,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);content_.shelfOffset=int(first>3?first-3:0);renderer_->absorb(preview,float(p.x*96/dpi_-origin.x),float(p.y*96/dpi_-origin.y),42,94+float(first-content_.shelfOffset)*36,motion_.reduced);refresh();}}));dropTarget_->attach(window_,[this](const std::vector<ShelfItem>& items){requestPreviews(items);});check(RegisterDragDrop(window_,dropTarget_.Get()));
+    previews_=std::make_unique<ShelfPreviews>(window_);dropTarget_.Attach(new ShelfDropTarget([this](bool hover){content_.dropHover=hover;if(hover){KillTimer(window_,8);content_.page=Page::Shelf;transition(IslandState::Expanded);}refresh();},[this](std::vector<ShelfItem> items){size_t first=content_.shelf.size();auto preview=items.empty()?nullptr:previews_->get(items.front().value);for(auto& item:items){if(content_.shelf.size()>=32)break;bool exists=std::any_of(content_.shelf.begin(),content_.shelf.end(),[&](auto& existing){return existing.kind==item.kind&&existing.value==item.value;});if(!exists)content_.shelf.push_back(std::move(item));}content_.pinned=false;motion_.pulse.reset(.45,seconds());motion_.pulse.retarget(0,seconds(),{1,95,22});requestPreviews();refresh();animate();if(content_.shelf.size()>first){POINT p{};GetCursorPos(&p);ScreenToClient(window_,&p);auto origin=bodyOrigin(motion_.width.sample(seconds()).position,motion_.height.sample(seconds()).position,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);content_.shelfOffset=int(first>3?first-3:0);renderer_->absorb(preview,float(p.x*96/dpi_-origin.x),float(p.y*96/dpi_-origin.y),42,94+float(first-content_.shelfOffset)*36,motion_.reduced);refresh();}}));dropTarget_->attach(window_,[this](const std::vector<ShelfItem>& items){requestPreviews(items);});check(RegisterDragDrop(window_,dropTarget_.Get()));
     foregroundOwner=this;foregroundHook_=SetWinEventHook(EVENT_SYSTEM_FOREGROUND,EVENT_SYSTEM_FOREGROUND,nullptr,foregroundEvent,0,0,WINEVENT_OUTOFCONTEXT|WINEVENT_SKIPOWNPROCESS);
     ShowWindow(window_,SW_SHOWNOACTIVATE);animate();
     locationHook_=SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE,EVENT_OBJECT_LOCATIONCHANGE,nullptr,foregroundEvent,0,0,WINEVENT_OUTOFCONTEXT|WINEVENT_SKIPOWNPROCESS);if(!testing_)fullscreen();
@@ -37,6 +44,7 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     if(cmd.find(L"--video-layout")!=std::wstring::npos){settings_.mediaLayout=2;refresh();}
     if(cmd.find(L"--music-layout")!=std::wstring::npos){settings_.mediaLayout=1;refresh();}
         if(cmd.find(L"--scale110")!=std::wstring::npos&&testing_){settings_.scale=110;applySettings(true);}
+    if(testing_&&cmd.find(L"--qa-dark")!=std::wstring::npos){settings_.theme=0;applySettings();}
     if(cmd.find(L"--light")!=std::wstring::npos){settings_.theme=1;applySettings();}
     if(cmd.find(L"--right")!=std::wstring::npos){settings_.edge=1;applySettings(true);}
     if(cmd.find(L"--qa-art")!=std::wstring::npos&&testing_){auto art=std::make_shared<Artwork>();art->width=256;art->height=256;art->pixels.resize(256*256*4);for(unsigned y=0;y<256;++y)for(unsigned x=0;x<256;++x){size_t i=(y*256+x)*4;art->pixels[i]=BYTE(110+x/2);art->pixels[i+1]=BYTE(55+y/2);art->pixels[i+2]=BYTE(180-x/3);art->pixels[i+3]=255;}content_.playback.artwork=art;content_.playback.title=L"Artwork study";content_.playback.artist=L"Original local QA artwork";content_.playback.available=true;refresh();animate();}
@@ -49,6 +57,11 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     if(cmd.find(L"--lab")!=std::wstring::npos)openLab();
     if(cmd.find(L"--benchmark")!=std::wstring::npos){benchmark_=true;benchmarkStart_=seconds();FILETIME c,e;GetProcessTimes(GetCurrentProcess(),&c,&e,&initialKernel_,&initialUser_);SetTimer(window_,ScenarioTimer,73,nullptr);}
     if(cmd.find(L"--ui-test")!=std::wstring::npos){settings_.hoverOpen=true;settings_.hoverDelay=100;SetTimer(window_,13,200,nullptr);}
+    if(testing_&&cmd.find(L"--qa-modes")!=std::wstring::npos){content_.settingsPage=8;content_.page=Page::Settings;content_.pinned=true;transition(IslandState::Expanded);refresh();}
+    if(testing_&&cmd.find(L"--qa-live")!=std::wstring::npos){settings_.uiMode=1;content_.pinned=true;transition(IslandState::LiveActivity);refresh();}
+    if(testing_&&cmd.find(L"--qa-mini")!=std::wstring::npos){settings_.uiMode=0;applySettings();transition(IslandState::Compact);}
+    if(testing_&&cmd.find(L"--qa-wide")!=std::wstring::npos){settings_.uiMode=1;settings_.compactWidth=560;settings_.compactClock=true;applySettings();transition(IslandState::Compact);}
+    if(testing_&&cmd.find(L"--qa-peek")!=std::wstring::npos){content_.hovered=Action::ShelfItemBase;refresh();}
     if(cmd.find(L"--capture")!=std::wstring::npos&&!benchmark_&&cmd.find(L"--ui-test")==std::wstring::npos)SetTimer(window_,5,2800,nullptr); store_.log("Info","application_started_directcomposition");
     MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){if(lab_&&IsDialogMessageW(lab_,&msg))continue;TranslateMessage(&msg);DispatchMessageW(&msg);}
     store_.log("Info","application_stopped");return int(msg.wParam);
@@ -65,11 +78,14 @@ void IslandWindow::position(){
     std::vector<HMONITOR> monitors;EnumDisplayMonitors(nullptr,nullptr,collectMonitor,reinterpret_cast<LPARAM>(&monitors));
     HMONITOR selected=MonitorFromPoint({0,0},MONITOR_DEFAULTTOPRIMARY);
     if(settings_.monitor>0&&size_t(settings_.monitor)<=monitors.size())selected=monitors[settings_.monitor-1];
+    if(!selectDisplay_&&!displays_.preferred.empty()){selected=MonitorFromPoint({0,0},MONITOR_DEFAULTTOPRIMARY);for(auto monitor:monitors)if(monitorIdentity(monitor)==displays_.preferred){selected=monitor;break;}}
+    auto identity=monitorIdentity(selected);if(displays_.preferred.empty())displays_.preferred=identity;if(selectDisplay_){displays_.preferred=identity;selectDisplay_=false;}
+    if(identity!=currentDisplay_){displays_.restore(identity,settings_);currentDisplay_=identity;}
     MONITORINFO info{sizeof(info)};GetMonitorInfoW(selected,&info);
-    dpi_=float(GetDpiForWindow(window_))*settings_.scale/100.f;float s=dpi_/96;
+    UINT monitorDpiX=96,monitorDpiY=96;if(FAILED(GetDpiForMonitor(selected,MDT_EFFECTIVE_DPI,&monitorDpiX,&monitorDpiY)))monitorDpiX=GetDpiForWindow(window_);dpi_=float(monitorDpiX)*settings_.scale/100.f;float s=dpi_/96;
     int width=int(Renderer::canvasWidth*s),height=int(Renderer::canvasHeight*s);
     int x=(info.rcMonitor.left+info.rcMonitor.right-width)/2+int(settings_.horizontalOffset*s);
-    x=std::clamp<int>(x,info.rcMonitor.left-width/2,info.rcMonitor.right-width/2);
+    int footprint=int((std::max(420,settings_.compactWidth)+56)*s);if(footprint<=info.rcMonitor.right-info.rcMonitor.left)x=std::clamp<int>(x,info.rcMonitor.left-(width-footprint)/2,info.rcMonitor.right-(width+footprint)/2);else x=(info.rcMonitor.left+info.rcMonitor.right-width)/2;
     if(settings_.edge)x=info.rcMonitor.right-width;int y=settings_.edge?(info.rcMonitor.top+info.rcMonitor.bottom-height)/2+int(settings_.verticalOffset*s):info.rcMonitor.top+int(settings_.verticalOffset*s);SetWindowPos(window_,HWND_TOPMOST,x,y,width,height,SWP_NOACTIVATE);positioning_=false;dpi_=float(GetDpiForWindow(window_))*settings_.scale/100.f;
 }
 void IslandWindow::updateRegion(bool envelope){
@@ -78,14 +94,14 @@ void IslandWindow::updateRegion(bool envelope){
     HRGN outline=CreateRectRgn(0,0,0,0);CombineRgn(outline,region,region,RGN_COPY);for(auto offset:std::array<POINT,8>{{{-1,-1},{0,-1},{1,-1},{-1,0},{1,0},{-1,1},{0,1},{1,1}}}){HRGN fringe=CreateRectRgn(0,0,0,0);CombineRgn(fringe,outline,outline,RGN_COPY);OffsetRgn(fringe,offset.x,offset.y);CombineRgn(region,region,fringe,RGN_OR);DeleteObject(fringe);}DeleteObject(outline);if(!SetWindowRgn(window_,region,FALSE))DeleteObject(region);
 }
 void IslandWindow::animate(){
-    double now=seconds();bool expanded=state_!=IslandState::Compact;motion_.target(state_,now,interaction_==InteractionState::Hover,interaction_==InteractionState::Pressed);
-    bool artwork=content_.playback.artwork&&(expanded?(content_.page==Page::Media||content_.page==Page::Overview):settings_.compactMedia);
+    double now=seconds();bool expanded=state_!=IslandState::Compact;motion_.live=content_.live;motion_.target(state_,now,interaction_==InteractionState::Hover,interaction_==InteractionState::Pressed);
+    bool artwork=content_.playback.artwork&&(expanded?(content_.live||content_.page==Page::Media||content_.page==Page::Overview):settings_.compactMedia);
     auto move=[&](Spring& spring,double target,SpringSpec spec){if(spring.target()!=target){if(motion_.reduced)spring.reset(target,now);else spring.retarget(target,now,spec);}};
-    move(motion_.artX,expanded?20:settings_.edge?21:12,MotionTokens::artwork);move(motion_.artY,expanded?(content_.page==Page::Media?(settings_.mediaLayout==2||(settings_.mediaLayout==0&&content_.playback.kind==MediaKind::Video)?68:82):81):settings_.edge?18:6,MotionTokens::artwork);move(motion_.artSize,expanded?(content_.page==Page::Media?(settings_.mediaLayout==2||(settings_.mediaLayout==0&&content_.playback.kind==MediaKind::Video)?148:100):64):22,MotionTokens::artwork);move(motion_.artOpacity,artwork?1:0,MotionTokens::artworkOpacity);
+    move(motion_.artX,expanded?20:settings_.edge?21:12,MotionTokens::artwork);move(motion_.artY,content_.live?20:expanded?(content_.page==Page::Media?(settings_.mediaLayout==2||(settings_.mediaLayout==0&&content_.playback.kind==MediaKind::Video)?68:82):81):settings_.edge?18:6,MotionTokens::artwork);move(motion_.artSize,content_.live?52:expanded?(content_.page==Page::Media?(settings_.mediaLayout==2||(settings_.mediaLayout==0&&content_.playback.kind==MediaKind::Video)?148:100):64):22,MotionTokens::artwork);move(motion_.artOpacity,artwork?1:0,MotionTokens::artworkOpacity);
     if(content_.glassActive){glass_.hide();content_.glassActive=false;refresh();}
     renderer_->animate(motion_,now);lastMotion_=now;updateRegion(true);SetTimer(window_,SettleTimer,30,nullptr);
 }
-void IslandWindow::transition(IslandState s){bool changed=state_!=s;state_=s;content_.expanded=s!=IslandState::Compact;if(changed){content_.settings=settings_;if(content_.expanded&&contentDirty_)refresh();else renderer_->redraw(content_,debug_,true);}clockTimer();animate();if(lab_)InvalidateRect(lab_,nullptr,FALSE);}
+void IslandWindow::transition(IslandState s){bool changed=state_!=s;state_=s;content_.expanded=s!=IslandState::Compact;content_.live=s==IslandState::LiveActivity;if(changed){content_.settings=settings_;if(content_.expanded)refresh();else renderer_->redraw(content_,debug_,true);}clockTimer();animate();if(lab_)InvalidateRect(lab_,nullptr,FALSE);}
 void IslandWindow::power(bool notify){
     SYSTEM_POWER_STATUS p{};if(GetSystemPowerStatus(&p)){
         const int previousBattery=content_.battery;const bool previouslyCharging=content_.charging;
@@ -165,14 +181,14 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                 renderer_->animate(motion_,now);dragTime_=now;lastPointer_=p;}
         }else{
             if(interaction_==InteractionState::Rest){interaction_=InteractionState::Hover;TRACKMOUSEEVENT e{sizeof(e),TME_LEAVE,window_,0};TrackMouseEvent(&e);animate();if(settings_.hoverOpen&&state_==IslandState::Compact)SetTimer(window_,7,settings_.hoverDelay,nullptr);}
-            auto target=hit(l);if(target!=content_.hovered){bool timeline=target==Action::Seek||content_.hovered==Action::Seek;content_.hovered=target;if(timeline)refresh();}feedback(target,GET_X_LPARAM(l),GET_Y_LPARAM(l));
+            auto target=hit(l);if(target!=content_.hovered){bool detail=target==Action::Seek||content_.hovered==Action::Seek||content_.page==Page::Shelf;content_.hovered=target;if(detail)refresh();KillTimer(window_,19);if(content_.live&&target==Action::Overview)SetTimer(window_,19,420,nullptr);}feedback(target,GET_X_LPARAM(l),GET_Y_LPARAM(l));
         }return 0;}
-    case WM_MOUSELEAVE:KillTimer(window_,7);if(interaction_==InteractionState::Hover){interaction_=InteractionState::Rest;content_.hovered=Action::None;feedback(Action::None);refresh();animate();if(!content_.pinned)SetTimer(window_,8,settings_.collapseDelay,nullptr);}return 0;
+    case WM_MOUSELEAVE:KillTimer(window_,7);KillTimer(window_,19);if(interaction_==InteractionState::Hover){interaction_=InteractionState::Rest;content_.hovered=Action::None;feedback(Action::None);refresh();animate();if(!content_.pinned)SetTimer(window_,8,settings_.collapseDelay,nullptr);}return 0;
     case WM_LBUTTONDOWN:pressedAction_=hit(l);if(pressedAction_==Action::Seek)scrubAt(l,true);if(pressedAction_==Action::VolumeSlider)setVolumeAt(l);interaction_=InteractionState::Pressed;GetCursorPos(&down_);lastPointer_=down_;dragTime_=seconds();SetCapture(window_);if(pressedAction_==Action::None)animate();else feedback(pressedAction_,GET_X_LPARAM(l),GET_Y_LPARAM(l),true);return 0;
     case WM_LBUTTONUP:{if(pressedAction_==Action::Seek){scrubAt(l);endScrub(true);}bool dragged=interaction_==InteractionState::Dragging;interaction_=InteractionState::Hover;ReleaseCapture();
         if(dragged){double now=seconds();auto pos=motion_.dragY.sample(now).position;motion_.dragY.reset(pos,now,dragVelocity_*.3);motion_.dragY.retarget(0,now,motion_.body);motion_.dragX.retarget(0,now,motion_.body);animate();}
         else if(pressedAction_!=Action::None){if(pressedAction_==hit(l))perform(pressedAction_);}
-        else{content_.pinned=state_==IslandState::Compact;transition(state_==IslandState::Compact?IslandState::Expanded:IslandState::Compact);refresh();}
+        else{animate();}
         pressedAction_=Action::None;feedback(hit(l),GET_X_LPARAM(l),GET_Y_LPARAM(l));return 0;}
     case WM_CAPTURECHANGED:if(content_.scrub.active)endScrub(false);if(interaction_==InteractionState::Pressed||interaction_==InteractionState::Dragging){interaction_=InteractionState::Rest;motion_.dragX.retarget(0,seconds(),motion_.body);motion_.dragY.retarget(0,seconds(),motion_.body);animate();}return 0;
     case WM_RBUTTONUP:showMenu();return 0;
@@ -198,7 +214,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
             if(++motionStudyStep_>=10){KillTimer(window_,16);DestroyWindow(qaMatte_);qaMatte_=nullptr;UnregisterClassW(L"NexusIsland.QAMatte",instance_);DeleteObject(qaBrush_);qaBrush_=nullptr;PostMessageW(window_,WM_CLOSE,0,0);}return 0;
         }
         if(w==15){auto previous=content_.playback.artwork;if(previous){auto art=std::make_shared<Artwork>(*previous);for(size_t i=0;i<art->pixels.size();i+=4){std::swap(art->pixels[i],art->pixels[i+2]);art->pixels[i+1]=BYTE((art->pixels[i+1]+45)%256);}content_.playback.artwork=art;refresh();animate();}if(++handoffStep_>=12){KillTimer(window_,15);store_.log("Info","qa_rapid_artwork_handoff_completed");}}
-        if(w==10){KillTimer(window_,10);if(system_&&systemRequested_)system_->setActive(true);}
+        if(w==18){refresh();}if(w==10){KillTimer(window_,10);if(system_&&systemRequested_)system_->setActive(true);}
         if(w==13){
             KillTimer(window_,13);bool pass=true;
             switch(scenarioStep_++){
@@ -211,11 +227,14 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
             case 6:{perform(Action::Settings);content_.settingsPage=5;content_.layoutSlot=0;auto first=settings_.navigation[0];perform(Action::LayoutRight);pass=content_.layoutSlot==1&&settings_.navigation[1]==first&&validNavigation(settings_.navigation);perform(Action::MetricOne);pass=pass&&settings_.homeMetrics[0]!=settings_.homeMetrics[1]&&settings_.homeMetrics[0]!=settings_.homeMetrics[2];SetTimer(window_,13,650,nullptr);break;}
             case 7:pass=renderer_->hit(20+float(navStep)+14,38+navY+12)==Action::Overview;perform(Action::LayoutReset);pass=pass&&settings_.navigation==defaultNavigation&&settings_.homeMetrics==defaultMetrics;perform(Action::Rings);perform(Action::IconsToggle);perform(Action::HandoffToggle);pass=pass&&settings_.glanceRings==0&&!settings_.animatedIcons&&!settings_.trackHandoff;perform(Action::Close);SetTimer(window_,13,100,nullptr);break;
             case 8:content_.pinned=false;transition(IslandState::Expanded);yieldToApp();pass=state_==IslandState::Compact;content_.pinned=true;transition(IslandState::Expanded);yieldToApp();pass=pass&&state_==IslandState::Expanded;content_.pinned=false;settings_.collapseOnAppSwitch=false;yieldToApp();pass=pass&&state_==IslandState::Expanded;settings_.collapseOnAppSwitch=true;content_.dropHover=true;yieldToApp();pass=pass&&state_==IslandState::Expanded;content_.dropHover=false;yieldToApp();pass=pass&&state_==IslandState::Compact;SetTimer(window_,13,100,nullptr);break;
-            case 9:{perform(Action::Media);content_.playback.canSeek=true;content_.playback.duration=content_.playback.seekMax=240;content_.playback.seekMin=0;refresh();auto origin=bodyOrigin(motion_.width.sample(seconds()).position,motion_.height.sample(seconds()).position,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);auto point=[&](float x,float y){return MAKELPARAM(int((origin.x+x)*dpi_/96),int((origin.y+y)*dpi_/96));};scrubAt(point(210,229),true);pass=content_.scrub.active&&std::abs(content_.scrub.value-120)<1;auto initial=content_.scrub.value;scrubAt(point(248,310));pass=pass&&content_.scrub.value>initial&&content_.scrub.value<initial+4;endScrub(false);pass=pass&&!content_.scrub.active&&renderer_->hit(210,228)==Action::Seek;perform(Action::Close);break;}
+            case 9:{perform(Action::Media);content_.playback.canSeek=true;content_.playback.duration=content_.playback.seekMax=240;content_.playback.seekMin=0;refresh();auto origin=bodyOrigin(motion_.width.sample(seconds()).position,motion_.height.sample(seconds()).position,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);auto point=[&](float x,float y){return MAKELPARAM(int((origin.x+x)*dpi_/96),int((origin.y+y)*dpi_/96));};scrubAt(point(210,229),true);pass=content_.scrub.active&&std::abs(content_.scrub.value-120)<1;auto initial=content_.scrub.value;scrubAt(point(248,310));pass=pass&&content_.scrub.value>initial&&content_.scrub.value<initial+4;endScrub(false);pass=pass&&!content_.scrub.active&&renderer_->hit(210,228)==Action::Seek;perform(Action::Close);SetTimer(window_,13,100,nullptr);break;}
+            case 10:{settings_.edge=0;settings_.uiMode=0;applySettings(true);transition(IslandState::Compact);SendMessageW(window_,WM_LBUTTONDOWN,0,MAKELPARAM(300,18));SendMessageW(window_,WM_LBUTTONUP,0,MAKELPARAM(300,18));pass=state_==IslandState::Compact&&!content_.pinned&&motion_.width.target()<=76;transition(IslandState::LiveActivity);pass=pass&&content_.live&&motion_.height.target()==154&&renderer_->hit(30,120)==Action::Overview;content_.hovered=Action::Overview;interaction_=InteractionState::Hover;SendMessageW(window_,WM_TIMER,19,0);pass=pass&&state_==IslandState::Expanded&&!content_.live;perform(Action::Settings);pass=pass&&!content_.live;settings_.compactWidth=560;applySettings();perform(Action::Close);pass=pass&&state_==IslandState::Compact;SetTimer(window_,13,100,nullptr);break;}
+            case 11:{settings_.uiMode=1;applySettings();pass=motion_.width.target()>=560;perform(Action::WidthDown);pass=pass&&settings_.compactWidth==520;perform(Action::CompactVolumeToggle);perform(Action::CompactClockToggle);pass=pass&&!settings_.compactVolume&&settings_.compactClock;perform(Action::ShelfPeekToggle);pass=pass&&!settings_.shelfPeek;break;}
             }
-            if(!pass||scenarioStep_==10){SetCursorPos(qaCursor_.x,qaCursor_.y);auto result=pass?"PASS native hover open, leave close, disabled hover, navigation, timer actions, hit targets, edge/scale/theme, OLE drop and shelf clear, navigation reorder, metric choices, detail toggles, app-switch collapse, pin and drag protection, precision seeking and cancel":"FAIL native interaction regression";store_.submit([dir=store_.directory,result,step=scenarioStep_,state=int(state_),interaction=int(interaction_),width=motion_.width.sample(seconds()).position]{std::ofstream(dir/L"ui-test.txt")<<"stage "<<step<<" state "<<state<<" interaction "<<interaction<<" width "<<width<<": "<<result<<'\n';});PostMessageW(window_,WM_CLOSE,0,0);}return 0;
+            if(!pass||scenarioStep_==12){SetCursorPos(qaCursor_.x,qaCursor_.y);auto result=pass?"PASS native hover open, leave close, disabled hover, navigation, timer actions, hit targets, edge/scale/theme, OLE drop and shelf clear, navigation reorder, metric choices, detail toggles, app-switch collapse, pin and drag protection, precision seeking and cancel, hover-only surface, mini/live modes, wide compact settings":"FAIL native interaction regression";store_.submit([dir=store_.directory,result,step=scenarioStep_,state=int(state_),interaction=int(interaction_),width=motion_.width.sample(seconds()).position]{std::ofstream(dir/L"ui-test.txt")<<"stage "<<step<<" state "<<state<<" interaction "<<interaction<<" width "<<width<<": "<<result<<'\n';});PostMessageW(window_,WM_CLOSE,0,0);}return 0;
         }
-        if(w==7){KillTimer(window_,7);if(settings_.hoverOpen&&interaction_==InteractionState::Hover&&state_==IslandState::Compact)transition(IslandState::Expanded);}
+        if(w==19){KillTimer(window_,19);if(content_.live&&content_.hovered==Action::Overview&&interaction_==InteractionState::Hover)perform(Action::Overview);}
+        if(w==7){KillTimer(window_,7);if(settings_.hoverOpen&&interaction_==InteractionState::Hover&&state_==IslandState::Compact)transition(settings_.uiMode==2?IslandState::Expanded:IslandState::LiveActivity);}
         if(w==8){KillTimer(window_,8);if(interaction_==InteractionState::Rest&&!content_.pinned)transition(IslandState::Compact);}
         if(w==9){if(content_.focus.tick(seconds())){content_.page=Page::Focus;events_.publish({ActivityKind::Timer,"timer",70,0,2,8},seconds());presentActivity();}if(IsWindowVisible(window_))refresh();clockTimer();}
         if(w==5){
@@ -350,21 +369,22 @@ void IslandWindow::finishBenchmark(){
 }
 
 namespace nexus {
+void IslandWindow::saveDisplays(){auto profiles=displays_;store_.submit([profiles,dir=store_.directory]{auto path=dir/L"displays.tmp";{std::ofstream f(path);profiles.write(f);f.flush();if(!f)throw std::runtime_error("Display profiles write failed");}if(!MoveFileExW(path.c_str(),(dir/L"displays.nexus").c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))throw std::runtime_error("Display profiles replace failed");});}
 void IslandWindow::refresh(){content_.settings=settings_;content_.reducedMotion=motion_.reduced;bool compact=state_==IslandState::Compact;renderer_->redraw(content_,debug_,compact);contentDirty_=compact;}
-void IslandWindow::clockTimer(){bool visible=state_!=IslandState::Compact&&IsWindowVisible(window_);bool request=visible&&(content_.page==Page::Overview||content_.page==Page::System);if(request!=systemRequested_){systemRequested_=request;if(request)SetTimer(window_,10,400,nullptr);else{KillTimer(window_,10);if(system_)system_->setActive(false);}}if(content_.focus.running||(visible&&content_.page==Page::Media&&content_.playback.playing))SetTimer(window_,9,1000,nullptr);else KillTimer(window_,9);}
+void IslandWindow::clockTimer(){bool visible=state_!=IslandState::Compact&&IsWindowVisible(window_);bool request=visible&&!content_.live&&(content_.page==Page::Overview||content_.page==Page::System);if(request!=systemRequested_){systemRequested_=request;if(request)SetTimer(window_,10,400,nullptr);else{KillTimer(window_,10);if(system_)system_->setActive(false);}}if(content_.focus.running||(visible&&(content_.live||content_.page==Page::Media)&&content_.playback.playing))SetTimer(window_,9,1000,nullptr);else KillTimer(window_,9);if(settings_.compactClock&&IsWindowVisible(window_))SetTimer(window_,18,60000,nullptr);else KillTimer(window_,18);}
 Action IslandWindow::hit(LPARAM l){if(state_==IslandState::Compact)return Action::None;double now=seconds();auto origin=bodyOrigin(motion_.width.sample(now).position,motion_.height.sample(now).position,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);return renderer_->hit(float(GET_X_LPARAM(l)*96/dpi_-origin.x-motion_.dragX.sample(now).position),float(GET_Y_LPARAM(l)*96/dpi_-origin.y-motion_.dragY.sample(now).position-motion_.contentShift.sample(now).position));}
-bool IslandWindow::showGlass(){double t=seconds(),s=dpi_/96;auto origin=bodyOrigin(motion_.width.sample(t).position,motion_.height.sample(t).position,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);RECT interior{LONG(std::lround((origin.x+20)*s)),LONG(std::lround((origin.y+38)*s)),LONG(std::lround((origin.x+400)*s)),LONG(std::lround((origin.y+266)*s))};return glass_.show(window_,settings_.glass&&state_!=IslandState::Compact&&IsWindowVisible(window_),content_.light,interior);}
+bool IslandWindow::showGlass(){double t=seconds(),s=dpi_/96;auto origin=bodyOrigin(motion_.width.sample(t).position,motion_.height.sample(t).position,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);RECT interior{LONG(std::lround((origin.x+20)*s)),LONG(std::lround((origin.y+38)*s)),LONG(std::lround((origin.x+400)*s)),LONG(std::lround((origin.y+266)*s))};return glass_.show(window_,settings_.glass&&state_!=IslandState::Compact&&!content_.live&&IsWindowVisible(window_),content_.light,interior);}
 void IslandWindow::applySettings(bool rebuild){
-    motion_.body=preset(MotionPreset(settings_.preset));motion_.edge=settings_.edge;motion_.compactWidth=settings_.compactWidth;motion_.corner=settings_.corner;BOOL enabled=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&enabled,0);motion_.reduced=settings_.reduceMotion||!enabled;
+    motion_.body=preset(MotionPreset(settings_.preset));motion_.edge=settings_.edge;motion_.compactWidth=settings_.uiMode==0?72:settings_.compactWidth;motion_.corner=settings_.corner;BOOL enabled=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&enabled,0);motion_.reduced=settings_.reduceMotion||!enabled;
     DWORD light=0,size=sizeof(light);if(settings_.theme==2)RegGetValueW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",L"AppsUseLightTheme",RRF_RT_REG_DWORD,nullptr,&light,&size);content_.light=settings_.theme==1||(settings_.theme==2&&light);content_.expanded=state_!=IslandState::Compact;
-    glass_.hide();content_.glassActive=false;if(rebuild){renderer_.reset();position();renderer_=std::make_unique<Renderer>();renderer_->initialize(window_,dpi_);}refresh();animate();
+    glass_.hide();content_.glassActive=false;if(rebuild){renderer_.reset();position();renderer_=std::make_unique<Renderer>();renderer_->initialize(window_,dpi_);}motion_.edge=settings_.edge;motion_.compactWidth=settings_.uiMode==0?72:settings_.compactWidth;refresh();animate();
 }
 void IslandWindow::feedback(Action action,float px,float py,bool press){
     renderer_->iconFeedback(action,press,settings_.animatedIcons&&!motion_.reduced);
     double now=seconds();auto it=std::find_if(renderer_->targets.begin(),renderer_->targets.end(),[&](auto& target){return target.action==action&&target.enabled;});
     bool visible=it!=renderer_->targets.end()&&state_!=IslandState::Compact,changed=false;
     auto aim=[&](Spring& spring,double value){if(std::abs(spring.target()-value)>.25){changed=true;if(motion_.reduced)spring.reset(value,now);else spring.retarget(value,now,{.65,520,33});}};
-    aim(motion_.hoverOpacity,visible?1:0);if(visible){auto origin=bodyOrigin(motion_.width.sample(now).position,motion_.height.sample(now).position,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);double dx=0,dy=0;if(settings_.magnetic&&!motion_.reduced&&px){dx=std::clamp((px*96/dpi_-origin.x-20-it->x-it->width/2)*.1,-2.,2.);dy=std::clamp((py*96/dpi_-origin.y-38-it->y-it->height/2)*.1,-2.,2.);}aim(motion_.hoverX,20+it->x+dx+(press?1.5:0));aim(motion_.hoverY,38+it->y+dy+(press?1:0));aim(motion_.hoverW,it->width-(press?3:0));aim(motion_.hoverH,it->height-(press?2:0));}if(changed)renderer_->animate(motion_,now);
+    aim(motion_.hoverOpacity,visible?1:0);if(visible){auto origin=bodyOrigin(motion_.width.sample(now).position,motion_.height.sample(now).position,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);double dx=0,dy=0;if(settings_.magnetic&&!motion_.reduced&&px){dx=std::clamp((px*96/dpi_-origin.x-20-it->x-it->width/2)*.1,-2.,2.);dy=std::clamp((py*96/dpi_-origin.y-(content_.live?20:38)-it->y-it->height/2)*.1,-2.,2.);}aim(motion_.hoverX,20+it->x+dx+(press?1.5:0));aim(motion_.hoverY,(content_.live?20:38)+it->y+dy+(press?1:0));aim(motion_.hoverW,it->width-(press?3:0));aim(motion_.hoverH,it->height-(press?2:0));}if(changed)renderer_->animate(motion_,now);
 }
 void IslandWindow::dragShelf(size_t index){if(index>=content_.shelf.size())return;auto item=content_.shelf[index];auto data=shelfData(item);shelfDragImage(data.Get(),item.preview);ComPtr<ShelfDragSource> source;source.Attach(new ShelfDragSource);DWORD effect=0;DoDragDrop(data.Get(),source.Get(),DROPEFFECT_COPY,&effect);content_.dropHover=false;refresh();}
 void IslandWindow::setVolumeAt(LPARAM point){if(!audio_||!audio_->available)return;double now=seconds();auto origin=bodyOrigin(motion_.width.sample(now).position,motion_.height.sample(now).position,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);int target=volumeAt(GET_X_LPARAM(point)*96/dpi_,origin.x+motion_.dragX.sample(now).position+58,284);if(target!=audio_->value)audio_->setVolume(target);}
@@ -382,12 +402,19 @@ void IslandWindow::perform(Action a){
     case Action::IconsToggle:settings_.animatedIcons=!settings_.animatedIcons;save=true;renderer_->iconFeedback(Action::None,false,false);break;
     case Action::AppSwitchToggle:settings_.collapseOnAppSwitch=!settings_.collapseOnAppSwitch;save=true;break; case Action::WheelVolumeToggle:settings_.wheelVolume=!settings_.wheelVolume;save=true;break; case Action::HandoffToggle:settings_.trackHandoff=!settings_.trackHandoff;save=true;break;
     case Action::LayoutReset:settings_.navigation=defaultNavigation;settings_.homeMetrics=defaultMetrics;content_.layoutSlot=0;save=true;break;
-    case Action::SettingsNext:content_.settingsPage=(content_.settingsPage+1)%8;break;
+    case Action::SettingsNext:content_.settingsPage=(content_.settingsPage+1)%10;break;
     case Action::StartupToggle:if(!testing_){bool desired=!settings_.startAtLogin;if(startup::apply(desired)){settings_.startAtLogin=desired;save=true;}else content_.feedback=L"Windows could not update sign-in settings";}break;
     case Action::Theme:settings_.theme=(settings_.theme+1)%3;save=true;break;
     case Action::Scale:settings_.scale=settings_.scale>=120?80:settings_.scale+10;save=rebuild=true;break;
     case Action::Edge:settings_.edge=1-settings_.edge;motion_.dragX.reset(0,now);motion_.dragY.reset(0,now);save=rebuild=true;break;
-    case Action::CompactWidth:settings_.compactWidth=settings_.compactWidth>=260?160:std::min(260,settings_.compactWidth+20);save=true;break;
+    case Action::CompactWidth:settings_.compactWidth=std::min(560,settings_.compactWidth+40);save=true;break;
+    case Action::WidthDown:settings_.compactWidth=std::max(160,settings_.compactWidth-40);save=true;break;
+    case Action::UiMode:settings_.uiMode=(settings_.uiMode+1)%3;save=true;break;
+    case Action::CompactVolumeToggle:settings_.compactVolume=!settings_.compactVolume;save=true;break;
+    case Action::CompactTimerToggle:settings_.compactTimer=!settings_.compactTimer;save=true;break;
+    case Action::CompactClockToggle:settings_.compactClock=!settings_.compactClock;save=true;break;
+    case Action::ShelfPeekToggle:settings_.shelfPeek=!settings_.shelfPeek;save=true;break;
+    case Action::HorizontalOffset:settings_.horizontalOffset=settings_.horizontalOffset>=240?-240:settings_.horizontalOffset+40;save=rebuild=true;break;
     case Action::Corner:settings_.corner=settings_.corner>=28?14:settings_.corner+2;save=true;break;
     case Action::CollapseDelay:settings_.collapseDelay=settings_.collapseDelay>=1500?300:settings_.collapseDelay+150;save=true;break;
     case Action::GlassToggle:settings_.glass=!settings_.glass;save=true;break;
@@ -398,7 +425,7 @@ void IslandWindow::perform(Action a){
     case Action::Accent:settings_.accent=(settings_.accent+1)%4;save=true;break;
     case Action::AudioCompatibility:settings_.directAudio=!settings_.directAudio;save=true;break;
     case Action::Offset:settings_.verticalOffset=settings_.verticalOffset>=24?0:settings_.verticalOffset+4;save=rebuild=true;break;
-    case Action::Monitor:{std::vector<HMONITOR> monitors;EnumDisplayMonitors(nullptr,nullptr,collectMonitor,reinterpret_cast<LPARAM>(&monitors));settings_.monitor=(settings_.monitor+1)%(int(monitors.size())+1);save=rebuild=true;break;}
+    case Action::Monitor:{std::vector<HMONITOR> monitors;EnumDisplayMonitors(nullptr,nullptr,collectMonitor,reinterpret_cast<LPARAM>(&monitors));displays_.remember(currentDisplay_,settings_);settings_.monitor=(settings_.monitor+1)%(int(monitors.size())+1);selectDisplay_=true;save=rebuild=true;break;}
     case Action::SettingsReset:{bool startup=settings_.startAtLogin;settings_=Settings{};settings_.startAtLogin=startup;save=rebuild=true;break;}
     case Action::ShelfClear:content_.shelf.clear();content_.shelfOffset=0;requestPreviews();break;
     case Action::Pin:content_.pinned=!content_.pinned;break;
@@ -427,7 +454,7 @@ void IslandWindow::perform(Action a){
     case Action::SoundSettings:ShellExecuteW(nullptr,L"open",L"ms-settings:sound",nullptr,nullptr,SW_SHOWNORMAL);break;
     default:break;
     }
-    if(save){if(!testing_)store_.save(settings_);applySettings(rebuild);}clockTimer();refresh();animate();
+    if(save){if(a!=Action::Monitor)displays_.remember(currentDisplay_,settings_);applySettings(rebuild);if(!testing_){store_.save(settings_);saveDisplays();}}clockTimer();refresh();animate();
 }
 }
 namespace nexus {

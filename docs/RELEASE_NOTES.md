@@ -1,16 +1,15 @@
-# Arnav Island 0.5.0-preview.1
+# Arnav Island 0.6.0-preview.1 — Everyday scale
 
-## Browser visibility fix
+This phase separates a small daily surface from the larger workspace.
 
-Maximized or decorated windows no longer count as fullscreen merely because their visible bounds reach all monitor edges. This prevents a normal browser from hiding the island, including monitor-sized windows and auto-hidden-taskbar layouts. Normal foreground changes also restore the island's topmost position without activating it. Borderless, non-maximized, monitor-covering windows still follow Hide in fullscreen.
+- **Mini Pill:** 72 × 34 DIP resting silhouette, minimal indicators.
+- **Live Island:** configurable compact strip, opening a 360 × 154 DIP media/focus card on hover.
+- **Command Center:** the full 420 × 334 DIP workspace, reachable by hovering its control in the Live card or choosing the mode in Settings.
+- Blank-space clicks no longer expand or pin the island. The rendered island contains no product name.
+- Compact width now reaches **560 DIP**, with separate increase/decrease controls. Volume, timer, clock, battery and media visibility are configurable; available space determines which details fit.
+- **Shelf peek:** a larger cached thumbnail gently fades/scales in on row hover. Document previews depend on Windows Shell handlers.
+- **Display memory:** local per-display offsets, width, scale and dock edge use stable Windows monitor identities; disconnected preferred displays fall back to primary.
+- **Artwork atmosphere:** restrained radial color channels blend with interruptible compositor springs. Reduced motion is respected.
+- New unit regressions evaluate spring trajectories at 120/144/165/240 Hz as well as 60/90 Hz. Animations remain compositor-driven, with no fixed 60 FPS rendering loop.
 
-## Interaction refinements
-
-- **Precision scrubbing:** the media timeline grows with a spring on hover/drag. Pull more than 35 DIPs away for reduced sensitivity, or 70 for fine control. Release sends one seek request; Escape/capture loss cancels. The provider verifies current source/title and supported seek bounds. Unsupported players remain read-only. Playback progression runs as a compositor animation between snapshots.
-- **Shelf previews:** Windows Shell thumbnails or associated file icons load on a background worker, bounded to 32 entries and 128-pixel requests. Cloud placeholders marked offline/recall are skipped. Document page previews depend on installed Windows thumbnail handlers.
-- **Drag absorption:** the native Shell drag image remains available over the island, then a preview tile springs toward the shelf row. When the thumbnail is not yet ready, a file glyph is used. Dragging out uses the cached thumbnail as a Shell drag image; original files remain untouched and operations remain copy-only.
-- **Confirmed audio handoff:** a brief compact output activity and restrained pulse appear only after the default endpoint changes. Startup enumeration and repeated volume events stay quiet. The selected output icon receives a small spring response.
-
-## Boundaries
-
-Windows 11 x64, unsigned preview. No cloud, subscriptions or drivers. Media seeking depends on Windows-exposed capabilities; no service-specific scraping or private video frame capture. Shell thumbnail handlers can be slow; isolation from faulty third-party handlers and full accessibility/high-refresh/multi-monitor/long-duration acceptance remain unfinished.
+Windows 11 x64, unsigned preview. Hardware refresh-rate presentation and physical multi-monitor docking are not certified by cadence/model tests. The broader requested audio, Bluetooth, health, privacy and command integrations are planned in DELIVERY_PHASES.md and are not included in this phase. Existing media coverage depends on metadata and controls published through Windows; no simulated equalizer or guessed service identity is shown.

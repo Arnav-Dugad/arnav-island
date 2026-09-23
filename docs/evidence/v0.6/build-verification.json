@@ -1,0 +1,19 @@
+{
+  "version": "0.6.0-preview.1",
+  "executable_sha256": "61d5700878053581dca432c5de679945b1cc0ac35e8b08f5e85a0177259823e9",
+  "ctest_suites": 3,
+  "core_checks": 11682,
+  "model_checks": 1831,
+  "native_regression_stages": 12,
+  "cadence_math_hz": [
+    60,
+    90,
+    120,
+    144,
+    165,
+    240
+  ],
+  "physical_multimonitor": "not tested",
+  "hardware_frame_pacing": "not measured",
+  "scope": "Phase 1; later integrations tracked in DELIVERY_PHASES.md"
+}

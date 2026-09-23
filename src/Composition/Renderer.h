@@ -18,7 +18,7 @@
 
 namespace nexus {
 struct ContentSnapshot {
-    Page page=Page::Overview;bool expanded=false,dropHover=false,glassActive=false,light=false;int layoutSlot=0;bool reducedMotion=false;int settingsPage=0,shelfOffset=0,audioOffset=0;std::wstring activity;std::vector<ShelfItem> shelf;std::vector<AudioDevice> outputs;std::wstring feedback;Action hovered=Action::None;bool pinned=false;
+    Page page=Page::Overview;bool expanded=false,live=false,dropHover=false,glassActive=false,light=false;int layoutSlot=0;bool reducedMotion=false;int settingsPage=0,shelfOffset=0,audioOffset=0;std::wstring activity;std::vector<ShelfItem> shelf;std::vector<AudioDevice> outputs;std::wstring feedback;Action hovered=Action::None;bool pinned=false;
     MediaSnapshot playback;SystemSnapshot system;Settings settings;FocusClock focus;ScrubGesture scrub;
     std::wstring headline=L"Your space, in rhythm.";
     std::wstring detail=L"A quieter home for the things happening now.";
@@ -39,7 +39,7 @@ class Renderer {
     ComPtr<IDCompositionEffectGroup> contentEffect_,barEffect_,headerEffect_,artEffect_,pulseEffect_,hoverEffect_;
     ComPtr<IDCompositionSurface> baseSurface_,innerSurface_,headerSurface_,contentSurface_,barSurface_,artSurface_,leftSurface_,rightSurface_,pulseSurface_,hoverSurface_;
     ComPtr<IDCompositionScaleTransform> artScale_,leftScale_,rightScale_,hoverScale_;
-    int cachedEdge_=-1,edge_=0;bool attached_=true,expanded_=false;UINT32 baseColor_=0,accentColor_=0;bool material_=false;std::shared_ptr<const Artwork> artwork_;
+    int cachedEdge_=-1,edge_=0;bool attached_=true,expanded_=false,live_=false;UINT32 baseColor_=0,accentColor_=0;bool material_=false;std::shared_ptr<const Artwork> artwork_;
         struct IconVisual {ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionSurface> surface;ComPtr<IDCompositionScaleTransform> scale;ComPtr<IDCompositionEffectGroup> effect;Spring x{0},y{0},lift{0},zoom{1};Action action=Action::None;int key=-1;float drawnSize=0,baseY=0;bool used=false;};
     struct IconRequest{Action action;Icon glyph;float x,y,size;UINT32 color;int slot;};std::vector<IconRequest> iconRequests_;bool drawingContent_=false;
     std::array<IconVisual,64> icons_;size_t iconCursor_=7;bool iconMotion_=true;Action hoverAction_=Action::None;bool pressing_=false;
@@ -50,6 +50,9 @@ class Renderer {
     ArtworkHandoff handoff_;Spring navX{4},batteryAngle{0},timerAngle{0};bool ringsEnabled_=true;int ringCount_=2;double ringBattery_=-2,ringTimer_=-2;int ringFlags_=-1;UINT32 ringColor_=0,ringTrack_=0;
     void icon(Action,Icon,float,float,float,UINT32,int stableSlot=-1);
     void updateArtwork(const ContentSnapshot&,UINT32);
+    void updateAtmosphere(const ContentSnapshot&);void updatePeek(const ContentSnapshot&);
+    std::array<ComPtr<IDCompositionVisual>,3> atmosphere_;std::array<ComPtr<IDCompositionEffectGroup>,3> atmosphereEffect_;std::array<ComPtr<IDCompositionSurface>,3> atmosphereSurface_;std::array<Spring,3> atmosphereColor_;
+    ComPtr<IDCompositionVisual> peek_;ComPtr<IDCompositionSurface> peekSurface_;ComPtr<IDCompositionScaleTransform> peekScale_;ComPtr<IDCompositionEffectGroup> peekEffect_;Spring peekZoom_{.85},peekOpacity_{0};std::shared_ptr<const Artwork> peekArtwork_;
     void updateRings(const ContentSnapshot&,UINT32,UINT32,UINT32);
     ComPtr<IDCompositionVisual> timeline_,seekTrack_,seekFill_,seekThumb_,dropGhost_;
     ComPtr<IDCompositionSurface> seekTrackSurface_,seekFillSurface_,seekThumbSurface_,dropSurface_;

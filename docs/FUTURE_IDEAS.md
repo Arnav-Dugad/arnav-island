@@ -1,16 +1,16 @@
 # Further design candidates
 
-Suggestions, not shipped features:
+Suggestions, not shipped features. The requested provider roadmap is in DELIVERY_PHASES.md.
 
-1. **Intent-aware hover** — open only when the pointer approaches deliberately.
-2. **Shelf peek** — enlarge a preview temporarily without opening its file.
-3. **Undo shelf clear** — recover a cleared shelf for a few seconds.
-4. **Saved scenes** — personal Work, Media and Focus layouts.
-5. **Display profiles** — remember placement and size per monitor.
-6. **Keyboard palette** — find and run island controls without the mouse.
-7. **Session restore** — optionally resume timers after restarting.
-8. **Quiet presentation mode** — suppress interruptions while presenting.
-9. **Accessible navigation** — complete UI Automation and text scaling.
-10. **Art atmospheres** — restrained cover-derived glow with contrast protection.
-11. **Safe updates** — signed releases and a reversible update flow.
-12. **Frame diagnostics** — measure presentation latency and missed frames across refresh rates.
+1. **Intent-aware hover** — ignore accidental pointer crossings.
+2. **Session carousel** — slide between real Windows media sessions.
+3. **App mixer** — adjust each audible application's volume separately.
+4. **Real audio spectrum** — opt-in local analysis that rests when silent.
+5. **Undo shelf clear** — recover recently cleared references.
+6. **Workspace scenes** — explicitly launch your chosen app collection.
+7. **Keyboard palette** — search actions without leaving the keyboard.
+8. **Battery health trends** — show only supported capacity and rate readings.
+9. **Quiet presentation mode** — suppress nonessential activity cards.
+10. **Accessible navigation** — full UI Automation and scalable text.
+11. **Session restore** — optionally resume a timer after restarting.
+12. **Frame diagnostics** — measure actual presentation cadence and missed frames.

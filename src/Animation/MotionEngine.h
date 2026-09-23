@@ -8,7 +8,7 @@
 namespace nexus {
 struct SpringSpec { double mass=1, stiffness=390, damping=36; };
 namespace MotionTokens {
-inline constexpr SpringSpec artwork{.7,420,30},artworkOpacity{1,500,44},icon{.65,640,35},iconPosition{.7,500,35},navigation{.8,450,33},handoff{1,120,22},ring{1,150,25},content{1,380,37},drop{1,190,28},dropFade{1,34,12};
+inline constexpr SpringSpec artwork{.7,420,30},artworkOpacity{1,500,44},icon{.65,640,35},iconPosition{.7,500,35},navigation{.8,450,33},handoff{1,120,22},ring{1,150,25},content{1,380,37},drop{1,190,28},dropFade{1,34,12},peek{1,310,35},atmosphere{1,45,14};
 }
 enum class MotionPreset { Balanced, Fluid, Playful, Snappy, Calm };
 inline SpringSpec preset(MotionPreset p) {
@@ -108,17 +108,17 @@ inline Geometry geometry(IslandState s) {
     case IslandState::Hardware:return {440,230,28};
     case IslandState::Gaming:return {300,58,24};
     case IslandState::Notification:return {440,138,26};
-    case IslandState::LiveActivity:return {340,94,26};
+    case IslandState::LiveActivity:return {360,154,22};
     default:return {300,64,26};
     }
 }
 struct MotionEngine {
     Spring width{196},height{34},radius{17},lift{0},reveal{0},volume{.5},dragX{0},dragY{0};
     SpringSpec body=preset(MotionPreset::Balanced);
-    bool reduced=false;int edge=0;double compactWidth=196,corner=22;
+    bool reduced=false,live=false;int edge=0;double compactWidth=196,corner=22;
     Spring artX{12},artY{6},artSize{22},artOpacity{0},pulse{0},hoverX{20},hoverY{38},hoverW{40},hoverH{26},hoverOpacity{0},contentShift{0};
     PhysicalState visibility(double now,bool compactHeader=false)const {
-        auto h=height.sample(now),a=reveal.sample(now);double low=compactHeader?(edge?150.:34.):230.,range=compactHeader?100.:90.;double q=std::clamp((h.position-low)/range,0.,1.),gate=q*q*(3-2*q),speed=(q>0&&q<1)?6*q*(1-q)*h.velocity/range:0;
+        auto h=height.sample(now),a=reveal.sample(now);double low=compactHeader?(edge?150.:34.):(live?76.:230.),range=compactHeader?100.:(live?68.:90.);double q=std::clamp((h.position-low)/range,0.,1.),gate=q*q*(3-2*q),speed=(q>0&&q<1)?6*q*(1-q)*h.velocity/range:0;
         if(compactHeader)return {1-gate,-speed};return {gate*a.position,speed*a.position+gate*a.velocity};
     }
     void target(IslandState state,double now,bool hover=false,bool pressed=false) {

@@ -1,6 +1,7 @@
 #include "Renderer.h"
 namespace nexus {
 Action Renderer::hit(float x,float y)const {
+    if(live_)y+=18;
     if(y>=38+navY&&y<38+navY+44){double now=seconds();for(size_t i=0;i<7;++i){auto& icon=icons_[i];if(!icon.used)continue;double left=icon.x.sample(now).position+16-icon.drawnSize/2-14;if(x>=left&&x<left+47)return icon.action;}return Action::None;}
     for(auto& target:targets)if(target.y<navY&&target.contains(x-20,y-38))return target.action;return Action::None;
 }
@@ -20,7 +21,7 @@ void Renderer::updateArtwork(const ContentSnapshot& s,UINT32 background){
     draw(artFromSurface_,handoff_.from);draw(artToSurface_,handoff_.to);artFrom_->SetContent(artFromSurface_.Get());artTo_->SetContent(artToSurface_.Get());auto fade=animation(handoff_.mix,now);incomingEffect_->SetOpacity(fade.Get());
 }
 void Renderer::updateRings(const ContentSnapshot& s,UINT32 accent,UINT32 muted,UINT32 track){
-    bool battery=(s.settings.glanceRings&1)&&s.battery>=0,timer=(s.settings.glanceRings&2);ringsEnabled_=battery||timer;ringCount_=int(battery)+int(timer);ringsEffect_->SetOpacity(ringsEnabled_?1.f:0.f);double now=seconds();bool running=s.focus.running||s.focus.held>0||s.focus.finished;
+    bool enabled=!s.live&&(s.expanded||(s.settings.uiMode!=0&&s.settings.compactWidth>=260));bool battery=enabled&&s.settings.compactBattery&&(s.settings.glanceRings&1)&&s.battery>=0,timer=enabled&&s.settings.compactTimer&&(s.settings.glanceRings&2);ringsEnabled_=battery||timer;ringCount_=int(battery)+int(timer);ringsEffect_->SetOpacity(ringsEnabled_?1.f:0.f);double now=seconds();bool running=s.focus.running||s.focus.held>0||s.focus.finished;
     double bp=std::clamp(s.battery/100.,0.,1.),tp=s.focus.mode==FocusClock::Mode::Stopwatch?std::fmod(s.focus.elapsed(now),60.)/60.:normalizedProgress(s.focus.displayed(now),s.focus.duration);
     int flags=int(battery)|(int(timer)<<1)|(int(running)<<2)|(int(s.charging)<<3);if(ringBattery_==bp&&ringTimer_==tp&&ringFlags_==flags&&ringColor_==accent&&ringTrack_==track)return;ringBattery_=bp;ringTimer_=tp;ringFlags_=flags;ringColor_=accent;ringTrack_=track;
     surface(ringsSurface_,56,34,[&](auto* rt){if(battery){drawRing(rt,d2d_.Get(),timer?12.f:36.f,17,8.5f,1.8f,bp,accent,track);drawIcon(rt,d2d_.Get(),s.charging?Icon::Power:Icon::Battery,timer?7.f:31.f,12,10,accent);}if(timer){drawRing(rt,d2d_.Get(),36,17,8.5f,1.8f,running?tp:0,accent,track);drawIcon(rt,d2d_.Get(),Icon::Focus,31,12,10,running?accent:muted);}});rings_->SetContent(ringsSurface_.Get());
@@ -32,7 +33,7 @@ void Renderer::updateRings(const ContentSnapshot& s,UINT32 accent,UINT32 muted,U
 namespace nexus {
 void Renderer::drawPreview(ID2D1RenderTarget* rt,const Artwork& art,float x,float y,float w,float h){if(!art.width||!art.height||art.pixels.size()<size_t(art.width)*art.height*4)return;ComPtr<ID2D1Bitmap> b;auto p=D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED));if(FAILED(rt->CreateBitmap({art.width,art.height},art.pixels.data(),art.width*4,p,&b)))return;float factor=std::min(w/art.width,h/art.height),dw=art.width*factor,dh=art.height*factor;rt->DrawBitmap(b.Get(),{x+(w-dw)/2,y+(h-dh)/2,x+(w+dw)/2,y+(h+dh)/2},1,D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);}
 void Renderer::updateTimeline(const ContentSnapshot& s,UINT32 accent,UINT32 track){
-    bool visible=s.expanded&&s.page==Page::Media&&s.playback.duration>0;timelineEffect_->SetOpacity(visible?1.f:0.f);if(!visible)return;
+    bool visible=s.expanded&&!s.live&&s.page==Page::Media&&s.playback.duration>0;timelineEffect_->SetOpacity(visible?1.f:0.f);if(!visible)return;
     if(seekColor_!=accent||!seekTrackSurface_){seekColor_=accent;auto solid=[&](auto& surface_,UINT32 color){surface(surface_,380,4,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(color),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,380,4},2,2),b.Get());});};solid(seekTrackSurface_,track);solid(seekFillSurface_,accent);seekTrack_->SetContent(seekTrackSurface_.Get());seekFill_->SetContent(seekFillSurface_.Get());surface(seekThumbSurface_,16,16,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(accent),&b);rt->FillEllipse({{8,8},6,6},b.Get());});seekThumb_->SetContent(seekThumbSurface_.Get());}
     double now=seconds();bool emphasis=s.scrub.active||s.hovered==Action::Seek;double target=emphasis?2.5:1;
     if(seekEmphasis_.target()!=target){if(s.reducedMotion)seekEmphasis_.reset(target,now);else seekEmphasis_.retarget(target,now,MotionTokens::icon);}
@@ -43,4 +44,16 @@ void Renderer::absorb(const std::shared_ptr<const Artwork>& preview,float x,floa
     if(reduced)return;surface(dropSurface_,64,64,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(0x20252d,.96f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,64,64},14,14),b.Get());if(preview)drawPreview(rt,*preview,6,6,52,52);else drawIcon(rt,d2d_.Get(),Icon::File,17,17,30,0xb8dfd1);});dropGhost_->SetContent(dropSurface_.Get());double now=seconds();Spring sx{x-32},sy{y-32},zoom{1},opacity{1};sx.reset(x-32,now);sy.reset(y-32,now);zoom.reset(1,now);opacity.reset(1,now);sx.retarget(tx-12,now,MotionTokens::drop);sy.retarget(ty-12,now,MotionTokens::drop);zoom.retarget(.375,now,MotionTokens::drop);opacity.retarget(0,now,MotionTokens::dropFade);auto ax=animation(sx,now,scale_),ay=animation(sy,now,scale_),z=animation(zoom,now),fade=animation(opacity,now);dropGhost_->SetOffsetX(ax.Get());dropGhost_->SetOffsetY(ay.Get());dropScale_->SetScaleX(z.Get());dropScale_->SetScaleY(z.Get());dropEffect_->SetOpacity(fade.Get());commit();
 }
 void Renderer::routeConfirmed(bool reduced,Action selected){if(reduced)return;double now=seconds();for(auto& i:icons_)if(i.used&&(i.action==Action::Audio||i.action==selected)){i.zoom.reset(1.18,now);i.zoom.retarget(1,now,MotionTokens::icon);auto z=animation(i.zoom,now);i.scale->SetScaleX(z.Get());i.scale->SetScaleY(z.Get());}commit();}
+}
+
+namespace nexus {
+void Renderer::updateAtmosphere(const ContentSnapshot& s){
+    bool enabled=s.settings.albumAccents&&bool(s.playback.artwork);uint32_t color=enabled?s.playback.artwork->accent:0;double now=seconds();
+    for(int i=0;i<3;++i){double target=enabled?double((color>>((2-i)*8))&255)/255.*(s.light?.09:.13):0;auto& spring=atmosphereColor_[i];if(std::abs(spring.target()-target)>.0001){if(s.reducedMotion)spring.reset(target,now);else spring.retarget(target,now,MotionTokens::atmosphere);auto a=animation(spring,now);atmosphereEffect_[i]->SetOpacity(a.Get());}}
+}
+void Renderer::updatePeek(const ContentSnapshot& s){
+    int index=int(s.hovered)-int(Action::ShelfItemBase);bool visible=s.expanded&&!s.live&&s.page==Page::Shelf&&s.settings.shelfPeek&&index>=0&&size_t(index)<s.shelf.size()&&bool(s.shelf[index].preview);
+    double now=seconds();if(visible&&peekArtwork_!=s.shelf[index].preview){peekArtwork_=s.shelf[index].preview;surface(peekSurface_,146,132,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(s.light?0xffffff:0x20252d,.99f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,146,132},15,15),b.Get());drawPreview(rt,*peekArtwork_,9,9,128,114);b->SetColor(D2D1::ColorF(s.light?0x20252d:0xffffff,.14f));rt->DrawRoundedRectangle(D2D1::RoundedRect({.5f,.5f,145.5f,131.5f},15,15),b.Get(),1/scale_);});peek_->SetContent(peekSurface_.Get());}
+    if(peekOpacity_.target()!=(visible?1:0)){if(s.reducedMotion){peekOpacity_.reset(visible?1:0,now);peekZoom_.reset(1,now);}else{peekOpacity_.retarget(visible?1:0,now,MotionTokens::peek);peekZoom_.retarget(visible?1:.88,now,MotionTokens::peek);}auto opacity=animation(peekOpacity_,now),zoom=animation(peekZoom_,now);peekEffect_->SetOpacity(opacity.Get());peekScale_->SetScaleX(zoom.Get());peekScale_->SetScaleY(zoom.Get());}
+}
 }

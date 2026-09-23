@@ -40,3 +40,6 @@ Personal layout adds only navigation IDs, metric IDs and visual preferences to l
 Foreground integration observes only transient window handles and visible bounds to apply local fullscreen and dismissal policies. No foreground application history, executable paths, titles or content is saved or transmitted.
 
 Shelf thumbnail extraction reads only user-dropped file references, locally through Windows Shell. Previews live in memory and are not logged or uploaded. Windows may maintain its own thumbnail cache. Offline/recall placeholders are skipped. Media seeking is sent only to the current matching Windows session. Developer visibility audit records booleans (hidden, decorated, maximized, shell), not titles, URLs or application history.
+## v0.6 display preferences
+
+`displays.nexus` stores monitor device identities and geometry locally. It is not uploaded or included in release archives. File peek and artwork atmosphere reuse existing in-memory visual data. The phase plan does not enable clipboard monitoring or audio capture; both remain future opt-in providers.

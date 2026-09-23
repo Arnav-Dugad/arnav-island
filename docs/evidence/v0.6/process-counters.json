@@ -1,0 +1,16 @@
+[
+  {
+    "scenario": "idle",
+    "elapsed_seconds": 15.0042214,
+    "cpu_seconds": 0.015625,
+    "one_core_percent": 0.10413735963666865,
+    "working_set_bytes": 67776512
+  },
+  {
+    "scenario": "live",
+    "elapsed_seconds": 15.0006921,
+    "cpu_seconds": 0.0,
+    "one_core_percent": 0.0,
+    "working_set_bytes": 70434816
+  }
+]

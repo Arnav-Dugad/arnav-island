@@ -2,7 +2,7 @@
 
 A native Windows 11 island with a compact connected silhouette, original vector icons and responsive physical motion.
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.5.0-preview.1)
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.6.0-preview.1)
 
 ![Arnav Island](docs/evidence/v0.4/artwork.png)
 
@@ -21,3 +21,7 @@ The public repository distributes binaries and user documentation; source histor
 Build with a C++23 Windows toolchain and CMake, or `scripts/build.ps1 -Test`. The current native backend is Win32/DirectComposition/Direct2D/DirectWrite. Original Windows APIs provide system information; unavailable values are not invented.
 
 The v0.5 preview fixes maximized-browser disappearance and adds precision seeking, background shelf thumbnails, drag imagery and confirmed audio-route feedback. See [release notes](docs/RELEASE_NOTES.md).
+
+## Everyday scale — v0.6
+
+Mini Pill, Live Island and Command Center separate glance, hover and workspace surfaces. Width now reaches 560 DIP; compact content is configurable. No product name is drawn on the island. Shelf peek, display memory and spring-blended artwork atmosphere arrive in this phase. See [delivery phases](docs/DELIVERY_PHASES.md) for the larger requested integrations and honest API boundaries.

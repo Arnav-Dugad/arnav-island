@@ -1,0 +1,10 @@
+{
+  "scenario": "200 rapid retargets and coalesced volume activities",
+  "elapsed_seconds": 16.0665,
+  "cpu_seconds": 1.21875,
+  "working_set_bytes": 70742016,
+  "peak_working_set_bytes": 71045120,
+  "composition_commits": 405,
+  "surface_redraws": 326,
+  "queued_activities": 0
+}

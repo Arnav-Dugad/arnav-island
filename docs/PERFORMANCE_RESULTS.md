@@ -144,3 +144,16 @@ Final build on Windows 11. Media is disabled for reproducibility. CPU is process
 Stress: 405 compositor commits, 225 surface redraws, zero queued activities at completion. Repeated Shell drag-image creation: GDI handles 38 → 38 after initialization across 40 iterations. A real Shell PNG thumbnail was loaded in the provider test.
 
 These short samples do not establish FPS, frame pacing, GPU use, battery drain or long-run stability. The retarget benchmark does not represent live scrubbing, physical headphone reconnection or external file dragging. Browser maximized visibility was recorded by the app; fullscreen entry/exit was not completed after Computer Use stopped for browser-URL confidence. Raw evidence is in `evidence/v0.5`.
+## v0.6 measured on 2026-09-23
+
+Final v0.6 executable, Windows 11, real media disabled for repeatability. These are short process-counter observations, not display presentation measurements.
+
+| Scenario | Elapsed | CPU time | One-core equivalent | Working set |
+|---|---:|---:|---:|---:|
+| Idle compact | 15.004 s | 0.015625 s | 0.10% | 64.64 MiB |
+| Static Live card with QA artwork | 15.001 s | 0.000000 s | below counter resolution | 67.17 MiB |
+| 200 interrupted body retargets | 16.067 s | 1.218750 s | 7.59% | 67.46 MiB |
+
+The stress run recorded 405 compositor commits, 326 surface redraws, and zero queued activities at completion. The extra content rebuilds support switching between small/large layouts; there is no constant idle animation loop. Comparisons with earlier runs are not controlled benchmarks. No GPU/power-use, high-refresh FPS, input-latency, docking, multi-day or universal-player claim follows from these samples.
+
+Three CTest suites pass, with 11,682 core and 1,831 model/cadence checks. Twelve native interaction stages pass. Cadence math samples 60/90/120/144/165/240 Hz without changing physical time. Final screenshots use original local fixtures; private application content is excluded. Raw evidence is in `evidence/v0.6`.

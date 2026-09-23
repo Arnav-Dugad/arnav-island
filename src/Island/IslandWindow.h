@@ -8,6 +8,7 @@
 #include "Composition/GlassMaterial.h"
 #include "Settings/Startup.h"
 #include "Interaction/AppSwitchPolicy.h"
+#include "Persistence/DisplayProfiles.h"
 #include "FileShelf/ShelfPreviews.h"
 #include <memory>
 #include <vector>
@@ -34,6 +35,7 @@ class IslandWindow {
     static LRESULT CALLBACK labProcedure(HWND,UINT,WPARAM,LPARAM);
     static void CALLBACK foregroundEvent(HWINEVENTHOOK,DWORD,HWND,LONG,LONG,DWORD,DWORD);
     LRESULT message(UINT,WPARAM,LPARAM);
+    DisplayProfiles displays_;std::string currentDisplay_;bool selectDisplay_=false;void saveDisplays();
     void position();void animate();void transition(IslandState);void updateRegion(bool envelope);void presentActivity();
     void power(bool notify);void showMenu();void openLab(bool settings=false);void updateHud();void fullscreen();void yieldToApp();
     void drawLab(HWND);void labCommand(int);void finishBenchmark();

@@ -1,36 +1,19 @@
-# Arnav Island v0.5 development report
+# Arnav Island v0.6 — phase-one development report
 
-The primary correction is a fullscreen false positive: screen-covering geometry alone did not distinguish maximized browser windows from borderless fullscreen. The policy now excludes decorated and maximized windows and restores the topmost island without stealing focus. The maximized browser observation and remaining acceptance gaps are recorded below.
+The normal experience is now smaller. Mini Pill rests at 72 × 34 DIP. Live Island opens a 360 × 154 DIP hover card; Command Center retains the full 420 × 334 DIP workspace. Hover is the normal expansion action. Blank-space clicks no longer toggle or pin the surface, and the island no longer draws its product name.
 
-The release adds spring-expanded precision seeking, background Shell thumbnails/file icons, native drag images with a compositor absorption tile, and audio-route confirmation feedback. The renderer keeps geometry animation on DirectComposition. Scrub input changes preview state immediately and sends one supported seek request on release. Current media identity is checked before applying it.
+Compact width extends to 560 DIP. New settings select the mode and compact volume/timer/clock/media/battery details. Details fit the selected width; Mini intentionally stays minimal. Shelf peek uses cached Shell artwork with compositor opacity/scale springs. Artwork atmosphere blends three retained radial color layers with velocity-preserving springs, respecting reduced motion. Display memory stores stable monitor identity, offsets, width, scale and edge locally and falls back to primary when the preferred display is absent.
 
-## Defects found during testing
+## Scope and research
 
-- Windows Shell parsing rejected a mixed-separator QA path; extraction now uses native separators.
-- The initial seeking hint overlapped large video artwork; it is positioned in the metadata column below the controls.
-- Drag-image bitmap lifetime needed explicit cleanup. The regression warms one-time Shell resources before comparing repeated handle usage; it does not confuse initialization with sustained leakage.
-- Audio feedback originally animated every output row; it now targets the confirmed row and the Audio navigation icon.
+This is phase 1 of the user's expanded request. DELIVERY_PHASES.md records the API research and remaining phases: multi-session media, real loopback visualization, per-app mixer, branding review, Bluetooth, brightness, health data, clipboard, privacy and local commands/workspaces. Those providers are not simulated or claimed as shipped. No arbitrary firmware access, service scraping, or audio/clipboard capture has been enabled.
 
-## Validation
+## Verification and defects corrected
 
-Core, dashboard and real provider lifecycle suites are run for the final build. Native regression covers previous hover/navigation/shelf/layout behavior and precision-seek cancellation. Thumbnail extraction and 40 repeated drag-image/data-object operations are checked with GDI resource counters. Original QA artwork is used in shareable captures. No private browser screenshots are included in the repository or release.
+- Three CTest suites pass: 11,682 core checks and 1,831 dashboard/model/cadence checks, plus real provider lifecycle coverage.
+- Twelve native interaction stages pass, including no surface-click expansion, small/large mode transitions, Command Center hover timer routing, settings, seeking, and prior shelf/nav regressions.
+- Native screenshots exposed a clipped Live title and a shelf overlay behind the content layer. Both were corrected and re-captured. A hover timer ID originally collided with fullscreen debounce; the IDs are now separate and the routing is covered by native regression.
+- Display-profile parsing/roundtrip, malformed records, stable-identity lookup and missing-display behavior are covered by models. Physical docking/mixed-DPI acceptance is still required.
+- Spring curves are checked at 60/90/120/144/165/240 Hz against the analytical trajectory. This proves numerical behavior, not achieved display FPS. Actual high-refresh presentation, waveform rendering and latency remain unmeasured.
 
-Final measurements are recorded in PERFORMANCE_RESULTS.md; build and publication checksums are in evidence/v0.5. No universal-player, zero-defect, high-refresh or multi-day claim is made.
-
-## v0.5 acceptance observations
-
-- All three CTest suites pass. Dashboard/model checks: 1,256. Core math retains 11,682 checks.
-- Native interaction regression passes ten stages, including fine seeking, cancellation and timeline hit targets.
-- Shell thumbnail extraction succeeds for the local PNG fixture. After Shell initialization, 40 drag-image/data roundtrips hold GDI resources at 38 → 38. This checks repeated resource allocation; it is not a successful external drag-and-drop session test.
-- Reviewed actual native seek and shelf captures in `evidence/v0.5` show the moved seek hint and the loaded file thumbnail/icon.
-- With the browser activated, the app-owned audit reports `hidden=0`, `decorated=1`, `maximized=1`, `shell=0`. It records no app title, URL or window content.
-- Computer Use ended because browser URL detection could not enforce its policy confidently. No further browser inputs were issued. Actual fullscreen entry/exit, external app-to-app drag sessions and physical headphone route changes remain unverified. Native gesture/model/provider tests are reported separately from those acceptance gaps.
-
-## Publication and laptop update — 2026-09-23
-
-- Private source implementation commit: `f812e69`; public distribution commit: `1821cc7`. Both repositories have the `v0.5.0-preview.1` tag.
-- Published the [public v0.5 preview release](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.5.0-preview.1) with the Windows x64 archive and SHA-256 file.
-- Downloaded the public asset anonymously and verified the archive and unpacked executable against the tested local build before installation.
-- Updated the existing Desktop app and source clone. The installed app reports `0.5.0-preview.1`, is running and responding, and matches the tested executable SHA-256. The Desktop shortcut points to this installation.
-- Settings file hash and startup registry value are unchanged; launch at login remains enabled. Recent startup log entries are informational with no error in the inspected startup tail; there was no active media session at this check.
-- Exact hashes and installation checks are in `evidence/v0.5/public-verification.json`. This remains an unsigned preview with the acceptance gaps above.
+Final reviewed captures, process counters and publication/installation checks are recorded in evidence/v0.6. This is an unsigned preview, not a zero-defect or mass-deployment certification.

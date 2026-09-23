@@ -1,4 +1,4 @@
-# Feature status — v0.5 preview
+# Feature status — v0.6 preview
 
 | Area | Implemented | Limits |
 |---|---|---|
@@ -14,7 +14,7 @@
 | Glance rings | Battery/timer/both/off; compositor marker rotation; larger Focus ring | Arcs update on state snapshots, not per-frame radial geometry |
 | Design system | 35 original vector symbols, centred controls, physical-pixel settled offsets, labelled navigation | Complete accessibility and text scaling remain unfinished |
 | Focus | Timer/break/stopwatch; pause/reset and completion activity | No persistence through restart, calendar or reminders |
-| Preferences | Eight groups, reorderable navigation, chosen Home metrics, v4 settings migration, independent layout reset, launch-at-sign-in | Startup uses current exe path; no settings import/export UI, per-display profile library or full geometry editor |
+| Preferences | Ten groups, reorderable navigation, chosen Home metrics, v5 settings migration, independent layout reset, launch-at-sign-in | Startup uses current exe path; no settings import/export UI, profile import/export or full geometry editor |
 | Native behavior | Per-monitor DPI v2, input region, selected monitor, fullscreen hide, configurable app-switch collapse and protected drags, decorated/maximized browser exclusion, no taskbar button | Mixed-DPI/hot-plug/high-refresh hardware acceptance unfinished |
 | Diagnostics | Animation Lab, basic HUD, app-only captures, process-counter benchmark | No fabricated FPS/GPU metrics |
 | Accessibility | Keyboard controls, OS reduced motion, opaque fallback under high contrast | Full screen-reader tree, text scaling and complete high-contrast palette unfinished |
@@ -22,5 +22,17 @@
 
 Brightness, ROG actions, clipboard history, external notifications, camera/microphone indicators and external download monitoring are not implemented. Empty or unavailable sensor values stay unavailable.
 
+| Feature | Implemented | Limits |
+|---|---|---|
 | Precision seeking | Spring-expanded timeline, fine pointer gain, one seek on release, cancel | Requires advertised Windows session capabilities and seek bounds |
 | Audio handoff | Confirmed default endpoint activity, pulse and selected icon spring | No invented Bluetooth codec, latency or connection status |
+
+| Feature | Implemented | Limits |
+|---|---|---|
+| v0.6 modes | Mini Pill, Live Island hover card, Command Center; blank-surface click does not open/pin | Live card is intentionally a smaller control subset; large workspace remains available |
+| Compact customization | Width 160–560 DIP, optional media/volume/timer/battery/clock; Mini fixed at 72 DIP | Details fit available space; no hidden telemetry polling for extra statistics |
+| Display memory | Stable device-path preference and bounded local geometry profiles | Physical docking/refresh/mixed-DPI acceptance remains incomplete |
+| Shelf peek | Spring-scale/fade larger cached thumbnail on hover | File icons remain icons when no document thumbnail is available |
+| Artwork atmosphere | Continuous spring retargeting of retained radial color layers | Subtle light only; no real audio visualization in this phase |
+
+See DELIVERY_PHASES.md for the remaining request; planned providers are not shipped features.
