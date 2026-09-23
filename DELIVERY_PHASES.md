@@ -27,7 +27,7 @@ Verification: settings migration, profile roundtrip and malformed data, Mini/Liv
 - Charging design: brief directional energy stroke into the real percentage ring; reduced-motion fade; no endless decorative loop.
 - ROG: read-only discovery first, link to installed vendor controls. No stable universal ASUS profile/GPU-mode control contract has been established here. Do not implement ACPI writes, reverse-engineered firmware commands or driver requirements. Any provider must be optional and explicitly feature-detected.
 
-## Phase 4 — productivity and privacy
+## Phase 4 — productivity and privacy (delivered in v0.9)
 
 - Clipboard shelf: opt-in AddClipboardFormatListener, bounded in-memory text/image/file/link snapshots, exclusions, pause/clear, no logs of content and no uploads. Never indiscriminately persist copied secrets. Animate only after a successful supported read.
 - Microphone: enumerate documented capture audio-session activity and process identity where possible, clearly scoped to that signal. Camera and location require further documented capability research. [AppCapability.AccessChanged](https://learn.microsoft.com/en-us/uwp/api/windows.security.authorization.appcapabilityaccess.appcapability.accesschanged?view=winrt-26100) is a permission-status event, not a global hardware-use event. No broad app-use claim or registry scraping fallback.
@@ -58,3 +58,26 @@ Deviations from the plan above, each deliberate:
 Also delivered at the user's request: edge reveal (hidden until the pointer touches the island's screen edge), 88 brand marks with window-title service detection, and new motion (card morph, logo pop, tab pill, directional page slide).
 
 Next recommended phase: Phase 4, productivity and privacy. Start with the opt-in clipboard shelf and microphone-in-use indicator, both scoped to documented signals as described above.
+
+## Status after v0.9 — 2026-09-23
+
+Phase 4 shipped:
+- **Clipboard shelf:** opt-in, AddClipboardFormatListener, 24 entries or 48 MB in memory, private-copy flags and password managers excluded, pause and clear, no logging of content, nothing persisted.
+- **Privacy indicators:** camera, microphone and location dots, band and cards.
+- **Command bar:** a fixed grammar, with the parsed intent shown before anything runs and no shell execution. File search is limited to the user folder, with date and type filters verified against Windows Search.
+- **Workspaces:** explicit save of open apps, a second Enter to launch, and nothing ever closed.
+
+Deviations from the plan above, each deliberate:
+- Privacy indicators read Windows' capability access records (the `CapabilityAccessManager\ConsentStore` data behind Settings' "Recent activity") rather than only microphone audio sessions. This covers the camera and location as well. Each record is confirmed against running processes, so a crashed app's open record is ignored. It is read-only and nothing is stored.
+- Workspaces hold apps, not browser URLs. The island never reads tab addresses.
+- The shortcut defaults to Alt+Shift+Space, because Ctrl+Alt+Space is commonly taken (Claude's desktop app uses it).
+
+Also delivered at the user's request:
+- Per-session media identity, which fixes duplicate browser sessions, and joint site assignment from every tab title.
+- Compact-only edge reveal.
+- Wider pixel-exact shoulders and antialiased corners.
+- Sharper text.
+- 180 brand marks.
+- Content entrance motion.
+
+Next recommended work: UI Automation for the island and Settings controls (screen readers); IME and text selection in the command bar; and correlating headphone cards with the default audio endpoint.

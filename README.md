@@ -2,32 +2,30 @@
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download v0.8.0-preview.1 for Windows x64](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.8.0-preview.1)
+[Download v0.9.0-preview.1 for Windows x64](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.9.0-preview.1)
 
-![Device connection card](images/v08-device-card.png)
+![Command bar opening Microsoft Edge](images/v09-command-edge.png)
 
-## v0.8 — hidden until you reach for it
+## v0.9 — type it, copy it, see who's listening
 
-- **Edge reveal.** The island stays tucked away until your pointer touches the screen edge where it lives, then slides in on a spring. Clicks pass through while it is hidden. On by default; turn it off in Settings → General.
-- **Real logos.** 88 vector brand marks. Web services such as YouTube, Spotify, Netflix, Twitch, JioSaavn and Prime Video are identified only when the browser's window title confirms them; otherwise you see the browser's icon.
-- **Bluetooth device cards.** Earbuds, headphones, controllers and keyboards announce themselves with the maker's logo, device type and battery. Stats → Devices lists every paired device, with one-tap connect for audio devices.
-- **Battery and charging.** A charging card with a one-shot energy sweep, battery health, a 24-hour graph, labelled time estimates and the current power mode. Charge history stays on your PC.
-- **ROG aware.** Shows your laptop model and opens Armoury Crate when it is installed. Read-only: nothing is sent to firmware.
-- **New motion.** Cards morph out of the island, logos pop in, stats tabs glide, and pages slide in the direction you navigate.
+- **Command bar.** Press Alt+Shift+Space and type: "volume 30", "focus 25", "open edge", "find budget pdfs from last month", "bluetooth settings", "lock". The island shows what Enter will do before anything happens, and nothing you type ever runs as a shell command.
+- **Workspaces.** "save workspace study" remembers the apps you have open; typing "study" later reopens the ones that aren't running, after a second Enter. Nothing is closed.
+- **Clipboard history** (off until you turn it on). Your last 24 copies (text, links, images and files) on the Shelf, in memory only. Copies marked private and anything from password managers are skipped.
+- **Privacy dots.** Green when an app uses the camera, orange for the microphone, blue for location, with the app's name when you open the island.
+- **Fixed:** two browser tabs no longer show up as the same media session, and touching the screen edge now shows the compact island only.
+- **Sharper and smoother.** Wider shoulder curves drawn at exact pixel size, antialiased corners, crisper text, content that eases in, and 180 real brand marks including Xbox, AULA, Philips, PowerA, Logitech and JioHotstar.
 
-![Edge reveal: hidden, sliding in, open, tucked away](images/v08-auto-hide-sequence.png)
+![Clipboard history](images/v09-clipboard.png)
 
-![Devices tab](images/v08-devices-tab.png)
+![Camera in use](images/v09-privacy-card.png)
 
-![Battery tab](images/v08-battery-tab.png)
+![Shoulder curves at 4x](images/v09-shoulders-4x.png)
 
-![Charging card](images/v08-charging-card-dark.png)
-
-Extract the ZIP and run ArnavIsland.exe. No account, subscription, cloud, browser engine, driver or administrator access is required. Preferences, charge history and sign-in startup stay local to your Windows account.
+Extract the ZIP and run ArnavIsland.exe. No account, subscription, cloud, browser engine, driver or administrator access is required. Preferences, workspaces and charge history stay on your PC.
 
 [Quick start](QUICK_START.md) · [Release notes](RELEASE_NOTES.md) · [Design system](DESIGN_SYSTEM.md) · [Delivery phases](DELIVERY_PHASES.md) · [Future ideas](FUTURE_IDEAS.md)
 
-Device screenshots use illustrative sample devices. Device battery appears only for devices that report it to Windows, and Windows offers no public API for the Bluetooth codec. Brand marks come from Simple Icons (CC0) and are trademarks of their owners, shown only to identify an app, service or device maker.
+Screenshots use illustrative clipboard, privacy and device content. Brand marks come from Simple Icons (CC0) and public-domain files, and are trademarks of their owners, shown only to identify an app, service or device maker.
 
 This is an unsigned preview. Screen-reader support for the custom controls, measured 120–240 Hz presentation, GPU/power use and long-run stability remain unverified.
 
@@ -35,6 +33,6 @@ This public repository distributes releases and user documentation. Development 
 
 ## Earlier releases
 
-v0.7 added the glass material, the separate Settings window, multi-session media, the live waveform, the per-app mixer and the volume and brightness indicator. v0.6 introduced Mini Pill, Live Island and Command Center, 560-DIP compact width, shelf peek and display memory. v0.5 added precision seeking, shelf previews and audio handoff. v0.4 introduced the vector icon system and personal layouts.
+v0.8 added edge reveal, Bluetooth device and charging cards, the battery tab and ROG integration. v0.7 added the glass material, the separate Settings window, multi-session media, the live waveform and the per-app mixer. v0.6 introduced Mini Pill, Live Island and Command Center.
 
-![Frosted glass](images/v07-glass-live.png)
+![Brand marks](images/v09-brand-marks.png)

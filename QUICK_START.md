@@ -72,3 +72,13 @@ Larger requested integrations are tracked honestly in DELIVERY_PHASES.md; they a
 **Battery.** **Stats → Battery** shows health, full-charge energy, cycles (when the battery reports them), a 24-hour graph and time estimates. Plugging in shows a charging card. Settings → Devices & power controls the cards and the charge history.
 
 **ROG laptops.** With Armoury Crate installed, Stats → System and Settings → Devices & power have an Armoury Crate button.
+
+## v0.9 command bar, clipboard, privacy and workspaces
+
+**Command bar.** Press **Alt+Shift+Space** (or the search button on Home). Try "volume 30", "focus 25", "open edge", "find notes pdfs from this week", "bluetooth settings" or "lock". The first row shows what Enter will do; ↑ and ↓ choose another; Esc closes. The shortcut can be changed in Settings → Privacy & productivity.
+
+**Workspaces.** Open the apps you use together and type "save workspace study". Later, type "study" and press Enter twice to open the ones that aren't running.
+
+**Clipboard history.** Shelf → Clipboard → Turn on. Your last 24 copies appear there; click one to copy it again. Pause and Clear are at the bottom. Nothing is kept on disk.
+
+**Privacy dots.** A green dot means the camera is in use, orange the microphone, blue location. Open the island to see which app.
