@@ -39,3 +39,7 @@ Your Windows **Transparency effects** setting is off, so glass currently shows a
 ## Next
 
 Phase 3: Bluetooth device cards, headphone arrival, battery health and the charging redesign. See DELIVERY_PHASES.md.
+
+## Publication and installation — 2026-09-23
+
+Published [v0.7.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.7.0-preview.1) from source commit `d61662e`; public documentation commit `ba35f4c`. The anonymously downloaded ZIP and its executable match the tested build. The downloaded executable is installed at `Desktop\Arnav Island\app`, registered in the real `HKCU\...\Run` key (checked outside any sandbox), launched through Explorer, and running and responding. QA files from testing were removed from `%LOCALAPPDATA%\ArnavIsland`, so the installed app starts from default preferences. Hashes are in `evidence/v0.7/public-verification.json`.

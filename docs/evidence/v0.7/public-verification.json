@@ -1,0 +1,17 @@
+{
+  "release_url": "https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.7.0-preview.1",
+  "anonymous_download_verified": true,
+  "archive_sha256": "620938f924bd20c79ff31210d11008100e4cbe6d8a94a3fdf2ec4a737dd4f562",
+  "executable_sha256": "873b811e98323671d2b9daa4a78780544ce101a9ce4716bbbdfb82ef82eaecaf",
+  "installed_sha256": "873b811e98323671d2b9daa4a78780544ce101a9ce4716bbbdfb82ef82eaecaf",
+  "installed_version": "0.7.0-preview.1",
+  "installed_running": true,
+  "installed_responding": true,
+  "installed_parent_process": "explorer.exe",
+  "startup_run_value": "\"<Desktop>\Arnav Island\app\ArnavIsland.exe\" --startup",
+  "startup_verified_outside_sandbox": true,
+  "source_commit": "d61662e",
+  "public_commit": "ba35f4c",
+  "qa_artifacts_removed_from_local_data": true,
+  "note": "v0.6 startup/install records were made inside Codex's packaged-app virtualization; the real HKCU Run value and LocalAppData folder did not exist before this install."
+}
