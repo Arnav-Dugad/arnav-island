@@ -11,6 +11,10 @@ https://github.com/microsoft/windows-rs/tree/master/crates/libs/windows/src/Wind
 Microsoft windows-rs is available under MIT or Apache-2.0. Attribution: Copyright
 Microsoft Corporation. The project uses the MIT option for adapted declarations.
 
+The Windows.UI.Composition declarations in `src/Composition/WinCompAbi.h` were
+written from the method order and interface IDs in Windows' own installed
+metadata (Windows.UI.winmd) and contain no third-party code.
+
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
 the Software without restriction, including without limitation the rights to

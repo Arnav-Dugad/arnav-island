@@ -2,10 +2,10 @@
 
 Suggestions, not shipped features. The requested provider roadmap is in DELIVERY_PHASES.md.
 
-1. **Intent-aware hover** — ignore accidental pointer crossings.
-2. **Session carousel** — slide between real Windows media sessions.
-3. **App mixer** — adjust each audible application's volume separately.
-4. **Real audio spectrum** — opt-in local analysis that rests when silent.
+1. **Glass depth** — optional saturation boost and soft shadow once an effect graph is available without Win2D.
+2. **Settings search** — type to jump to any preference.
+3. **Per-app output routing** — send one app to headphones while others stay on speakers, if Windows exposes a documented path.
+4. **Mixer favourites** — pin the apps you adjust most.
 5. **Undo shelf clear** — recover recently cleared references.
 6. **Workspace scenes** — explicitly launch your chosen app collection.
 7. **Keyboard palette** — search actions without leaving the keyboard.

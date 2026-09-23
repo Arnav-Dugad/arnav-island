@@ -1,15 +1,28 @@
-# Arnav Island 0.6.0-preview.1 — Everyday scale
+# Arnav Island 0.7.0-preview.1 — Glass, sound and a real Settings window
 
-This phase separates a small daily surface from the larger workspace.
+Phase 2 of the delivery plan (audio and media), plus a separate Settings window and a true glass material.
 
-- **Mini Pill:** 72 × 34 DIP resting silhouette, minimal indicators.
-- **Live Island:** configurable compact strip, opening a 360 × 154 DIP media/focus card on hover.
-- **Command Center:** the full 420 × 334 DIP workspace, reachable by hovering its control in the Live card or choosing the mode in Settings.
-- Blank-space clicks no longer expand or pin the island. The rendered island contains no product name.
-- Compact width now reaches **560 DIP**, with separate increase/decrease controls. Volume, timer, clock, battery and media visibility are configurable; available space determines which details fit.
-- **Shelf peek:** a larger cached thumbnail gently fades/scales in on row hover. Document previews depend on Windows Shell handlers.
-- **Display memory:** local per-display offsets, width, scale and dock edge use stable Windows monitor identities; disconnected preferred displays fall back to primary.
-- **Artwork atmosphere:** restrained radial color channels blend with interruptible compositor springs. Reduced motion is respected.
-- New unit regressions evaluate spring trajectories at 120/144/165/240 Hz as well as 60/90 Hz. Animations remain compositor-driven, with no fixed 60 FPS rendering loop.
+## Glass
+- **Material: Solid, Frosted glass or Clear glass.** Glass blurs whatever is behind the island using Windows' own host backdrop, with a tint, a soft top sheen and a light-catching rim. The blur morphs with the island at the display's refresh rate: its rounded shape is evaluated by the compositor from the same spring equations as the island body.
+- Glass islands float 8 px from the screen edge, like a physical island. **Glass tint** controls contrast.
+- Blur requires Windows **Settings → Personalization → Colors → Transparency effects**. When that is off (or in battery saver/high contrast) the glass stays tinted but not blurred, matching how Windows treats its own materials. The Settings window links straight to that page.
 
-Windows 11 x64, unsigned preview. Hardware refresh-rate presentation and physical multi-monitor docking are not certified by cadence/model tests. The broader requested audio, Bluetooth, health, privacy and command integrations are planned in DELIVERY_PHASES.md and are not included in this phase. Existing media coverage depends on metadata and controls published through Windows; no simulated equalizer or guessed service identity is shown.
+## Settings window
+- Preferences moved out of the island into their own window: General, Island, Appearance, Motion, Compact, Media & sound, Home & navigation and About.
+- **Every change applies instantly** — drag a slider and the island moves, resizes or restyles while you drag. Changes save automatically.
+- Animated toggles, sliding segmented selectors, sliders, steppers and accent swatches, rendered on a vsync-paced swap chain so motion follows the monitor's refresh rate (60–240 Hz). Mica backdrop when Windows allows it. Keyboard: Tab, arrows, Space/Enter.
+- Destructive actions (reset, clear logs) ask for a second click.
+- Open it from the island's gear, the Settings item in the navigation bar, the tray menu, or by double-clicking the tray icon.
+
+## Sound and media
+- **Every media session, not just one.** When several players are active (for example Spotify and a browser), swipe horizontally on the Live card or Media page — drag, or two-finger swipe on a touchpad — or tap the app chips/dots. "Follow the active player" keeps the island on whatever Windows marks as current.
+- **Real app logos.** The badge on the artwork is the playing app's own icon, read from Windows (Start menu entry or running executable) — nothing is bundled. Browser tabs playing YouTube or YouTube Music show those services' marks when the browser's window title confirms it; otherwise the browser's logo is shown.
+- **Live waveform from real system audio.** Bars in the compact island, Live card and Media page follow the actual output through WASAPI loopback and an FFT. Silence rests; nothing is simulated. Audio is analyzed in memory and discarded.
+- **Per-app volume mixer.** Audio → Apps lists every application using the default output with its real icon, a draggable volume slider, mute, and a live peak meter.
+- **Volume and brightness indicator.** Changing volume or display brightness grows the resting island into a compact level bar. Brightness comes from the documented WMI monitor brightness events (internal panels).
+
+## Everywhere
+- Intent-aware hover: a pointer sweeping past no longer opens the island; resting on it does.
+- Session changes slide the content in the swipe direction; the artwork cross-fades.
+
+Windows 11 x64, unsigned preview. Not yet covered: Bluetooth device cards, battery-health dashboard, clipboard shelf, privacy indicators, commands and workspace presets (later phases in DELIVERY_PHASES.md). Service marks are only YouTube/YouTube Music; other web services show the browser. Protected (DRM) audio can appear silent to loopback analysis.
