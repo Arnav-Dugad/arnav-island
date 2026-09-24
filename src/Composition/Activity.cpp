@@ -10,7 +10,7 @@ ComPtr<IDCompositionAnimation> glideAnimation(IDCompositionDevice* device,const 
 }
 void Renderer::updateSpectrumLayout(const ContentSnapshot& s,UINT32 accent){
     int mode=-1;const bool playing=s.settings.waveform&&s.playback.playing&&s.waveform&&s.hud==0;
-    if(playing){if(!s.expanded){if(edge_==0&&s.settings.compactMedia)mode=s.settings.uiMode==0?1:0;}else if(s.card)mode=-1;else if(s.live)mode=2;else if(s.page==Page::Media)mode=3;}
+    if(playing){if(!s.expanded){if(edge_==0&&s.settings.compactMedia)mode=s.settings.uiMode==0?1:0;}else if(s.card)mode=-1;else if(s.live)mode=2;else if(s.page==Page::Media&&!lyricsPanel(s))mode=3;}// lyric lines take the bars' place
     if(barColor_!=accent||!spectrumSurface_){barColor_=accent;surface(spectrumSurface_,3,20,[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(accent),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,3,20},1.5f,1.5f),b.Get());});}
     int count=mode==3?16:mode==1?4:mode>=0?5:barCount_;float pitch=mode==3?6.f:mode==1?5.f:5.4f;float span=(count-1)*pitch+3;
     float inset=mode==1?12:mode==2?22:(ringsEnabled_&&!s.expanded?(ringCount_==2?66.f:42.f):14.f);

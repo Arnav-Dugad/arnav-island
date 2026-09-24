@@ -90,6 +90,7 @@ void IslandWindow::settingsAction(SettingAction action,int argument){
     case SettingAction::ClearClipboard:clearClips();break;
     case SettingAction::ClearWorkspaces:{workspaces_=WorkspaceStore{};saveWorkspaces();store_.log("Info","workspaces_cleared");break;}
     case SettingAction::OpenCommand:openCommand();break;
+    case SettingAction::ClearLyrics:clearLyrics();break;
     case SettingAction::TransparencySettings:ShellExecuteW(nullptr,L"open",L"ms-settings:personalization-colors",nullptr,nullptr,SW_SHOWNORMAL);break;
     default:break;
     }

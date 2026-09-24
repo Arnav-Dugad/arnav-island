@@ -3,7 +3,7 @@
 #include <d2d1.h>
 #include <cmath>
 namespace nexus {
-enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous,Next,Pin,Close,Plus,Minus,Muted,Volume,Battery,Processor,Memory,Download,Upload,Disk,Clock,File,Text,Check,Chevron,ArrowLeft,ArrowRight,Reset,Sun,Spark,Power,Link,Island,Info,Sliders,ArrowUp,ArrowDown,Brightness,Apps,Earbuds,Speaker,Phone,Keyboard,Mouse,Gamepad,Watch,Bluetooth,Bolt,Heart,Gauge,Shield,Camera,Microphone,Location,Clipboard,Search,Lock,Image,Workspace};
+enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous,Next,Pin,Close,Plus,Minus,Muted,Volume,Battery,Processor,Memory,Download,Upload,Disk,Clock,File,Text,Check,Chevron,ArrowLeft,ArrowRight,Reset,Sun,Spark,Power,Link,Island,Info,Sliders,ArrowUp,ArrowDown,Brightness,Apps,Earbuds,Speaker,Phone,Keyboard,Mouse,Gamepad,Watch,Bluetooth,Bolt,Heart,Gauge,Shield,Camera,Microphone,Location,Clipboard,Search,Lock,Image,Workspace,MicOff,Lyrics};
 // Original 24-unit optical grid. Rounded stroke ends are consistent at every DPI.
 inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float x,float y,float size,UINT32 color,float opacity=1){
     D2D1_MATRIX_3X2_F saved;rt->GetTransform(&saved);rt->SetTransform(D2D1::Matrix3x2F::Scale(size/24,size/24)*D2D1::Matrix3x2F::Translation(x,y)*saved);
@@ -68,6 +68,9 @@ inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float
     case Icon::Search:circle(10.5f,10.5f,6.5f);line(15.3f,15.3f,20.5f,20.5f);break;
     case Icon::Lock:rect(5,10.5f,19,21,2.5f);path({{8,10.5f},{8,7.5f},{9.5f,4.5f},{12,3.5f},{14.5f,4.5f},{16,7.5f},{16,10.5f}});dot(12,15.5f,1.2f);break;
     case Icon::Image:rect(3,5,21,19,2.5f);circle(8.5f,9.8f,1.8f);path({{3.5f,17},{9,12},{13,15.5f},{16,13},{20.5f,17}});break;
+    case Icon::MicOff:rect(9,2.5f,15,14,3);path({{5.5f,11},{6.5f,15},{9,17.6f},{12,18.5f},{15,17.6f},{17.5f,15},{18.5f,11}});line(12,18.5f,12,21.5f);line(8.5f,21.5f,15.5f,21.5f);line(3.5f,3,20.5f,21);break;
+    // Lines of text beside a note: lyrics.
+    case Icon::Lyrics:line(3.5f,6,13,6);line(3.5f,11,11,11);line(3.5f,16,9,16);path({{16,18},{16,5},{21,6.5f}});rt->FillEllipse(D2D1::Ellipse({13.8f,18.4f},2.6f,2.1f),brush.Get());break;
     case Icon::Workspace:rect(3,3.5f,10.5f,10.5f,2);rect(13.5f,3.5f,21,10.5f,2);rect(3,13.5f,10.5f,20.5f,2);rect(13.5f,13.5f,21,20.5f,2);break;
     case Icon::Bolt:path({{13,2},{5,13},{11,13},{10,22},{19,10},{13,10},{13,2}},true,true);break;
     case Icon::Heart:path({{12,20},{4,12},{3.2f,8},{5,5},{8.5f,4.5f},{12,8},{15.5f,4.5f},{19,5},{20.8f,8},{20,12},{12,20}},true);break;

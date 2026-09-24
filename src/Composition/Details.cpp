@@ -50,22 +50,28 @@ void Renderer::ensureWave(){
         for(auto [v,t]:{std::pair{b.base.Get(),b.baseScale.Get()},std::pair{b.fill.Get(),b.fillScale.Get()}}){t->SetCenterY(10*scale_);v->SetTransform(t);v->SetOffsetX(std::round(float(i)*pitch*scale_));v->SetOffsetY(std::round(-10*scale_));t->SetScaleY(.14f);}
         check(waveBase_->AddVisual(b.base.Get(),FALSE,nullptr));check(waveFill_->AddVisual(b.fill.Get(),FALSE,nullptr));}
 }
-void Renderer::updateTimeline(const ContentSnapshot& s,UINT32 accent,UINT32 track){
+void Renderer::updateTimeline(const ContentSnapshot& s,UINT32 accent,UINT32 track,UINT32 accent2){
     bool visible=s.expanded&&!s.live&&s.page==Page::Media&&s.playback.duration>0;timelineEffect_->SetOpacity(visible?1.f:0.f);if(!visible)return;
-    const bool wave=s.settings.waveTimeline;ensureWave();
-    if(seekColor_!=accent||!seekTrackSurface_||seekStyle_!=int(wave)){seekColor_=accent;seekStyle_=int(wave);
+    const bool wave=s.settings.waveTimeline;ensureWave();const bool second=waveSecond_!=accent2;
+    if(seekColor_!=accent||second||!seekTrackSurface_||seekStyle_!=int(wave)){seekColor_=accent;seekStyle_=int(wave);
         auto solid=[&](auto& surface_,UINT32 color){surface(surface_,380,4,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(color),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,380,4},2,2),b.Get());});};
-        solid(seekTrackSurface_,track);solid(seekFillSurface_,accent);
+        solid(seekTrackSurface_,track);
+        // The played part runs from the accent to the artwork's second colour.
+        surface(seekFillSurface_,380,4,[&](auto* rt){D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(accent)},{1,D2D1::ColorF(accent2)}};ComPtr<ID2D1GradientStopCollection> c;check(rt->CreateGradientStopCollection(stops,2,&c));ComPtr<ID2D1LinearGradientBrush> b;check(rt->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties({0,0},{380,0}),c.Get(),&b));rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,380,4},2,2),b.Get());});
         // Waveform mode: a slim capsule playhead; line mode: the familiar dot.
         seekThumbSurface_.Reset();if(wave)surface(seekThumbSurface_,4,28,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(accent),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,4,28},2,2),b.Get());});
         else surface(seekThumbSurface_,16,16,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(accent),&b);rt->FillEllipse({{8,8},6,6},b.Get());});
         seekThumb_->SetContent(seekThumbSurface_.Get());seekThumbScale_->SetCenterX((wave?2:8)*scale_);seekThumbScale_->SetCenterY((wave?14:8)*scale_);}
-    if(waveColors_[0]!=track||waveColors_[1]!=accent){waveColors_[0]=track;waveColors_[1]=accent;
+    if(waveColors_[0]!=track||waveColors_[1]!=accent||second){waveColors_[0]=track;waveColors_[1]=accent;
         auto bar=[&](auto& target,UINT32 color){surface(target,3,20,[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(color),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,3,20},1.5f,1.5f),b.Get());});};
-        bar(waveBaseSurface_,track);bar(waveFillSurface_,accent);for(auto& b:waveBars_){b.base->SetContent(waveBaseSurface_.Get());b.fill->SetContent(waveFillSurface_.Get());}}
+        bar(waveBaseSurface_,track);for(size_t k=0;k<waveFillSurfaces_.size();++k)bar(waveFillSurfaces_[k],mixColor(accent,accent2,double(k)/double(waveFillSurfaces_.size()-1)));
+        for(size_t i=0;i<waveBars_.size();++i){auto& b=waveBars_[i];b.base->SetContent(waveBaseSurface_.Get());b.fill->SetContent(waveFillSurfaces_[i*waveFillSurfaces_.size()/waveBars_.size()].Get());}}
+    waveSecond_=accent2;
     seekTrack_->SetContent(wave?nullptr:seekTrackSurface_.Get());seekFill_->SetContent(wave?nullptr:seekFillSurface_.Get());waveEffect_->SetOpacity(wave?1.f:0.f);
     double now=seconds();bool emphasis=s.scrub.active||s.hovered==Action::Seek;double target=emphasis?2.5:1;
     if(seekEmphasis_.target()!=target){if(s.reducedMotion)seekEmphasis_.reset(target,now);else seekEmphasis_.retarget(target,now,MotionTokens::icon);}
+    // Landing on a detent gives the playhead and track a small tick.
+    if(s.detentPulse!=detentSeen_){detentSeen_=s.detentPulse;if(!s.reducedMotion&&s.scrub.active){seekEmphasis_.reset(target+.55,now);seekEmphasis_.retarget(target,now,{1,700,26});}}
     double position=s.scrub.active?s.scrub.value:s.playback.position+(s.playback.playing?std::max(0.,now-s.playback.sampledAt):0.);float fraction=float(normalizedProgress(position,s.playback.duration));
     timeline_->SetOffsetX(20*scale_);timeline_->SetOffsetY(227*scale_);auto grow=animation(seekEmphasis_,now);seekTrackScale_->SetScaleY(grow.Get());seekFillScale_->SetScaleY(grow.Get());
     // The waveform swells a little on hover and while scrubbing.
@@ -83,8 +89,9 @@ void Renderer::routeConfirmed(bool reduced,Action selected){if(reduced)return;do
 
 namespace nexus {
 void Renderer::updateAtmosphere(const ContentSnapshot& s){
-    bool enabled=s.settings.albumAccents&&bool(s.playback.artwork);uint32_t color=enabled?s.playback.artwork->accent:0;double now=seconds();
-    for(int i=0;i<3;++i){double target=enabled?double((color>>((2-i)*8))&255)/255.*(s.light?.09:.13):0;auto& spring=atmosphereColor_[i];if(std::abs(spring.target()-target)>.0001){if(s.reducedMotion)spring.reset(target,now);else spring.retarget(target,now,MotionTokens::atmosphere);auto a=animation(spring,now);atmosphereEffect_[i]->SetOpacity(a.Get());}}
+    // The glow takes the picture's overall tone (more saturated than the accent, so a little stronger).
+    bool enabled=s.settings.albumAccents&&bool(s.playback.artwork);const bool ambient=enabled&&s.playback.artwork->ambient;uint32_t color=enabled?(ambient?s.playback.artwork->ambient:s.playback.artwork->accent):0;double now=seconds();
+    for(int i=0;i<3;++i){double target=enabled?double((color>>((2-i)*8))&255)/255.*(s.light?.09:.13)*(ambient?1.25:1):0;auto& spring=atmosphereColor_[i];if(std::abs(spring.target()-target)>.0001){if(s.reducedMotion)spring.reset(target,now);else spring.retarget(target,now,MotionTokens::atmosphere);auto a=animation(spring,now);atmosphereEffect_[i]->SetOpacity(a.Get());}}
 }
 void Renderer::updatePeek(const ContentSnapshot& s){
     int index=int(s.hovered)-int(Action::ShelfItemBase);bool visible=s.expanded&&!s.live&&s.page==Page::Shelf&&s.settings.shelfPeek&&index>=0&&size_t(index)<s.shelf.size()&&bool(s.shelf[index].preview);

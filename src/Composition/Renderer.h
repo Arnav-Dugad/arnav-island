@@ -28,6 +28,7 @@
 #include "Productivity/ClipboardModel.h"
 
 #include "Design/Accent.h"
+#include "Media/Lyrics.h"
 namespace nexus {
 struct ContentSnapshot {
     Page page=Page::Overview;bool expanded=false,live=false,dropHover=false,light=false,blur=true;int layoutSlot=0;bool reducedMotion=false;int settingsPage=0,shelfOffset=0,audioOffset=0;std::wstring activity;std::vector<ShelfItem> shelf;std::vector<AudioDevice> outputs;std::wstring feedback;Action hovered=Action::None;bool pinned=false;
@@ -43,10 +44,15 @@ struct ContentSnapshot {
     bool card=false;int statsTab=0,deviceOffset=0,powerMode=-1,toFull=-1,remaining=-1;BatteryReading power;std::vector<float> history;
     std::vector<BluetoothDevice> devices;std::wstring deviceFeedback;PlatformInfo platform;
     // Notice kinds 5-7: camera, microphone and location use (app and icon below).
-    struct Notice{int kind=0;BluetoothDevice device;std::wstring app;std::shared_ptr<const Artwork> icon;} notice;
+    // Kind 8: sound moved to headphones (device = the output, app = the previous output, switchBack offered).
+    struct Notice{int kind=0;BluetoothDevice device;std::wstring app;std::shared_ptr<const Artwork> icon;bool switchBack=false;} notice;
     // Phase 4: clipboard history on the Shelf, privacy indicators and the command bar.
     int shelfTab=0,clipOffset=0;bool clipsPaused=false;std::wstring clipStatus;double clipStatusUntil=0;struct Clip{uint64_t id=0;int kind=0;std::wstring preview,meta;std::shared_ptr<const Artwork> thumbnail,icon;};std::vector<Clip> clips;
     std::vector<PrivacyUse> privacy;
+    // Phase 5B: synced lyrics of the current track (state is LyricsService::State), the seek
+    // preview, detent pulses, the volume of the app under the compact logo, and the microphone.
+    std::shared_ptr<const std::vector<LyricLine>> lyrics;int lyricsState=0,lyricLine=-1;bool lyricsView=true;
+    float seekHover=-1;unsigned detentPulse=0;int appVolume=-1;std::wstring appVolumeName;bool micMuted=false,micAvailable=false;
     struct Command{bool active=false,armed=false,error=false;std::wstring text,status;size_t caret=0;int selected=0;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;} command;
 };
 
@@ -82,14 +88,14 @@ class Renderer {
     ComPtr<IDCompositionScaleTransform> seekTrackScale_,seekFillScale_,seekThumbScale_,dropScale_;
     ComPtr<IDCompositionEffectGroup> timelineEffect_,dropEffect_;
     Spring seekEmphasis_{1};UINT32 seekColor_=0;bool seeking_=false;
-    void updateTimeline(const ContentSnapshot&,UINT32,UINT32);
+    void updateTimeline(const ContentSnapshot&,UINT32,UINT32,UINT32 accent2);std::array<ComPtr<IDCompositionSurface>,8> waveFillSurfaces_;UINT32 waveSecond_=1;unsigned detentSeen_=0;
     // Real-audio bars, level indicator, app badge and mixer meters.
     struct Bar {ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionScaleTransform> scale;Glide glide;};
     // Waveform timeline: 64 bars of the track's heard loudness; the played part is the
     // accent layer, revealed by a clip that advances with playback in the compositor.
     struct WaveBar {ComPtr<IDCompositionVisual> base,fill;ComPtr<IDCompositionScaleTransform> baseScale,fillScale;Glide glide;float target=-2;};
     std::array<WaveBar,64> waveBars_;ComPtr<IDCompositionVisual> wave_,waveBase_,waveFill_;ComPtr<IDCompositionScaleTransform> waveScale_;ComPtr<IDCompositionRectangleClip> waveClip_;ComPtr<IDCompositionEffectGroup> waveEffect_;
-    ComPtr<IDCompositionSurface> waveBaseSurface_,waveFillSurface_;UINT32 waveColors_[2]{1,1};int seekStyle_=-1;void ensureWave();
+    ComPtr<IDCompositionSurface> waveBaseSurface_;UINT32 waveColors_[2]{1,1};int seekStyle_=-1;void ensureWave();
     std::array<Bar,24> bars_;std::array<Bar,4> meters_;ComPtr<IDCompositionVisual> spectrum_,meterLayer_,hudTrack_,hudFill_,artFrame_,badge_;
     ComPtr<IDCompositionSurface> spectrumSurface_,meterSurface_,hudTrackSurface_,hudFillSurface_,badgeSurface_;ComPtr<IDCompositionEffectGroup> spectrumEffect_,meterEffect_,hudEffect_,badgeEffect_;
     ComPtr<IDCompositionRectangleClip> hudClip_;Spring spectrumOpacity_{0},hudOpacity_{0},badgeOpacity_{0};UINT32 barColor_=0,meterColor_=0;int barMode_=-1,barCount_=0;float barInset_=0;
@@ -105,6 +111,13 @@ class Renderer {
     void updateTabs(const ContentSnapshot&,float x,float y,int count,int selected,bool visible,UINT32 fill);void updateCard(const ContentSnapshot&,UINT32 track,UINT32 accent,UINT32 raised,UINT32 ink);
     void identity(ID2D1RenderTarget*,const MediaSnapshot&,float x,float y,float size,UINT32 plate);void deviceBadge(ID2D1RenderTarget*,const BluetoothDevice&,float x,float y,float size,UINT32 plate,UINT32 ink);
     void drawPreview(ID2D1RenderTarget*,const Artwork&,float,float,float,float);
+    // Phase 5B: lyric lines on their own layer (a new line rolls up into place), the seek
+    // time bubble, and the badge a double-click skip leaves on the artwork.
+    ComPtr<IDCompositionVisual> lyricsLayer_,bubble_,skipBadge_;ComPtr<IDCompositionSurface> lyricsSurface_,bubbleSurface_,skipSurface_;ComPtr<IDCompositionEffectGroup> lyricsEffect_,bubbleEffect_,skipEffect_;ComPtr<IDCompositionScaleTransform> skipScale_;
+    Spring lyricsRise_{0},lyricsFade_{0},bubbleOpacity_{0};std::wstring lyricsKey_,bubbleKey_;UINT32 bubbleColors_[3]{};
+    void ensureNowPlaying();void updateLyrics(const ContentSnapshot&,UINT32 ink,UINT32 muted,UINT32 accent);void updateBubble(const ContentSnapshot&);
+    // Word-wrapped text, at most `lines` lines (shrinking once if needed), with an optional soft glow.
+    void wrappedText(ID2D1RenderTarget*,const std::wstring&,float x,float y,float w,float h,float size,UINT32 color,DWRITE_FONT_WEIGHT,UINT32 glow=0,int lines=2);
     float dpi_=96,scale_=1;
     ComPtr<IDCompositionAnimation> animation(const Spring&,double,float factor=1,float bias=0);
     ComPtr<IDCompositionAnimation> visibility(const MotionEngine&,double,bool compact=false);
@@ -138,6 +151,12 @@ public:
     void iconFeedback(Action,bool pressed,bool enabled);
     bool glassAvailable()const{return glass_.available();}GlassStyle glassStyle()const{return glass_.current();}UINT32 accentColor()const{return accentColor_;}
     void spectrum(const SpectrumFrame&);void energize(bool reduced,bool charging);void meters(const std::vector<MixerEntry>&,int offset,bool visible);
+    // The Media page shows lyric lines instead of title and artist.
+    static bool lyricsPanel(const ContentSnapshot&);
+    // The seek bubble alone, while the pointer moves over the timeline.
+    void seekPreview(const ContentSnapshot& s){updateBubble(s);commit();}
+    // "-10 s" / "+10 s" at a point in body coordinates.
+    void skipFeedback(bool forward,float x,float y,bool reduced);
     void absorb(const std::shared_ptr<const Artwork>&,float,float,float,float,bool); void routeConfirmed(bool,Action selected=Action::None); void commit(){check(device_->Commit());++commits;}
 };
 }

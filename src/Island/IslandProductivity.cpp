@@ -162,6 +162,8 @@ void IslandWindow::runCommand(size_t index){
     case CommandKind::VolumeStep:if(audio_)audio_->setVolume(audio_->value+r.value);done();return;
     case CommandKind::Mute:if(audio_&&!audio_->muted)audio_->toggleMute();done();return;
     case CommandKind::Unmute:if(audio_&&audio_->muted)audio_->toggleMute();done();return;
+    case CommandKind::MicMute:case CommandKind::MicUnmute:case CommandKind::MicToggle:{if(!audio_||!audio_->micAvailable){commandStatus(L"No microphone is connected",true,false);return;}
+        const bool muted=audio_->micMuted;if(r.kind==CommandKind::MicToggle||(r.kind==CommandKind::MicMute)!=muted)audio_->toggleMic();done();return;}
     case CommandKind::Play:case CommandKind::Pause:{bool want=r.kind==CommandKind::Play;if(media_&&content_.playback.canToggle&&content_.playback.playing!=want)media_->control(1,content_.playback.source,content_.playback.id);done();return;}
     case CommandKind::Next:if(media_&&content_.playback.canNext)media_->control(3,content_.playback.source,content_.playback.id);done();return;
     case CommandKind::Previous:if(media_&&content_.playback.canPrevious)media_->control(2,content_.playback.source,content_.playback.id);done();return;

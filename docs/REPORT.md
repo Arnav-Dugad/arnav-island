@@ -1,67 +1,82 @@
-# Arnav Island v0.10 — development report
+# Arnav Island v0.11 — development report
 
 ## What changed
 
-**Materials.**
-- **Frosted vs Clear glass.** With Windows transparency off, the host backdrop brush falls back to an opaque fill, so both glass materials had looked like Solid. Now Frosted uses the blur when it's available and otherwise a translucent frost with a denser tint. Clear never uses the backdrop at all: it has a light tint, plus a stronger rim, sheen and depth gradient.
-- **Readability.** Text on unblurred glass gets a faint four-offset halo (0.6 px, 26–30% opacity).
-- **Pointer light.** A 260-DIP radial light follows the pointer on spring-driven compositor offsets and opacity. It is drawn once per tone and has no per-frame CPU work.
+**Synced lyrics (opt-in).**
+- **Lookup.** A worker thread queries LRCLIB's search endpoint over WinHTTP with the song title and artist only. Among the results it keeps the synced version whose length is within 3 s of the track (10 s at most). A cut that doesn't match is never used, because its lines would drift.
+- **Messy titles.** Browser titles like "Artist - Song (Official Video)", "- Topic" and VEVO channels, "feat." credits and "- Remastered" suffixes are cleaned before the search. If the full artist credit finds nothing, the first-named artist is tried once.
+- **Cache.** Answers, including "none", are cached one file per song and written atomically. The folder is capped at 400 songs, and "none" expires after 14 days. Network failures aren't cached and are retried after a minute.
+- **Quitting** cancels a request in flight by closing its WinHTTP handle.
+- **Timing.** The island moves to the next line with a timer set for exactly when it starts, not by polling. The compact label and Live card show the current line, and the Media page shows three lines on their own compositor layer.
 
-**Animation Lab in Settings.** The separate lab window and HUD were removed, and Settings → Motion now holds:
-- **Preset or Custom spring.** The sliders show the chosen preset's values, and moving one creates a Custom spring.
-- **Live preview.** A mini island plus the analytical step response, settle time and overshoot.
-- **Slow motion.** Stiffness is divided by k² and damping by k, so the curve keeps its shape. It is never saved.
-- **Try-it buttons.** They run real transitions on the island.
-- **Every old entry point** (tray, `--lab`, the desktop shortcut, a second instance) opens this page.
+**Artwork palette.**
+- A hue histogram of the cover, weighted by saturation squared times brightness, gives:
+  - a main colour, lightened for the dark island
+  - a second hue at least 45° away (or a deeper shade of the main colour)
+  - the overall tone
+  - a deep shade for light islands
+- Grey covers, and colour specks under about 1.2% of the weighted picture, stay neutral.
+- The timeline fill and the waveform bars run from the main colour to the second (the waveform uses 8 shared surfaces). The glow and glass tint take the overall tone. The previous accent was the plain average colour, which was often muddy.
 
-**Waveform timeline.**
-- **Data.** Each track keeps 64 buckets of mean loopback level, normalised to the loudest bucket heard, with a minimum scale so near-silence isn't inflated. Unheard buckets are drawn as dots.
-- **Drawing.** Bars ease with compositor scale animations. The played part is clipped by a linear animation that tracks playback, the playhead is a capsule, and the bars swell while seeking.
-- **Memory.** The last 32 tracks are kept, in memory only. Learning happens only while the setting is on.
+**Seeking.**
+- **Detents** are even time marks (10 s, or wider on long tracks so they stay 12 DIPs apart) plus lyric line starts. Snapping takes 4 DIPs of pointer travel, scaled by the fine-control gain, so fine control still reaches every second.
+- **The scrub keeps a raw pointer value** separate from the snapped value, so the playhead leaves a detent as soon as the pointer does.
+- **Hover bubble.** It shows the time and the lyric at that point.
+- **Skips.** Double-clicking a half of the artwork skips 10 s, and further quick clicks chain. The arrow keys work on the timeline.
 
-**Motion.**
-- **Liquid morph.** The dimension that grows leads on a spring 1.3× stiffer, and the other follows on one 0.8× as stiff.
-- **Staggered rows.** Six 48-DIP bands of the content surface fade and rise in, 28 ms apart. All band animations start together and hold their first value, so no band flashes before its turn.
-- **Icon swap pops.**
+**Headphone card.**
+- **Trigger.** The default output changes to an endpoint whose Windows form factor is headphones, headset or handset.
+- **Exceptions.** No card appears within 4 s of a switch made from the island, or while the island is open. In those cases the old "Output · name" note is used.
+- **Content.** It shows the paired Bluetooth device's logo and battery, and *Switch back* returns to the previous output.
 
-**Wallpaper accent.** The wallpaper is decoded at 48 × 48 with WIC, averaged with saturation weighting, and turned into a pastel. Near-grey pictures stay neutral. It updates on `SPI_SETDESKWALLPAPER`.
+**Audio.**
+- **App volume.** The mouse wheel over the compact logo changes the mixer session of the playing app, matched by name, and the level bar shows that app's icon.
+- **Microphone mute.** It covers both default capture roles, with a change callback. The Audio page button, the command words and the on-island note all follow it.
 
-**Removed.** "Your day at a glance" from Home.
+**Fixes.**
+- A 5A bug: in Settings on the light theme, the Wallpaper accent fell through to the Peach colour, which showed as orange.
+- Card kinds are now explicit ranges, where they had been "3 and up" and "5 and up", so a new card kind can't land in the power or privacy drawing paths.
 
 ## Verification
 
-- **Unit suites:** all four pass:
+- **Unit suites:**
   - 11,682 core checks
   - 1,839 model checks
-  - **5,178 phase checks**
+  - **5,245 phase checks**
   - provider lifecycle
-- **New checks:**
-  - learned waveform: unknown vs heard, bad samples, bucket mapping, normalisation, quiet tracks, clamping, track keys, and least-recently-used eviction
-  - lab springs: presets unchanged, the custom spring, and slow motion keeping the curve's shape
-  - sliders following the preset, and a slider making the spring Custom
-  - wallpaper accent: grey stays neutral, hue is kept, always legible
-  - accent swatches
-  - settings v9: migration, round trip, slow motion never saved, and bounds
-- **Native UI regression:** 17/17 stages. **Settings end-to-end:** 123/123, including every new Motion control and *Waveform timeline*.
-- **Real desktop:**
-  - The Lab's Expand and Interrupt moved the real island, and the readout showed "59 fps while it moved" on this 60 Hz panel.
-  - Pressing Collapse while already collapsed reported "It didn't move".
-  - The wallpaper accent was computed from this PC's wallpaper.
-- **Captures:** glass (light, dark, pattern backdrop), the waveform (light, dark, glass), the row cascade (checked slowed ×10, then restored), and the pointer light on each material.
-- **Idle while tucked away:** 0.00 s of CPU over 30 s, 60.5 MB private memory (`evidence/v0.10/idle-hidden.json`).
+- **New unit checks:**
+  - UTF-8 in both directions, including invalid bytes
+  - JSON: escapes, surrogate pairs, nesting limit, malformed input
+  - LRC parsing: offset on every line, multiple time tags, garbage
+  - line timing
+  - ten title-cleaning cases, including "Video Games" and "Live Forever", which must survive
+  - choosing a result by length
+  - the cache file round trip, expiry and corruption
+  - the palette: red, two-hue, grey and speck covers, and transparent art
+  - detents, snapping, the raw scrub value and skip clamps
+  - headphone detection and output names
+  - app-to-mixer matching
+  - the mic commands
+  - settings v10
+- **Native UI regression:** now **18 stages**. The new stage double-clicks each artwork half, presses → on the timeline, checks the snap near the 60 s mark and checks the clamp at 0. It uses a made-up track, so no real player is ever seeked. **Settings end-to-end:** 129/129.
+- **Real network:** three LRCLIB lookups.
+  - A clean player title and a YouTube-style title both found the same 47-line synced lyrics in 0.2–0.7 s.
+  - A nonexistent song was recorded as missing.
+  - A second run answered all three from the cache in about 30 ms.
+- **Real audio:**
+  - The island's microphone button muted both default microphone roles, and Windows reported muted for each. The button turned red. A second click restored both.
+  - Output form factors read correctly on this PC (speakers 1, microphones 4).
+- **Idle while tucked away:** 0.00 s CPU over 30 s, 60.2 MB private memory (`evidence/v0.11/idle-hidden.json`). The lyrics worker doesn't exist until lyrics are turned on.
 
-Screenshots in `evidence/v0.10` use the synthetic showcase session over the app's matte or colour pattern.
+**Not exercised on real hardware in this session:**
+- A real headphone switch: no headphones were connected. The card was checked with a synthetic switch.
+- App volume with a live player: nothing was playing. The name matching is unit-tested and the indicator was captured.
 
-## Bugs found while testing
-
-- **Fabricated fps figure.** The first lab readout used `DWM_TIMING_INFO.cFrame`. A probe showed that it, `cRefresh` and `cDXRefresh` each advance by exactly one per query on this Windows build, whether anything moves or not. The readout said "6 fps". It now counts `DCompositionGetFrameId` (completed frames) from the click until the shape rests within half a DIP. A probe confirmed these IDs rise at the display rate while the island moves and slow down when it's idle.
-- **Row flash.** Staggered rows flashed at full opacity before their own start time. The fix is described under Motion above.
-- **Tinted grey wallpaper.** The pastel conversion clamped saturation up to 0.28, which turned a grey wallpaper pink. Low saturation now stays neutral.
-- **Learning while off.** The waveform learned levels even with the setting off. It no longer does.
+Screenshots in `evidence/v0.11` use the synthetic showcase session with placeholder lyric lines written for testing, and illustrative devices.
 
 ## Limits
 
-- Frame counts are system-wide composition. Another app animating at the same time is counted too.
-- A new track's waveform fills in as it plays. Protected audio can read as silence.
-- Odometer digits and shared-element morphs are not implemented (see DELIVERY_PHASES.md).
+- Lyrics exist only for songs LRCLIB has synced, and they follow the position Windows reports.
+- There are no chapter detents: Windows media sessions don't expose chapters.
+- A browser's volume covers all of its tabs.
 - Unsigned preview. No UI Automation tree for screen readers yet.

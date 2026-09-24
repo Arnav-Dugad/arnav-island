@@ -33,7 +33,7 @@ void Renderer::updateTabs(const ContentSnapshot& s,float x,float y,int count,int
 void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UINT32 raised,UINT32 ink){
     bool shown=s.card&&s.notice.kind;double now=seconds();cardIconEffect_->SetOpacity(shown?1.f:0.f);
     if(!shown){cardRing_->SetContent(nullptr);cardRingKey_=-1;}
-    else{const bool privacy=s.notice.kind>=5,power=s.notice.kind>=3&&!privacy;const int percent=privacy?100:power?s.battery:s.notice.device.battery;const UINT32 color=privacy?(s.notice.kind==5?0x30d158:s.notice.kind==6?0xff9f0a:0x0a84ff):s.notice.kind==3?0x5fd98a:accent;
+    else{const bool privacy=s.notice.kind>=5&&s.notice.kind<=7,power=s.notice.kind==3||s.notice.kind==4;const int percent=privacy?100:power?s.battery:s.notice.device.battery;const UINT32 color=privacy?(s.notice.kind==5?0x30d158:s.notice.kind==6?0xff9f0a:0x0a84ff):s.notice.kind==3?0x5fd98a:accent;
         int ringKey=int((s.notice.kind*101+percent+1)^int(color%100003)^int(track%9973));
         if(ringKey!=cardRingKey_){cardRingKey_=ringKey;surface(cardRingSurface_,72,72,[&](auto* rt){drawRing(rt,d2d_.Get(),36,36,31,3,percent>=0?percent/100.:0,color,track);});cardRing_->SetContent(cardRingSurface_.Get());}}
     // Energy sweep sits on the ring of whichever surface shows power.
@@ -42,9 +42,9 @@ void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UI
     if(!shown){cardKey_=-1;return;}
     int key=s.notice.kind*1000+int(std::hash<std::wstring>{}(s.notice.device.name+s.notice.app)%997);
     if(key!=cardKey_){cardKey_=key;
-        surface(cardIconSurface_,56,56,[&](auto* rt){if(s.notice.kind>=5){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());
+        surface(cardIconSurface_,56,56,[&](auto* rt){if(s.notice.kind>=5&&s.notice.kind<=7){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());
                 if(s.notice.icon)drawPreview(rt,*s.notice.icon,12,12,32,32);else drawIcon(rt,d2d_.Get(),s.notice.kind==5?Icon::Camera:s.notice.kind==6?Icon::Microphone:Icon::Location,16,16,24,ink);}
-            else if(s.notice.kind>=3){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(s.notice.kind==3?0x3fcf7a:raised,s.notice.kind==3?1.f:.9f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),s.notice.kind==3?Icon::Bolt:Icon::Battery,14,14,28,s.notice.kind==3?0x0b1f12:ink);}
+            else if(s.notice.kind==3||s.notice.kind==4){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(s.notice.kind==3?0x3fcf7a:raised,s.notice.kind==3?1.f:.9f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),s.notice.kind==3?Icon::Bolt:Icon::Battery,14,14,28,s.notice.kind==3?0x0b1f12:ink);}
             else deviceBadge(rt,s.notice.device,4,4,48,raised,ink);});cardIcon_->SetContent(cardIconSurface_.Get());
         if(s.reducedMotion)cardPop_.reset(1,now);else{cardPop_.reset(.55,now);cardPop_.retarget(1,now,{.8,420,20});}
         auto z=animation(cardPop_,now);cardIconScale_->SetScaleX(z.Get());cardIconScale_->SetScaleY(z.Get());

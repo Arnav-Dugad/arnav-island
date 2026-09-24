@@ -1,4 +1,4 @@
-# Feature status — v0.10 preview
+# Feature status — v0.11 preview
 
 | Area | Implemented | Limits |
 |---|---|---|
@@ -78,3 +78,12 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Waveform timeline | 64 bars of mean loopback level per stretch of the track, normalised to the loudest stretch heard; unheard stretches drawn as dots; played part in the accent; capsule playhead; seek swell; last 32 tracks remembered in memory | Only what has actually played is known, so a new track fills in as it plays; protected audio can read as silence; needs a session with a known duration |
 | Motion | Liquid morph, staggered row entrances, icon swap pops | Odometer digits and shared-element artwork morphs are not implemented |
 | Wallpaper accent | 48 × 48 WIC decode of the wallpaper, saturation-weighted, softened to a legible pastel; refreshed on wallpaper change | Slideshows update when Windows reports the change; solid-colour backgrounds fall back to Mint |
+
+| v0.11 feature | Implemented | Limits |
+|---|---|---|
+| Synced lyrics | Opt-in. LRCLIB `/api/search` with title and artist only (WinHTTP, 5–6 s timeouts, cancelled on quit); result chosen by track length (within 3 s, or 10 s); titles cleaned of "Official Video", "feat.", remaster suffixes and "Artist - Title" channel formats; one file per song in `%LOCALAPPDATA%\ArnavIsland\lyrics` (400 songs at most; "not found" retried after 14 days); compact label, Live card and a three-line Media panel with a rising line change | Only songs LRCLIB has synced lyrics for; timing follows the position Windows reports, so a player that reports rarely can drift until the next update; no plain (unsynced) lyrics view |
+| Artwork palette | Main colour, second colour, overall tone and a deep shade per cover (hue histogram weighted by saturation and brightness); timeline and waveform gradients, glow and glass tint; light islands use the deep shade | Grey and black-and-white covers stay neutral; a speck of colour under about 1% of the picture is ignored |
+| Seeking | Hover bubble with time and lyric; detents at 10–1800 s marks spaced at least 12 DIPs apart and at lyric lines (4 DIPs of pointer travel, scaled by the fine-control gain); double-click artwork halves for ±10 s (repeatable); ← and → on the timeline | Windows media sessions do not expose chapters, so there are no chapter detents; skips need a session that allows seeking |
+| Headphone card | Default output change to an endpoint whose Windows form factor is headphones, headset or handset (name used only when none is reported); paired Bluetooth device's logo and battery when the names match; *Switch back* to the previous output | Not shown for switches made from the island (4 s window) or while the island is open; *Switch back* needs direct output switching |
+| App volume | Wheel over the compact logo or artwork changes the mixer session whose app name matches the playing session (exact, then contained name); level bar with the app's icon | A browser's volume covers all of its tabs; apps whose audio session name differs from their media identity are not matched |
+| Microphone | Mute for the default communications and console capture endpoints together; Audio page button, command words, and an on-island note on any change | Apps that mute inside themselves (a call's own mute button) are not reflected |

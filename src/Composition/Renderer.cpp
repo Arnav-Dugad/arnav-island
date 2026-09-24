@@ -140,8 +140,11 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     const UINT32 bg=s.light?0xf7f7f9:0x090a0c,ink=s.light?0x202329:0xf1f3f7,muted=s.light?0x656b75:(glass?0xa3aab6:0x8e96a4),raised=glass?0xffffff:s.light?0xeceef2:0x14171d,line=glass?(s.light?0x000000:0xffffff):s.light?0xdde1e7:0x242a33;
     const float raisedAlpha=glass?(s.light?.5f:.075f):1.f,lineAlpha=glass?(s.light?.1f:.12f):1.f;const UINT32 solidRaised=glass?(s.light?0xe6e8ec:0x1b1d23):raised,track=glass?(s.light?0xc5c9d0:0x3a3e46):line;
     UINT32 accent=islandAccent(s.settings.accent,s.light,s.platform.wallpaper,s.playback.artwork.get(),s.settings.albumAccents);
+    // The artwork's second hue runs the timeline gradient (deepened on light islands).
+    const Artwork* art=s.settings.albumAccents?s.playback.artwork.get():nullptr;const UINT32 accent2=art&&art->secondary?(s.light?mixColor(art->secondary,0x000000,.5):art->secondary):accent;
+    bubbleColors_[0]=ink;bubbleColors_[1]=muted;bubbleColors_[2]=s.light?0xffffff:0x23272e;
     bool attached=!s.settings.floating();
-    GlassStyle style;style.visible=glass;style.light=s.light;style.blur=s.blur;style.material=s.settings.material;style.tint=s.settings.glassTint/100.f;style.accent=s.settings.albumAccents&&s.playback.artwork?s.playback.artwork->accent:0;glass_.style(style);expanded_=s.expanded;live_=s.live;edge_=s.settings.edge;attached_=attached;iconMotion_=s.settings.animatedIcons&&!s.reducedMotion;
+    GlassStyle style;style.visible=glass;style.light=s.light;style.blur=s.blur;style.material=s.settings.material;style.tint=s.settings.glassTint/100.f;style.accent=art?(art->ambient?art->ambient:art->accent):0;glass_.style(style);expanded_=s.expanded;live_=s.live;edge_=s.settings.edge;attached_=attached;iconMotion_=s.settings.animatedIcons&&!s.reducedMotion;
     if(!headerOnly){targets.clear();iconCursor_=7;for(auto& i:icons_)i.used=false;}
     if(baseColor_!=bg||accentColor_!=accent||material_!=int(glass)||cachedEdge_!=edge_){
         baseColor_=bg;accentColor_=accent;material_=int(glass);cachedEdge_=edge_;
@@ -153,15 +156,15 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         surface(navSurface_,47,44,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink,s.light?.055f:.055f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,47,44},12,12),b.Get());});nav_->SetContent(navSurface_.Get());
     }
     wingLeft_->SetContent(attached&&!glass?leftSurface_.Get():nullptr);wingRight_->SetContent(attached&&!glass?rightSurface_.Get():nullptr);barEffect_->SetOpacity(s.page==Page::Overview&&s.expanded&&!s.live?1.f:0.f);
-    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateCard(s,track,accent,solidRaised,ink);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-2.f:30.f,stats?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||shelf,s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
+    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track,accent2);updateLyrics(s,ink,muted,accent);updateBubble(s);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateCard(s,track,accent,solidRaised,ink);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-2.f:30.f,stats?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||shelf,s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
     surface(headerSurface_,600,150,[&](auto* rt){
         if(s.expanded)return;
         if(edge_){text(rt,s.battery>=0?std::to_wstring(s.battery)+L"%":L"—",0,82,64,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_CENTER);text(rt,s.charging?L"Charging":L"Battery",0,105,64,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER);return;}
         bool mini=s.settings.uiMode==0;float width=mini?72.f:float(s.settings.compactWidth);
         if(s.hud){
             // Level indicator: icon, compositor-driven bar (hudTrack_/hudFill_) and value.
-            float x=std::max(236.f,width)/2-109;bool brightness=s.hud==2;int level=brightness?s.brightness:(s.muted?0:s.volume);
-            drawIcon(rt,d2d_.Get(),brightness?Icon::Brightness:level==0?Icon::Muted:Icon::Volume,x,8,18,ink);text(rt,level>=0?std::to_wstring(level):L"—",x+186,0,32,11.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_TRAILING,34);return;}
+            float x=std::max(236.f,width)/2-109;bool brightness=s.hud==2,app=s.hud==3;int level=app?s.appVolume:brightness?s.brightness:(s.muted?0:s.volume);
+            if(app&&(s.playback.appIcon||!s.playback.service.empty()))identity(rt,s.playback,x-1,7,20,solidRaised);else drawIcon(rt,d2d_.Get(),brightness?Icon::Brightness:level==0?Icon::Muted:Icon::Volume,x,8,18,ink);text(rt,level>=0?std::to_wstring(level):L"—",x+186,0,32,11.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_TRAILING,34);return;}
         const bool bars=s.settings.waveform&&s.playback.playing&&s.waveform&&s.settings.compactMedia;
         // Privacy dots: green camera, orange microphone, blue location (in that order, once each).
         std::vector<UINT32> dots;for(auto c:{Capability::Camera,Capability::Microphone,Capability::Location})if(std::any_of(s.privacy.begin(),s.privacy.end(),[&](auto& u){return u.capability==c;}))dots.push_back(c==Capability::Camera?0x30d158:c==Capability::Microphone?0xff9f0a:0x0a84ff);
@@ -174,7 +177,9 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         if(s.settings.compactBattery&&s.battery>=0&&!ringsEnabled_)chip(s.charging?Icon::Power:Icon::Battery,std::to_wstring(s.battery)+L"%",56);
         if(s.settings.compactTimer&&s.focus.running)chip(Icon::Focus,clockText(std::ceil(s.focus.displayed(seconds()))),64);
         std::wstring label=!s.activity.empty()?s.activity:s.settings.compactMedia&&s.playback.available?s.playback.title:s.settings.compactTimer&&s.focus.running?clockText(std::ceil(s.focus.displayed(seconds()))):L"Ready";
-        text(rt,label,start,0,std::max(12.f,end-start),11.5f,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);
+        const bool sung=s.activity.empty()&&s.settings.compactMedia&&s.settings.lyrics&&s.settings.lyricsCompact&&s.lyrics&&s.playback.playing&&s.lyricLine>=0&&size_t(s.lyricLine)<s.lyrics->size()&&!(*s.lyrics)[size_t(s.lyricLine)].text.empty();
+        if(sung)label=(*s.lyrics)[size_t(s.lyricLine)].text;
+        text(rt,label,start,0,std::max(12.f,end-start),11.5f,sung?accent:ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);
         if(label!=headerLabel_){if(restCompact_&&!s.expanded&&!s.reducedMotion&&!headerLabel_.empty()){headerEntrance_=seconds();auto a=entrance(headerEntrance_,.35f);headerEffect_->SetOpacity(a.Get());}headerLabel_=label;}
     });header_->SetContent(headerSurface_.Get());if(headerOnly){commit();return;}
     drawingContent_=true;iconRequests_.clear();caretTarget_=42;
@@ -197,7 +202,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             auto glyph=[](CommandKind k){switch(k){case CommandKind::Volume:case CommandKind::VolumeStep:case CommandKind::Unmute:return Icon::Volume;case CommandKind::Mute:return Icon::Muted;case CommandKind::Play:return Icon::Play;case CommandKind::Pause:return Icon::Pause;
                 case CommandKind::Next:return Icon::Next;case CommandKind::Previous:return Icon::Previous;case CommandKind::Timer:return Icon::Focus;case CommandKind::Stopwatch:return Icon::Clock;case CommandKind::StopTimer:return Icon::Reset;case CommandKind::OpenApp:return Icon::Apps;
                 case CommandKind::SearchFiles:return Icon::Search;case CommandKind::OpenSettings:return Icon::Settings;case CommandKind::Workspace:case CommandKind::SaveWorkspace:case CommandKind::DeleteWorkspace:return Icon::Workspace;
-                case CommandKind::Clipboard:case CommandKind::ClearClipboard:return Icon::Clipboard;case CommandKind::Lock:return Icon::Lock;default:return Icon::Info;}};
+                case CommandKind::Clipboard:case CommandKind::ClearClipboard:return Icon::Clipboard;case CommandKind::Lock:return Icon::Lock;case CommandKind::MicMute:return Icon::MicOff;case CommandKind::MicUnmute:case CommandKind::MicToggle:return Icon::Microphone;default:return Icon::Info;}};
             if(c.results.empty()){
                 // Nothing typed yet: a few things to try.
                 const std::pair<Icon,const wchar_t*> hints[]={{Icon::Volume,L"volume 40  \u00b7  mute  \u00b7  next"},{Icon::Focus,L"focus 25  \u00b7  timer 10 min  \u00b7  stopwatch"},{Icon::Search,L"open spotify  \u00b7  find budget pdfs from last month"}};
@@ -214,15 +219,22 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             else{float x=0;for(auto [cap,what]:{std::pair{L"Enter",L"Run"},std::pair{L"\u2191 \u2193",L"Choose"},std::pair{L"Esc",L"Close"}}){float w=measure(cap,9,DWRITE_FONT_WEIGHT_SEMI_BOLD)+12;box(x,footer+4,w,18,raised,5);label(cap,x,footer+4,w,18,9,muted,DWRITE_FONT_WEIGHT_SEMI_BOLD);x+=w+6;float t=measure(what,10)+2;text(rt,what,x,footer,t,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,26);x+=t+16;}}
             return;
         }
-        if(s.card&&s.notice.kind>=5){
+        if(s.card&&s.notice.kind>=5&&s.notice.kind<=7){
             // Privacy card: the app's own icon in a ring of the capability's colour.
             const auto& n=s.notice;const wchar_t* what=n.kind==5?L"Camera in use":n.kind==6?L"Microphone in use":L"Location in use";
             text(rt,what,72,6,196,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.app.empty()?std::wstring(L"An app"):n.app,72,30,196,11,muted);
             const UINT32 color=n.kind==5?0x30d158:n.kind==6?0xff9f0a:0x0a84ff;box(292,10,40,40,raised,20);drawIcon(rt,d2d_.Get(),n.kind==5?Icon::Camera:n.kind==6?Icon::Microphone:Icon::Location,302,20,20,color);
             return;
         }
+        if(s.card&&s.notice.kind==8){
+            // Sound moved to headphones: say where from, and offer to go back.
+            const auto& n=s.notice;const float room=n.switchBack?168.f:256.f;text(rt,n.device.name,72,6,room,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+            text(rt,n.app.empty()?std::wstring(L"Sound is playing here now"):L"Moved from "+n.app,72,30,room,11,muted);
+            if(n.switchBack)button(Action::SwitchBack,L"Switch back",250,14,86,28,true);
+            return;
+        }
         if(s.card&&s.notice.kind){
-            auto& n=s.notice;const bool power=n.kind>=3;const int percent=power?s.battery:n.device.battery;
+            auto& n=s.notice;const bool power=n.kind==3||n.kind==4;const int percent=power?s.battery:n.device.battery;
             const bool holding=n.kind==3&&s.power.present&&!s.power.charging;std::wstring title=power?(n.kind==3?(holding?L"Plugged in":L"Charging"):L"On battery"):n.device.name,detail;
             if(n.kind==3){wchar_t w[32]{};if(!s.power.relative&&s.power.rateMw>0)swprintf(w,32,L"%.1f W",s.power.rateMw/1000.);detail=holding?L"Not charging right now":w[0]?std::wstring(w)+(s.toFull>=0?L"  ·  full in about "+durationText(s.toFull):L""):L"Power connected";}
             else if(n.kind==4)detail=s.remaining>=0?L"About "+durationText(s.remaining)+L" left":L"Running on battery power";
@@ -234,7 +246,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         if(s.live){
             const bool bars=s.settings.waveform&&s.playback.playing&&s.waveform;
             text(rt,s.playback.available?s.playback.title:s.focus.running?L"Focus in progress":L"A little space for now",68,0,bars?216.f:250.f,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
-            text(rt,s.playback.available?s.playback.artist:s.focus.running?clockText(std::ceil(s.focus.displayed(seconds()))):L"Sound · focus · things within reach",68,23,250,10.5f,muted);
+            {const bool sung=s.playback.available&&s.settings.lyrics&&s.lyrics&&s.playback.playing&&s.lyricLine>=0&&size_t(s.lyricLine)<s.lyrics->size()&&!(*s.lyrics)[size_t(s.lyricLine)].text.empty();
+            text(rt,sung?(*s.lyrics)[size_t(s.lyricLine)].text:s.playback.available?s.playback.artist:s.focus.running?clockText(std::ceil(s.focus.displayed(seconds()))):L"Sound · focus · things within reach",68,23,250,10.5f,sung?accent:muted,sung?DWRITE_FONT_WEIGHT_MEDIUM:DWRITE_FONT_WEIGHT_NORMAL);}
             if(!s.playback.artwork){box(0,0,52,52,raised,14);if(logoArt)identity(rt,s.playback,10,10,32,solidRaised);else drawIcon(rt,d2d_.Get(),s.focus.running?Icon::Focus:Icon::Music,15,15,22,accent);}
             iconButton(Action::Previous,Icon::Previous,66,44,36,32,false,s.playback.canPrevious);iconButton(Action::Play,s.playback.playing?Icon::Pause:Icon::Play,116,40,40,40,true,s.playback.canToggle);iconButton(Action::Next,Icon::Next,170,44,36,32,false,s.playback.canNext);iconButton(Action::Mute,s.muted?Icon::Muted:Icon::Volume,228,44,32,32);text(rt,std::to_wstring(s.volume)+L"%",266,52,54,11,muted);
             button(Action::Overview,L"Command Center",0,88,150,24);button(Action::Shelf,L"Shelf",160,88,73,24);iconButton(Action::Settings,Icon::Settings,284,86,36,28);
@@ -246,7 +259,13 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         int chips=s.page==Page::Media?int(std::min<size_t>(5,s.sessions.size())):0;if(chips<2)chips=0;
         auto tabs=[&](std::initializer_list<std::pair<Action,const wchar_t*>> items,int selected,float y){int i=0;for(auto& [a,name]:items){float x=i*88.f;targets.push_back({a,x,y,82,26});label(name,x,y,82,26,11.5f,i==selected?(s.light?0xf8f8fa:0x171b22):muted,i==selected?DWRITE_FONT_WEIGHT_SEMI_BOLD:DWRITE_FONT_WEIGHT_MEDIUM);++i;}};
         if(s.page==Page::System)tabs({{Action::StatsSystem,L"System"},{Action::StatsBattery,L"Battery"},{Action::StatsDevices,L"Devices"}},s.statsTab,-2);
-        else if(*titles[int(s.page)])text(rt,titles[int(s.page)],0,0,chips?340.f-chips*28:302.f,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+        const bool lyricsButton=s.page==Page::Media&&s.settings.lyrics&&s.lyrics&&!s.lyrics->empty(),panel=lyricsPanel(s);
+        const float titleRoom=(chips?340.f-chips*28:302.f)-(lyricsButton&&chips?32.f:0.f);
+        if(s.page==Page::System){}
+        else if(panel){const float w=std::min(titleRoom,measure(s.playback.title,16,DWRITE_FONT_WEIGHT_SEMI_BOLD)+4);text(rt,s.playback.title,0,0,w,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,24);if(titleRoom-w>40)text(rt,s.playback.artist,w+8,0,titleRoom-w-8,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,24);}
+        else if(*titles[int(s.page)])text(rt,titles[int(s.page)],0,0,titleRoom,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+        if(lyricsButton){const float x=chips?344-float(chips)*28-30:318.f;targets.push_back({Action::LyricsToggle,x,-4,28,28});if(s.lyricsView)box(x,-4,28,28,s.light?0x262c34:0xe8ecf2,14);icon(Action::LyricsToggle,Icon::Lyrics,x+5,1,18,s.lyricsView?(s.light?0xf8f8fa:0x171b22):ink);}
+        if(s.page==Page::Audio&&s.micAvailable){targets.push_back({Action::MicMute,318,-4,28,28});if(s.micMuted)box(318,-4,28,28,s.light?0xfde2e1:0x3a1d1f,14);icon(Action::MicMute,s.micMuted?Icon::MicOff:Icon::Microphone,323,1,18,s.micMuted?0xe5484d:ink);}
         iconButton(Action::Close,Icon::Close,352,-4,28,28);if(s.page==Page::Overview)iconButton(Action::CommandOpen,Icon::Search,318,-4,28,28);
         for(int i=0;i<chips;++i){auto& session=s.sessions[i];float x=344-float(chips-i)*28;bool selected=i==s.session;box(x,-2,24,24,raised,12);
             identity(rt,session,x+3,1,18,solidRaised);
@@ -261,7 +280,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         }else if(s.page==Page::Media){
             bool video=s.settings.mediaLayout==2||(s.settings.mediaLayout==0&&s.playback.kind==MediaKind::Video);float tx=video?166.f:118.f,tw=380-tx;
             if(!s.playback.artwork){box(0,video?30:44,video?148:100,video?148:100,raised,18);if(logoArt)identity(rt,s.playback,video?42:22,video?72:66,video?64:56,solidRaised);else drawIcon(rt,d2d_.Get(),Icon::Music,video?56:34,video?85:77,32,muted);}
-            text(rt,s.playback.title,tx,45,tw,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.artist,tx,74,tw,11,muted);{auto* rule=findService(s.playback.service);std::wstring app=rule?std::wstring(rule->name):s.playback.appName;if(app.empty())app=video?L"Video":L"Music";
+            if(s.playback.canSeek&&s.playback.duration>0){const float ay=video?30.f:44.f,as=video?148.f:100.f;targets.push_back({Action::SkipBack,0,ay,as/2,as});targets.push_back({Action::SkipForward,as/2,ay,as/2,as});}
+            if(!panel){text(rt,s.playback.title,tx,45,tw,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.artist,tx,74,tw,11,muted);}if(!panel){auto* rule=findService(s.playback.service);std::wstring app=rule?std::wstring(rule->name):s.playback.appName;if(app.empty())app=video?L"Video":L"Music";
                 if(s.sessions.size()>1)app+=L"  ·  "+std::to_wstring(s.session+1)+L" of "+std::to_wstring(s.sessions.size());text(rt,app,tx,100,std::max(40.f,tw-(s.settings.waveform&&s.playback.playing&&s.waveform?104.f:0.f)),9.5f,muted);}
             iconButton(Action::Previous,Icon::Previous,tx,132,36,36,false,s.playback.canPrevious);iconButton(Action::Play,s.playback.playing?Icon::Pause:Icon::Play,tx+54,124,52,52,true,s.playback.canToggle);iconButton(Action::Next,Icon::Next,tx+124,132,36,36,false,s.playback.canNext);
             double position=std::clamp(s.playback.position+(s.playback.playing?std::max(0.,seconds()-s.playback.sampledAt):0.),0.,s.playback.duration);if(s.playback.canSeek)targets.push_back({Action::Seek,0,178,380,25});if(s.scrub.active)position=s.scrub.value;text(rt,s.playback.duration>0?clockText(position):L"No timeline provided",0,204,160,10,muted);// While scrubbing, the fine-control hint takes the mode button's place.

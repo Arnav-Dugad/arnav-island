@@ -66,7 +66,9 @@ private:
 
 Palette SettingsUi::palette()const{
     bool light=s_.theme==1||(s_.theme==2&&systemLight());UINT32 accent=s_.accent==4?(context_.wallpaper?context_.wallpaper:swatchColors[0]):swatchColors[std::clamp(s_.accent,0,3)];
-    if(light){const UINT32 deep[]={0x2e7d68,0x2f6fb8,0x7453b8,0xb4652c};return {0xf3f3f6,0xffffff,0xe2e3e8,0x1b1c20,0x696c75,deep[std::clamp(s_.accent,0,3)],0xffffff,0xffffff,mica_?0.f:1.f,mica_?.72f:1.f,true};}
+    // The wallpaper swatch darkens its colour for light windows, as its swatch does.
+    if(light){const UINT32 deep[]={0x2e7d68,0x2f6fb8,0x7453b8,0xb4652c};const UINT32 wall=context_.wallpaper?context_.wallpaper:0x9aa0aa;const UINT32 deepWall=((((wall>>16)&255)*5/10)<<16)|((((wall>>8)&255)*5/10)<<8)|((wall&255)*5/10);
+        return {0xf3f3f6,0xffffff,0xe2e3e8,0x1b1c20,0x696c75,s_.accent==4?deepWall:deep[std::clamp(s_.accent,0,3)],0xffffff,0xffffff,mica_?0.f:1.f,mica_?.72f:1.f,true};}
     return {0x141518,0x1e1f24,0x2b2d33,0xf2f3f6,0x9b9ea8,accent,0x101114,0x34363d,mica_?0.f:1.f,mica_?.62f:1.f,false};
 }
 bool SettingsUi::enabled(const SettingItem& i)const{
@@ -166,7 +168,7 @@ void SettingsUi::activate(const Hit& h,float x){
         if(item.action==SettingAction::BluetoothSettings){ShellExecuteW(nullptr,L"open",L"ms-settings:bluetooth",nullptr,nullptr,SW_SHOWNORMAL);break;}
         if(item.action==SettingAction::PowerSettings){ShellExecuteW(nullptr,L"open",L"ms-settings:powersleep",nullptr,nullptr,SW_SHOWNORMAL);break;}
         if(item.action==SettingAction::PrivacySettings){ShellExecuteW(nullptr,L"open",L"ms-settings:privacy",nullptr,nullptr,SW_SHOWNORMAL);break;}
-        bool destructive=item.action==SettingAction::ResetAll||item.action==SettingAction::ClearLogs||item.action==SettingAction::ClearClipboard||item.action==SettingAction::ClearWorkspaces;
+        bool destructive=item.action==SettingAction::ResetAll||item.action==SettingAction::ClearLogs||item.action==SettingAction::ClearClipboard||item.action==SettingAction::ClearWorkspaces||item.action==SettingAction::ClearLyrics;
         if(destructive&&!(confirmItem_==h.item&&seconds()<confirmUntil_)){confirmItem_=h.item;confirmUntil_=seconds()+4;dirty=true;SetTimer(hwnd_,1,4100,nullptr);break;}
         confirmItem_=-1;PostMessageW(island_,SettingsActionMessage,WPARAM(item.action),0);dirty=true;break;}
     default:break;

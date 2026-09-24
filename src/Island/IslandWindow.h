@@ -21,6 +21,8 @@
 #include "Productivity/Clipboard.h"
 #include "Productivity/Privacy.h"
 #include "Productivity/CommandService.h"
+#include "Media/LyricsService.h"
+#include "Audio/AudioRoute.h"
 #include <map>
 #include <memory>
 #include <thread>
@@ -48,6 +50,11 @@ class IslandWindow {
     bool productivityMessage(UINT,WPARAM,LPARAM,LRESULT&);void runCommand(size_t index);void commandStatus(std::wstring text,bool error=false,bool close=true);void saveWorkspaces();void commandSelect(int index);void commandShake();
     // Heard loudness of recent tracks for the waveform timeline (memory only).
     WaveformLibrary waves_;void pushWaveform(float live=-1);
+    // Phase 5B: synced lyrics (opt-in; the service starts only when they are on), double-click
+    // skips, seek detents, the app under the compact logo, and the headphone switch card.
+    std::unique_ptr<LyricsService> lyrics_;std::wstring lyricsKey_;void syncLyrics();void tickLyrics(bool redraw=true);void clearLyrics();
+    double skipClickTime_=0,lastDetent_=-1;Action skipClickAction_=Action::None;POINT skipClickPoint_{};void seekBy(double delta);
+    void appVolumeWheel(int delta);std::wstring switchBackId_,lastRouteName_;double routeRequestAt_=-10;bool qaMicMuted_=false,micKnown_=false;bool showHeadphoneCard(const AudioDevice& output,const std::wstring& fromId,const std::wstring& fromName);
     bool edgeHold_=false;bool pointerOffEdge();double swipeAccumulator_=0,swipeTime_=0;bool mediaReachable_=false;
     void updateSessions();void switchSession(int delta,bool absolute=false);void updateProviders();void levelIndicator();void setMixerAt(LPARAM);bool systemRequested_=false,contentDirty_=true;Action pressedAction_=Action::None;
     void setVolumeAt(LPARAM);void scrubAt(LPARAM,bool begin=false);void endScrub(bool commit);void requestPreviews(const std::vector<ShelfItem>& incoming={});void perform(Action);Action hit(LPARAM);void refresh();void clockTimer();

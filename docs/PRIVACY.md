@@ -77,3 +77,11 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **Wallpaper accent:** the wallpaper file named by Windows is decoded locally at 48 × 48 to compute one colour. The picture and its path are not stored, logged or sent.
 - **Animation Lab:** reads the display refresh rate, Windows' compositor frame counter and the app's own memory use. Slow motion is never saved.
 - Public screenshots use the synthetic showcase session over an app-owned matte or colour pattern (`--qa-showcase`, `--qa-pattern`).
+
+## v0.11 lyrics, palette and audio
+
+- **Synced lyrics are the island's first feature that goes online, and they are off until you turn them on.** When on, the island sends the playing song's title and artist (cleaned of words like "Official Video") to `lrclib.net` over HTTPS, and nothing else: no account, key, cookie, album, length or identifier. The request carries an `ArnavIsland/<version>` user agent. Answers are chosen on this PC by comparing song lengths. They are kept in `%LOCALAPPDATA%\ArnavIsland\lyrics`, one small file per song named by a hash, at most 400, and Settings → Media & sound → Saved lyrics → Clear deletes them. Lookups are not logged.
+- **Artwork palette:** computed in memory from the cover Windows already provides; nothing is stored.
+- **Per-app volume and microphone mute** use the same Windows audio APIs as the mixer. The island changes the microphone's mute only when you ask it to, and only reads it otherwise.
+- **Headphone card:** reads output names and form factors from Windows; nothing is stored.
+- Public screenshots use the synthetic showcase session with placeholder lyric lines written for testing, and illustrative devices (`--qa-lyrics`, `--qa-headphones --qa-sample`).

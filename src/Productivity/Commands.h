@@ -11,7 +11,7 @@
 namespace nexus {
 // A small, fixed command language. Nothing typed is ever executed as a shell
 // command: every result is one of these kinds, shown before it runs.
-enum class CommandKind { None,Volume,VolumeStep,Mute,Unmute,Play,Pause,Next,Previous,Timer,Stopwatch,StopTimer,OpenApp,SearchFiles,OpenSettings,Workspace,SaveWorkspace,DeleteWorkspace,Clipboard,ClearClipboard,Lock };
+enum class CommandKind { None,Volume,VolumeStep,Mute,Unmute,Play,Pause,Next,Previous,Timer,Stopwatch,StopTimer,OpenApp,SearchFiles,OpenSettings,Workspace,SaveWorkspace,DeleteWorkspace,Clipboard,ClearClipboard,Lock,MicMute,MicUnmute,MicToggle };
 struct InstalledApp {std::wstring name,id;};
 struct CommandResult {
     CommandKind kind=CommandKind::None;std::wstring title,detail,target;int value=0;
@@ -108,6 +108,10 @@ inline std::vector<CommandResult> parseCommand(const std::wstring& typed,const s
     }
     if(t==L"louder"){add(CommandKind::VolumeStep,L"Turn the volume up",L"By 10 points",10);return out;}
     if(t==L"quieter"||t==L"softer"){add(CommandKind::VolumeStep,L"Turn the volume down",L"By 10 points",-10);return out;}
+    // Microphone (the default recording device).
+    if(t==L"mute mic"||t==L"mute microphone"||t==L"mute my mic"||t==L"mic off"||t==L"microphone off"){add(CommandKind::MicMute,L"Mute the microphone",L"Default recording device");return out;}
+    if(t==L"unmute mic"||t==L"unmute microphone"||t==L"unmute my mic"||t==L"mic on"||t==L"microphone on"){add(CommandKind::MicUnmute,L"Unmute the microphone",L"Default recording device");return out;}
+    if(t==L"mic"||t==L"microphone"||t==L"toggle mic"||t==L"toggle microphone"){add(CommandKind::MicToggle,L"Turn the microphone on or off",L"Default recording device");return out;}
     if(t==L"mute"){add(CommandKind::Mute,L"Mute",L"System output");return out;}if(t==L"unmute"){add(CommandKind::Unmute,L"Unmute",L"System output");return out;}
     // Playback.
     if(t==L"play"||t==L"resume"){add(CommandKind::Play,L"Play",L"Current media session");return out;}if(t==L"pause"||t==L"stop music"){add(CommandKind::Pause,L"Pause",L"Current media session");return out;}

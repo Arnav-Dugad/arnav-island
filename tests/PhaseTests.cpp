@@ -13,6 +13,9 @@
 #include "Productivity/Privacy.h"
 #include "Audio/Waveform.h"
 #include "Design/Accent.h"
+#include "Media/Lyrics.h"
+#include "Audio/AudioRoute.h"
+#include "Interaction/DetailModels.h"
 #include <iostream>
 #include <random>
 #include <set>
@@ -145,6 +148,7 @@ int main(){try{
     test(first(L"volume 30").kind==CommandKind::Volume&&first(L"volume 30").value==30&&first(L"Set volume to 45%").value==45,"volume levels");
     test(first(L"volume up").kind==CommandKind::VolumeStep&&first(L"volume up").value==10&&first(L"quieter").value==-10,"volume steps");
     test(first(L"volume 130").kind==CommandKind::None&&first(L"volume").kind==CommandKind::None,"out-of-range and bare volume do nothing");
+    test(first(L"mute mic").kind==CommandKind::MicMute&&first(L"Mic Off").kind==CommandKind::MicMute&&first(L"unmute microphone").kind==CommandKind::MicUnmute&&first(L"mic").kind==CommandKind::MicToggle&&first(L"mute").kind==CommandKind::Mute,"microphone words");
     test(first(L"mute").kind==CommandKind::Mute&&first(L"unmute").kind==CommandKind::Unmute&&first(L"PLAY").kind==CommandKind::Play&&first(L"skip").kind==CommandKind::Next&&first(L"prev").kind==CommandKind::Previous,"playback words");
     test(first(L"timer 10 min").value==600&&first(L"timer 90s").value==90&&first(L"timer 1 hour").value==3600&&first(L"timer for 5").value==300,"timer durations");
     test(first(L"focus").value==1500&&first(L"break").value==300&&first(L"focus 50").value==3000&&first(L"break 10").target==L"break","focus and break defaults");
@@ -228,5 +232,69 @@ int main(){try{
     Settings changed;changed.preset=5;changed.springStiffness=820;changed.springDamping=14;changed.springMass=60;changed.waveTimeline=false;changed.accent=4;std::stringstream out;changed.write(out);auto again=Settings::parse(out);test(again==changed,"v9 round trip");
     changed.labSpeed=2;std::stringstream out2;changed.write(out2);test(Settings::parse(out2).labSpeed==0,"slow motion is never saved");
     std::stringstream wild("version 9\nspringStiffness 5000\nspringDamping 1\naccent 7\n");auto w=Settings::parse(wild);test(w.springStiffness==900&&w.springDamping==12&&w.accent==4,"v9 values are bounded");}
-    std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery, auto-hide, command, clipboard, workspace, privacy, waveform, lab and accent checks\n";return 0;
+    // ---- Phase 5B: UTF-8 and JSON --------------------------------------------------------------
+    {const std::wstring mixed=L"Caf\u00e9 \U0001F3B5 \u0928\u092e\u0938\u094d\u0924\u0947";test(fromUtf8(toUtf8(mixed))==mixed,"UTF-8 round trip");
+    test(fromUtf8("a\xff")==L"a\ufffd"&&fromUtf8("\xe2\x82")==L"\ufffd\ufffd"&&fromUtf8("\xc0\xaf")==L"\ufffd\ufffd","invalid UTF-8 becomes U+FFFD");
+    auto j=Json::parse(R"([{"trackName":"Caf\u00e9 \ud83c\udfb5","duration":-1.5e2,"instrumental":true,"syncedLyrics":null,"x":{"y":[1,2,{"z":"a\"b\\c\n"}]}}])");
+    test(j&&j->type==Json::Type::Array&&j->items.size()==1,"JSON array of objects");
+    if(j){auto& o=j->items[0];test(fromUtf8(o.string("trackName"))==L"Caf\u00e9 \U0001F3B5"&&o.num("duration")==-150&&o.flag("instrumental")&&o.string("syncedLyrics").empty()&&o.find("x")->find("y")->items[2].string("z")=="a\"b\\c\n","JSON escapes, numbers, nesting");}
+    for(auto bad:{"[1,]","{\"a\":}","tru","\"open","[1] x","{\"a\" 1}","01x","[\"\x01\"]"})test(!Json::parse(bad),"malformed JSON rejected");
+    test(!Json::parse(std::string(40,'[')+std::string(40,']')),"JSON nesting limit");test(Json::parse(" [ ] ")&&Json::parse("{}"),"empty containers");}
+    // ---- Phase 5B: LRC and timing ----------------------------------------------------------------
+    {auto lines=parseLrc(L"[ar:Someone]\r\n[00:13.42] Yeah\r\n[00:14.81] \n[00:26.95][01:02.00] Line two\nuntimed words\n[offset:+500]\n[00:05:50]Colon");
+    test(lines.size()==5,"timed lines only, one per time tag");
+    test(std::abs(lines[0].time-5.0)<1e-9&&lines[0].text==L"Colon"&&std::abs(lines[1].time-12.92)<1e-9&&lines[1].text==L"Yeah"&&lines[2].text.empty()&&std::abs(lines[4].time-61.5)<1e-9&&lines[4].text==L"Line two","offset applies to every line; sorted; trimmed");
+    test(lyricIndex(lines,1)==-1&&lyricIndex(lines,12.92)==1&&lyricIndex(lines,20)==2&&lyricIndex(lines,999)==4,"current line");
+    test(std::abs(nextLyricIn(lines,20)-6.45)<1e-9&&nextLyricIn(lines,70)<0,"next line countdown");
+    test(parseLrc(L"").empty()&&parseLrc(L"[xx:yy]nope\n[00:61.00]bad seconds").empty(),"garbage is ignored");}
+    // ---- Phase 5B: search query cleanup -----------------------------------------------------------
+    {auto q=[](const wchar_t* t,const wchar_t* a,bool browser){return cleanLyricsQuery(t,a,browser);};
+    test(q(L"The Weeknd - Blinding Lights (Official Video)",L"The Weeknd",true)==LyricsQuery{L"Blinding Lights",L"The Weeknd"},"YouTube title split and cleaned");
+    test(q(L"Blinding Lights",L"The Weeknd",false)==LyricsQuery{L"Blinding Lights",L"The Weeknd"},"clean player fields unchanged");
+    test(q(L"Something - Remastered 2009",L"The Beatles",false)==LyricsQuery{L"Something",L"The Beatles"},"remaster suffix dropped");
+    test(q(L"Video Games",L"Lana Del Rey",false)==LyricsQuery{L"Video Games",L"Lana Del Rey"}&&q(L"Lana Del Rey - Video Games",L"LanaDelReyVEVO",true)==LyricsQuery{L"Video Games",L"Lana Del Rey"},"titles that look like noise survive");
+    test(q(L"Live Forever",L"Oasis - Topic",true)==LyricsQuery{L"Live Forever",L"Oasis"},"topic channels");
+    test(q(L"Levitating (feat. DaBaby)",L"Dua Lipa",false)==LyricsQuery{L"Levitating",L"Dua Lipa"}&&q(L"Stay ft. Justin Bieber",L"The Kid LAROI",false).title==L"Stay","featured artists dropped");
+    test(q(L"\u201cHello\u201d",L"Adele",false).title==L"Hello"&&q(L"Kesariya [Lyrical Video]",L"Arijit Singh",false).title==L"Kesariya","quotes and bracket noise");
+    test(primaryArtist(L"Post Malone, Swae Lee")==L"Post Malone"&&primaryArtist(L"Calvin Harris feat. Rihanna")==L"Calvin Harris"&&primaryArtist(L"Adele")==L"Adele","primary artist");
+    test(urlEncode(toUtf8(L"Caf\u00e9 & Co"))=="Caf%C3%A9%20%26%20Co"&&lyricsSearchPath({L"A B",L"C"})=="/api/search?track_name=A%20B&artist_name=C","query string");}
+    // ---- Phase 5B: choosing results --------------------------------------------------------------
+    {auto results=Json::parse(R"([{"duration":248,"syncedLyrics":"[00:01.00]long"},{"duration":202,"syncedLyrics":null,"plainLyrics":"x"},{"duration":203,"syncedLyrics":"[00:01.00]A"},{"duration":200,"syncedLyrics":"[00:01.00]B"},{"duration":202,"instrumental":true}])");
+    test(results.has_value(),"results parse");
+    if(results){auto a=pickLyrics(*results,202.4);test(a.kind==LyricsResult::Kind::Synced&&a.lrc==L"[00:01.00]A","closest synced version by length");
+        test(pickLyrics(*results,230).kind==LyricsResult::Kind::None,"no version within 10 s means no lyrics, not wrong ones");
+        test(pickLyrics(*results,0).lrc==L"[00:01.00]long","unknown length takes the first synced result");}
+    auto instrumental=Json::parse(R"([{"duration":180,"instrumental":true,"syncedLyrics":null}])");test(instrumental&&pickLyrics(*instrumental,181).kind==LyricsResult::Kind::Instrumental,"instrumental tracks");
+    auto empty=Json::parse("[]");test(empty&&pickLyrics(*empty,100).kind==LyricsResult::Kind::None&&pickLyrics(Json{},100).kind==LyricsResult::Kind::None,"nothing found");}
+    // ---- Phase 5B: lyrics cache -----------------------------------------------------------------
+    {LyricsCacheEntry found{LyricsCacheEntry::Status::Found,1700000000,L"[00:01.00]Caf\u00e9 \U0001F3B5\n[00:02.00]Two"};auto back=readLyricsCache(writeLyricsCache(found));test(back&&*back==found,"found entries round trip");
+    LyricsCacheEntry missing{LyricsCacheEntry::Status::Missing,1000,L""};auto m=readLyricsCache(writeLyricsCache(missing));test(m&&*m==missing&&lyricsCacheFresh(*m,1000+13*86400)&&!lyricsCacheFresh(*m,1000+15*86400)&&lyricsCacheFresh(found,found.time+400*86400),"missing entries expire after 14 days");
+    test(!readLyricsCache("nonsense")&&!readLyricsCache("arnav-lyrics 1\nstatus found\ntime 5\nno timestamps")&&!readLyricsCache("arnav-lyrics 1\nstatus weird\ntime 5\n"),"corrupt cache files ignored");
+    test(lyricsCacheName({L"Song",L"Artist"},200.2)==lyricsCacheName({L"SONG",L"artist"},199.8)&&lyricsCacheName({L"Song",L"Artist"},200)!=lyricsCacheName({L"Song",L"Artist"},230)&&lyricsCacheName({L"a",L"b"},1).size()==20,"cache names");}
+    // ---- Phase 5B: artwork palette --------------------------------------------------------------
+    {auto image=[](auto color){std::vector<uint8_t> px(64*64*4);for(int i=0;i<64*64;++i){uint32_t c=color(i%64,i/64);px[i*4]=uint8_t(c&255);px[i*4+1]=uint8_t((c>>8)&255);px[i*4+2]=uint8_t(c>>16);px[i*4+3]=255;}return px;};
+    auto ch=[](uint32_t c,int k){return int((c>>(16-8*k))&255);};auto sum=[&](uint32_t c){return ch(c,0)+ch(c,1)+ch(c,2);};
+    auto red=image([](int,int){return 0xd02020u;});auto p=artPalette(red.data(),red.size()/4);
+    test(p.colourful&&ch(p.accent,0)>ch(p.accent,1)+40&&sum(p.accent)>450&&sum(p.deep)<sum(p.accent)-150&&ch(p.ambient,0)>ch(p.ambient,2),"a red cover gives a light red accent and a deep red for light islands");
+    auto split=image([](int x,int){return x<40?0xe03030u:0x2050e0u;});auto q=artPalette(split.data(),split.size()/4);test(ch(q.accent,0)>ch(q.accent,2)&&ch(q.secondary,2)>ch(q.secondary,0),"the second hue becomes the secondary colour");
+    auto grey=image([](int x,int y){uint32_t v=40+(x+y);return (v<<16)|(v<<8)|v;});auto g=artPalette(grey.data(),grey.size()/4);test(!g.colourful&&std::abs(ch(g.accent,0)-ch(g.accent,2))<8,"grey covers stay neutral");
+    auto speck=image([](int x,int y){return x<3&&y<3?0xff0000u:0x707070u;});test(!artPalette(speck.data(),speck.size()/4).colourful,"a stray speck of colour is ignored");
+    std::vector<uint8_t> clear(16*4,0);test(!artPalette(clear.data(),16).colourful&&artPalette(nullptr,0).accent==ArtPalette{}.accent,"transparent or empty art");
+    test(mixColor(0x000000,0xffffff,.5)==0x808080&&mixColor(0x102030,0x405060,0)==0x102030&&mixColor(0x102030,0x405060,2)==0x405060,"colour mixing");
+    Artwork art;art.pixels=red;art.width=art.height=64;paintArtwork(art);test(islandAccent(0,false,0,&art,true)==art.accent&&islandAccent(0,true,0,&art,true)==art.deep&&islandAccent(0,true,0,&art,false)==0x487467,"light islands use the artwork's deep shade");}
+    // ---- Phase 5B: seeking detents and skips -------------------------------------------------------
+    {test(detentStep(200,380)==10&&detentStep(3600,380)==120&&detentStep(0,380)==0&&detentStep(1e9,380)==0,"detent spacing stays at least 12 DIPs");
+    test(seekDetents(35,380,{12.5,0.1,34.9})==std::vector<double>{10,12.5,20,30},"10 s marks plus lyric lines, away from the ends");
+    bool snapped=false;test(snapToDetent(19.2,{10,20,30},1,&snapped)==20&&snapped&&snapToDetent(15,{10,20,30},1,&snapped)==15&&!snapped&&snapToDetent(5,{},1)==5,"snapping within tolerance only");
+    ScrubGesture g;g.begin(190,380,0,200);test(g.value==100&&g.raw==100,"scrub begins at the pointer");g.move(228,0,380,0,200);test(std::abs(g.raw-120)<1e-9&&g.value==g.raw&&g.precision==1,"raw follows the pointer");g.move(266,80,380,0,200);test(g.precision==.12&&std::abs(g.raw-122.4)<1e-9,"pulling away slows the pointer");
+    test(skipTarget(5,-10,0,200)==0&&skipTarget(195,10,0,200)==200&&skipTarget(50,10,0,0)==50&&skipTarget(50,-10,0,200)==40,"double-click skips stay in range");}
+    // ---- Phase 5B: audio routes and the app under the logo ------------------------------------------
+    {test(!isHeadphoneOutput(L"Speakers (Realtek(R) Audio)",FormSpeakers)&&isHeadphoneOutput(L"Headphones (WH-1000XM5)",FormHeadphones)&&isHeadphoneOutput(L"Galaxy Buds3 Pro",FormUnknown)&&!isHeadphoneOutput(L"Galaxy Buds3 Pro",FormSpeakers)&&isHeadphoneOutput(L"Headset (AirPods Hands-Free)",FormHeadset)&&!isHeadphoneOutput(L"DELL U2720Q",FormDisplay),"headphone outputs");
+    std::vector<MixerName> apps{{L"Microsoft Edge",true},{L"Spotify",false},{L"System sounds",true,true},{L"Spotify Widget",true}};
+    test(mixerIndexFor(L"Spotify",apps)==1&&mixerIndexFor(L"Edge",apps)==0&&mixerIndexFor(L"System sounds",apps)==-1&&mixerIndexFor(L"",apps)==-1&&mixerIndexFor(L"VLC media player",apps)==-1,"media app to mixer entry");}
+    // ---- Phase 5B: output names and settings v10 ---------------------------------------------------
+    {test(outputDisplayName(L"Headphones (WH-1000XM5)")==L"WH-1000XM5"&&outputDisplayName(L"Speakers (Realtek(R) Audio)")==L"Speakers"&&outputDisplayName(L"Headset (Galaxy Buds3 Pro Hands-Free)")==L"Galaxy Buds3 Pro Hands-Free"&&outputDisplayName(L"DELL U2720Q (NVIDIA High Definition Audio)")==L"DELL U2720Q (NVIDIA High Definition Audio)"&&outputDisplayName(L"Earbuds")==L"Earbuds","output display names");
+    std::stringstream v9("version 9\nwaveTimeline 0\n");auto old=Settings::parse(v9);test(old.version==Settings::currentVersion&&!old.lyrics&&old.lyricsCompact&&old.headphoneCards&&!old.waveTimeline,"v9 files get the v10 defaults (lyrics off)");
+    Settings changed;changed.lyrics=true;changed.lyricsCompact=false;changed.headphoneCards=false;std::stringstream out;changed.write(out);test(Settings::parse(out)==changed,"v10 round trip");}
+    std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery, auto-hide, command, clipboard, workspace, privacy, waveform, lab, accent, lyrics, palette, seeking and audio-route checks\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

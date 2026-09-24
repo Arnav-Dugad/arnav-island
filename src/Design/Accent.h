@@ -1,5 +1,6 @@
 #pragma once
 #include "Interaction/DashboardModel.h"
+#include "Design/Palette.h"
 #include <algorithm>
 #include <cstdint>
 namespace nexus {
@@ -13,9 +14,11 @@ inline uint32_t pastelAccent(double r,double g,double b){
     const double q=L<.5?L*(1+s):L+s-L*s,p=2*L-q;auto c=[&](double t){return uint32_t(std::clamp(hue(p,q,t),0.,1.)*255+.5);};
     return (c(h+1./3)<<16)|(c(h)<<8)|c(h-1./3);
 }
-// Swatch 4 follows the wallpaper; light islands use one deep accent.
+// Colours an artwork's palette into it.
+inline void paintArtwork(Artwork& art){auto p=artPalette(art.pixels.data(),art.pixels.size()/4);art.accent=p.accent;art.secondary=p.secondary;art.ambient=p.ambient;art.deep=p.deep;}
+// Swatch 4 follows the wallpaper. Light islands use one deep accent, or the artwork's deep shade.
 inline uint32_t islandAccent(int swatch,bool light,uint32_t wallpaper,const Artwork* artwork,bool albumAccents){
-    const uint32_t accents[]={0xa4deca,0xa6cafa,0xccb8f1,0xefc7a6};if(light)return 0x487467;if(albumAccents&&artwork)return artwork->accent;
+    const uint32_t accents[]={0xa4deca,0xa6cafa,0xccb8f1,0xefc7a6};if(albumAccents&&artwork)return light?(artwork->deep?artwork->deep:0x487467):artwork->accent;if(light)return 0x487467;
     return swatch==4?(wallpaper?wallpaper:accents[0]):accents[std::clamp(swatch,0,3)];
 }
 }

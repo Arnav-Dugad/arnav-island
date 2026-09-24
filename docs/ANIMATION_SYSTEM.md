@@ -37,6 +37,11 @@ the content surface, 28 ms apart, absolute-time compositor curves), icon swap
 pops, a pointer-following light on glass, and the learned waveform timeline
 (64 bars eased by compositor scale animations).
 
+v0.11: lyric lines live on their own layer and a new line rises 9 DIPs and fades in on a
+content spring; the seek bubble fades on a spring and follows the pointer; landing on a
+seek detent kicks the timeline's emphasis spring for a small tick; a double-click skip
+leaves a badge that grows in and fades out over about 0.8 s.
+
 Not implemented yet: artwork shared-element morphs, arbitrary path morphs,
 blur/reflection animation, odometer digits, touch InteractionTracker, a full
 gesture system and direct editing of every channel. The lab's media button tests

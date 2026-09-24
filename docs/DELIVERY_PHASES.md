@@ -98,3 +98,14 @@ Not done in 5A, each deliberately:
 - The DWM timing counters were found not to track composition on this Windows build (they advance by one per query), so they are no longer used for any number shown.
 
 Next recommended work: the rest of Phase 5, then UI Automation for screen readers and IME in the command bar.
+
+## Status after v0.11 — Phase 5B, Now Playing Pro — 2026-09-24
+
+Shipped: synced lyrics (opt-in, LRCLIB, title and artist only, cached locally), artwork palette (gradients, glow, light-island colour), smarter seeking (hover bubble, detents, double-click and arrow-key skips), the headphone switch card with *Switch back*, per-app volume from the compact island, and microphone mute.
+
+Deviations from the plan, each deliberate:
+- **No chapter detents.** Windows media sessions don't expose chapters to other apps. Detents sit on even time marks and lyric line starts instead.
+- **Lyrics lookups send only the title and artist**, even though LRCLIB's exact-match endpoint also wants the album and length. The island uses the search endpoint and compares lengths on this PC.
+- **Microphone mute covers both default microphone roles**, communications and console, so calls and recorders agree.
+
+Next: Phase 5C, capture and Shelf superpowers.

@@ -92,3 +92,15 @@ Larger requested integrations are tracked honestly in DELIVERY_PHASES.md in the 
 **Waveform timeline.** Play something and open the Media page. The timeline fills in with the song's loudness as you listen. Drag it to seek as before. Settings → Media & sound → *Waveform timeline* switches back to a plain line.
 
 **Wallpaper accent.** Settings → Appearance → Accent, last swatch.
+
+## v0.11 Now Playing Pro
+
+**Synced lyrics.** Settings → Media & sound → *Synced lyrics*. Play a song: the line being sung shows in the compact island and on the Live card, and the Media page shows lyrics in place of the title. The lyrics button beside the page title switches back to the title. *Saved lyrics → Clear* removes what is kept on your PC.
+
+**Seeking.** Hover the timeline to see the time (and lyric) under the pointer. Drag to seek: the playhead clicks into even time marks and lyric lines; pull away from the bar for fine control. Double-click the left or right half of the artwork to skip 10 s back or forward; keep clicking to go further. With the pointer on the timeline, ← and → skip 10 s.
+
+**App volume.** With something playing, scroll over the app logo or artwork at the left of the compact island.
+
+**Microphone.** Audio page → the microphone button (red when muted), or type "mute mic", "unmute mic" or "mic" in the command bar.
+
+**Headphones.** When Windows switches to headphones, a card offers *Switch back*. Settings → Devices & power → *Headphone switch card* turns it off.

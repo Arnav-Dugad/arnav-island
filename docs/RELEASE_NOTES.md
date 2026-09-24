@@ -1,42 +1,41 @@
-# Arnav Island 0.10.0-preview.1 — Glass, a lab and a waveform
+# Arnav Island 0.11.0-preview.1 — Now Playing Pro
 
-The first part of Phase 5 (motion and materials), plus the fixes you asked for.
+Phase 5B: lyrics, artwork colours, better seeking, a headphone card and audio controls.
 
-## Frosted and Clear glass are different now
-- **Frosted glass** blurs what's behind the island when Windows transparency effects are on. When they're off, it becomes a soft, translucent frost. It used to fall back to a flat opaque fill that looked the same as Solid.
-- **Clear glass never blurs.** It lets the desktop show through with only a light tint, and has a brighter rim and sheen, so the two materials are easy to tell apart.
-- Text on glass gets a faint halo, so it stays readable over busy or bright backgrounds.
-- A soft light follows your pointer across the island. It's strongest on glass, very faint on the dark solid island, and off on the light solid island and with Reduce motion.
+## Synced lyrics (off until you turn them on)
+- Turn on **Settings → Media & sound → Synced lyrics**. The line being sung appears:
+  - in the compact island, in the accent colour
+  - on the Live card
+  - on the Media page, which shows the previous, current and next lines. The current line glows softly on dark islands, and each new line rises into place.
+- Lyrics come from **LRCLIB**, a free lyrics library that needs no account or key. **Only the song title and artist are sent.** The island picks the version whose length matches your track, so a live or extended cut never scrolls out of step.
+- Each song is looked up once. Its lyrics, or the fact that none were found, are saved on your PC. Settings → Media & sound → Saved lyrics → **Clear** removes them.
+- The lyrics button next to the page title switches the Media page between lyrics and the usual title and artist.
+- Titles from YouTube and other sites, such as "Artist - Song (Official Video)", are cleaned up before searching. Songs with no synced lyrics simply show the normal layout.
 
-## The Animation Lab moved into Settings
-Settings → Motion now contains the whole lab:
-- **Live preview:** a small island opens and closes with your spring, next to its curve. It shows how long the motion takes to settle and how much it overshoots. Click it to replay.
-- **Motion character:** Balanced, Fluid, Playful, Snappy, Calm, or **Custom**. The Stiffness, Damping and Weight sliders show the chosen preset's values. Moving any slider makes it Custom, and the island uses the change immediately.
-- **Slow motion (1×, ½×, ¼×)** slows the island down so you can study it. It's never saved, so the island is back to normal speed next time.
-- **Try it on the island:** Expand, Collapse, Interrupt (reverses mid-flight) and Card. The readout then shows your display's refresh rate, the frames Windows actually composed while the island moved (for example "59 fps" on a 60 Hz screen), and the app's memory. If the island was already in that state, it says so instead of showing a number.
-- The separate Animation Lab window and its HUD are gone. The tray menu, `--lab` and the old shortcut all open this page.
+## Colours from the artwork
+- The island reads a small palette from the cover: a main colour, a second colour and the picture's overall tone.
+- The played part of the timeline and the waveform run from the main colour to the second. The background glow and the glass tint take the overall tone.
+- **The light island now uses the artwork's colour too**, as a deep shade, instead of always the same green.
 
-## A waveform timeline for media
-- On the Media page, the timeline is a waveform of the track you're listening to. It is learned from the audio actually playing, so it is never a made-up shape.
-- Stretches you haven't heard yet are quiet dots, and they fill in as the song plays. Heard bars rise in as they arrive.
-- The bars you've passed are lit in the accent colour. A capsule playhead moves smoothly with playback, and the waveform swells while you drag to seek.
-- The island remembers the waveforms of your last 32 tracks while it runs, in memory only, so a replay starts complete.
-- Turn it off in Settings → Media & sound → *Waveform timeline* to get the plain line back.
+## Smarter seeking
+- **Hover the timeline** to see the time under the pointer, and the lyric sung there when lyrics are on.
+- **Detents:** while dragging, the playhead snaps to even time marks (every 10 s on a normal song) and to the start of lyric lines, with a small tick. Pull away from the bar for fine control, as before.
+- **Double-click the artwork** on the Media page to skip 10 s: left half back, right half forward. Keep clicking to go further. With the pointer on the timeline, ← and → also skip 10 s.
+- Windows doesn't tell apps about chapters, so there are no chapter detents. Lyric lines take their place.
 
-## Motion
-- **Liquid morph:** when the island opens, the width leads and the height follows on a softer spring, and the reverse when it closes. The shape flows instead of scaling uniformly.
-- **Staggered rows:** when a page, tab or session changes, its rows rise and fade in one after another, 28 ms apart, timed by the compositor.
-- **Icon pops:** when a button's icon changes in place, such as play to pause or mute to volume, the new icon springs in.
+## Headphone card
+- When **Windows moves your sound to headphones** (for example, earbuds connecting), a card shows where the sound went and where it came from, with a **Switch back** button.
+- The card doesn't appear when you pick the output on the island yourself. Turn it off in Settings → Devices & power → *Headphone switch card*.
 
-## Colour
-- **Wallpaper accent:** the fifth accent swatch takes a soft colour from your desktop wallpaper, and updates when you change the wallpaper. Grey or black-and-white wallpapers give a neutral accent.
+## Audio controls
+- **Per-app volume from the compact island:** scroll over the playing app's logo or artwork to change that app's volume, without touching the system volume. The level bar shows the app's own icon.
+- **Microphone mute:** the Audio page has a microphone button, which turns red when muted. It mutes your default microphone for calls and recording alike. The command bar understands "mute mic", "unmute mic" and "mic". The island briefly says "Microphone off" or "Microphone on" when the state changes, including changes made elsewhere in Windows.
 
-## Fixed and removed
-- "Your day at a glance" no longer appears on the Home page.
-- Settings → Appearance explains what each material does and what happens when Windows transparency is off.
+## Fixed
+- In Settings on the light theme, the Wallpaper accent showed as orange. It now uses a deep shade of the wallpaper colour.
 
-Windows 11 x64, unsigned preview. Settings move to version 9; existing preferences are kept.
+Windows 11 x64, unsigned preview. Settings move to version 10; existing preferences are kept.
 
 ---
 
-Previous release: [0.9.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.9.0-preview.1): command bar, clipboard history, privacy dots and workspaces.
+Previous release: [0.10.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.10.0-preview.1): glass materials, the Animation Lab in Settings and the waveform timeline.

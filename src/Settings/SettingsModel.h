@@ -10,7 +10,7 @@ namespace nexus {
 // persisted and bounded. Keys match the names written by Settings::write.
 // Preview is the Animation Lab's live spring; Actions is a row of one-shot buttons.
 enum class SettingControl { Toggle,Slider,Choice,Stepper,Swatch,Button,Order,Note,Preview,Actions };
-enum class SettingAction { None,OpenLab,ResetAll,OpenLogs,ClearLogs,TransparencySettings,ResetLayout,DisplaySettings,SoundSettings,BluetoothSettings,PowerSettings,OpenArmoury,ClearClipboard,PrivacySettings,ClearWorkspaces,OpenCommand,LabPlay };
+enum class SettingAction { None,OpenLab,ResetAll,OpenLogs,ClearLogs,TransparencySettings,ResetLayout,DisplaySettings,SoundSettings,BluetoothSettings,PowerSettings,OpenArmoury,ClearClipboard,PrivacySettings,ClearWorkspaces,OpenCommand,LabPlay,ClearLyrics };
 struct SettingItem {
     int section=0;std::wstring title,detail;SettingControl control=SettingControl::Toggle;std::string key;
     int lo=0,hi=1,step=1;std::vector<std::wstring> options;std::wstring unit;SettingAction action=SettingAction::None;
@@ -83,12 +83,16 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(4,L"Volume and brightness indicator",L"The island grows to show level changes","hud",&Settings::hud);
     number(5,C::Choice,L"Media layout",L"Artwork size on the Media page","mediaLayout",&Settings::mediaLayout,0,2,1,{L"Auto",L"Music",L"Video"});
     toggle(5,L"Waveform timeline",L"The Media timeline draws the track\u2019s loudness, filling in as it plays","waveTimeline",&Settings::waveTimeline);
+    toggle(5,L"Synced lyrics",L"From LRCLIB, a free lyrics library. Only the song title and artist are sent; lyrics are saved on this PC","lyrics",&Settings::lyrics);
+    toggle(5,L"Lyrics in the compact island",L"Show the line being sung while music plays","lyricsCompact",&Settings::lyricsCompact);
+    button(5,L"Saved lyrics",L"Remove the lyrics kept on this PC",L"Clear",SettingAction::ClearLyrics);
     toggle(5,L"App logos",L"Show the real icon of the app that is playing","appIcons",&Settings::appIcons);
     toggle(5,L"Follow the active player",L"Switch to whichever app Windows marks as current","followSession",&Settings::followSession);
     toggle(5,L"Direct output switching",L"Change the default output from the island","directAudio",&Settings::directAudio);
     toggle(5,L"Shelf previews",L"Enlarge file thumbnails on hover","shelfPeek",&Settings::shelfPeek);
     button(5,L"Windows sound settings",L"Devices, spatial sound and more",L"Open",SettingAction::SoundSettings);
     toggle(6,L"Device connection cards",L"Headphones, controllers and other Bluetooth devices announce themselves","deviceCards",&Settings::deviceCards);
+    toggle(6,L"Headphone switch card",L"When Windows moves your sound to headphones, offer to switch back","headphoneCards",&Settings::headphoneCards);
     toggle(6,L"Charging card",L"Charge level, rate and time to full when you plug in or unplug","powerCards",&Settings::powerCards);
     toggle(6,L"Keep charge history",L"A week of battery levels, stored only on this device","batteryHistory",&Settings::batteryHistory);
     button(6,L"Bluetooth devices",L"Pair, remove and manage devices",L"Open",SettingAction::BluetoothSettings);

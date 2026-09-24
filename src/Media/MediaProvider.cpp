@@ -1,6 +1,7 @@
 #include "MediaProvider.h"
 #include "BrowserTabs.h"
 #include "MediaAbi.h"
+#include "Design/Accent.h"
 #include <roapi.h>
 #include <shcore.h>
 #include <wincodec.h>
@@ -47,7 +48,7 @@ std::shared_ptr<const Artwork> readArtwork(Properties* properties,HANDLE stop){
     double scale=std::min(1.,512./std::max(w,h));w=std::max(1u,UINT(w*scale));h=std::max(1u,UINT(h*scale));
     ComPtr<IWICBitmapScaler> scaler;check(factory->CreateBitmapScaler(&scaler));check(scaler->Initialize(frame.Get(),w,h,WICBitmapInterpolationModeFant));
     ComPtr<IWICFormatConverter> converter;check(factory->CreateFormatConverter(&converter));check(converter->Initialize(scaler.Get(),GUID_WICPixelFormat32bppPBGRA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom));
-    auto art=std::make_shared<Artwork>();art->width=w;art->height=h;art->pixels.resize(size_t(w)*h*4);check(converter->CopyPixels(nullptr,w*4,UINT(art->pixels.size()),art->pixels.data()));uint64_t red=0,green=0,blue=0,count=0;for(size_t i=0;i+3<art->pixels.size();i+=64){if(art->pixels[i+3]<200)continue;red+=art->pixels[i+2];green+=art->pixels[i+1];blue+=art->pixels[i];++count;}if(count){auto tone=[&](uint64_t v){return uint32_t(150+v/count*80/255);};art->accent=(tone(red)<<16)|(tone(green)<<8)|tone(blue);}return art;
+    auto art=std::make_shared<Artwork>();art->width=w;art->height=h;art->pixels.resize(size_t(w)*h*4);check(converter->CopyPixels(nullptr,w*4,UINT(art->pixels.size()),art->pixels.data()));paintArtwork(*art);return art;
 }
 struct Watched {ComPtr<Session> session;uint64_t id=0;INT64 media=0,play=0,time=0;bool subscribed[3]{};MediaSnapshot last;};
 }
