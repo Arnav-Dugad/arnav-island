@@ -116,10 +116,26 @@ class Renderer {
     void updateTabs(const ContentSnapshot&,float x,float y,int count,int selected,bool visible,UINT32 fill);void updateCard(const ContentSnapshot&,UINT32 track,UINT32 accent,UINT32 raised,UINT32 ink);
     void identity(ID2D1RenderTarget*,const MediaSnapshot&,float x,float y,float size,UINT32 plate);void deviceBadge(ID2D1RenderTarget*,const BluetoothDevice&,float x,float y,float size,UINT32 plate,UINT32 ink);
     void drawPreview(ID2D1RenderTarget*,const Artwork&,float,float,float,float);
-    // Phase 5B: lyric lines on their own layer (a new line rolls up into place), the seek
-    // time bubble, and the badge a double-click skip leaves on the artwork.
-    ComPtr<IDCompositionVisual> lyricsLayer_,bubble_,skipBadge_;ComPtr<IDCompositionSurface> lyricsSurface_,bubbleSurface_,skipSurface_;ComPtr<IDCompositionEffectGroup> lyricsEffect_,bubbleEffect_,skipEffect_;ComPtr<IDCompositionScaleTransform> skipScale_;
-    Spring lyricsRise_{0},lyricsFade_{0},bubbleOpacity_{0};std::wstring lyricsKey_,bubbleKey_;UINT32 bubbleColors_[3]{};
+    // Phase 5D: the lyrics scroller. Neighbouring lines share one layer that springs a line
+    // at a time; the sung line has its own layer that grows into place while a
+    // compositor-timed fill sweeps its rows; the line it replaces fades out as a ghost;
+    // instrumental gaps show three dots that fill across the gap. Also the seek time
+    // bubble and the badge a double-click skip leaves on the artwork.
+    ComPtr<IDCompositionVisual> lyricsLayer_,lyricsList_,lyricsLine_,lyricsGhost_,lyricsDots_,bubble_,skipBadge_;std::array<ComPtr<IDCompositionVisual>,2> lyricsRows_;std::array<ComPtr<IDCompositionVisual>,3> lyricsDot_;
+    ComPtr<IDCompositionSurface> lyricsSurface_,lyricsLineSurface_,lyricsFillSurface_,lyricsGhostSurface_,lyricsDotSurface_,bubbleSurface_,skipSurface_;
+    ComPtr<IDCompositionEffectGroup> lyricsEffect_,lyricsGhostEffect_,bubbleEffect_,skipEffect_;std::array<ComPtr<IDCompositionEffectGroup>,3> lyricsDotEffect_;
+    ComPtr<IDCompositionScaleTransform> skipScale_,lyricsLineScale_,lyricsGhostScale_,lyricsDotsScale_;ComPtr<IDCompositionRectangleClip> lyricsClip_;std::array<ComPtr<IDCompositionRectangleClip>,2> lyricsRowClip_;
+    Spring lyricsScroll_{0},lyricsFade_{0},bubbleOpacity_{0};std::wstring lyricsKey_,lyricsTiming_,bubbleKey_;UINT32 bubbleColors_[3]{};UINT32 lyricsDotColor_=1;float lyricsWidth_=0;
+    // Where the last drawn lines sat (DIPs from the scroller's top), so the next change can travel from there.
+    struct LyricsPlacement{int line=-2;bool gap=false;float current=0,height=0,previous=0,next=0;};LyricsPlacement lyricsPlaced_;
+    struct LyricRow{float top,height,width;UINT32 first,length;};std::vector<LyricRow> lyricsRowsLaid_;
+    ComPtr<IDWriteTextLayout> lyricLayout(const std::wstring&,float size,float width,float height,DWRITE_FONT_WEIGHT);void drawLyric(ID2D1RenderTarget*,IDWriteTextLayout*,float x,float y,UINT32 color,float alpha);
+    void timeLyrics(const ContentSnapshot&,double now);
+    // Phase 5D, command bar v2: matched letters in titles, and answers whose digits roll into place.
+    void markedText(ID2D1RenderTarget*,const std::wstring&,const MatchMarks&,float x,float y,float w,float size,UINT32 color,UINT32 highlight);
+    struct AnswerColumn{ComPtr<IDCompositionVisual> column,strip;ComPtr<IDCompositionRectangleClip> clip;Spring roll{10};int digit=-1;};
+    ComPtr<IDCompositionVisual> answer_;ComPtr<IDCompositionEffectGroup> answerEffect_;std::array<AnswerColumn,20> answerColumns_;ComPtr<IDCompositionSurface> answerDigits_;std::map<wchar_t,ComPtr<IDCompositionSurface>> answerGlyphs_;
+    UINT32 answerInk_=1;float answerDigitWidth_=0,answerY_=-1;std::wstring answerText_,answerShown_;void updateAnswer(const ContentSnapshot&,UINT32 ink);
     void ensureNowPlaying();void updateLyrics(const ContentSnapshot&,UINT32 ink,UINT32 muted,UINT32 accent);void updateBubble(const ContentSnapshot&);
     // Word-wrapped text, at most `lines` lines (shrinking once if needed), with an optional soft glow.
     void wrappedText(ID2D1RenderTarget*,const std::wstring&,float x,float y,float w,float h,float size,UINT32 color,DWRITE_FONT_WEIGHT,UINT32 glow=0,int lines=2);

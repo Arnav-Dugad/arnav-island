@@ -20,7 +20,7 @@ void Renderer::initialize(HWND hwnd,float dpi) {
     check(device_->CreateRectangleClip(&innerClip_));check(innerClip_->SetLeft(0.f));check(innerClip_->SetTop(0.f));check(inner_->SetClip(innerClip_.Get()));
     check(inner_->SetOffsetX(1));check(inner_->SetOffsetY(1));
     check(content_->SetOffsetX(std::round(20*scale_)));check(content_->SetOffsetY(std::round(38*scale_)));
-    check(bar_->SetOffsetX(58*scale_));check(bar_->SetOffsetY(253*scale_));
+    check(bar_->SetOffsetX(58*scale_));check(bar_->SetOffsetY(251*scale_));
     check(device_->CreateRectangleClip(&barClip_));check(barClip_->SetLeft(0.f));check(barClip_->SetTop(0.f));check(bar_->SetClip(barClip_.Get()));
     check(barClip_->SetBottom(2*scale_));
     check(device_->CreateEffectGroup(&contentEffect_));
@@ -156,7 +156,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         surface(navSurface_,47,44,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink,s.light?.055f:.055f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,47,44},12,12),b.Get());});nav_->SetContent(navSurface_.Get());
     }
     wingLeft_->SetContent(attached&&!glass?leftSurface_.Get():nullptr);wingRight_->SetContent(attached&&!glass?rightSurface_.Get():nullptr);barEffect_->SetOpacity(s.page==Page::Overview&&s.expanded&&!s.live?1.f:0.f);
-    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track,accent2);updateLyrics(s,ink,muted,accent);updateBubble(s);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateCard(s,track,accent,solidRaised,ink);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-2.f:30.f,stats?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||(shelf&&!(s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size())),s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
+    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track,accent2);updateLyrics(s,ink,muted,accent);updateBubble(s);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateCard(s,track,accent,solidRaised,ink);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-3.f:30.f,stats?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||(shelf&&!(s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size())),s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
     surface(headerSurface_,600,150,[&](auto* rt){
         if(s.expanded)return;
         if(edge_){text(rt,s.battery>=0?std::to_wstring(s.battery)+L"%":L"—",0,82,64,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_CENTER);text(rt,s.charging?L"Charging":L"Battery",0,105,64,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER);return;}
@@ -182,7 +182,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         text(rt,label,start,0,std::max(12.f,end-start),11.5f,sung?accent:ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);
         if(label!=headerLabel_){if(restCompact_&&!s.expanded&&!s.reducedMotion&&!headerLabel_.empty()){headerEntrance_=seconds();auto a=entrance(headerEntrance_,.35f);headerEffect_->SetOpacity(a.Get());}headerLabel_=label;}
     });header_->SetContent(headerSurface_.Get());if(headerOnly){commit();return;}
-    drawingContent_=true;iconRequests_.clear();caretTarget_=42;
+    drawingContent_=true;iconRequests_.clear();caretTarget_=42;answerY_=-1;answerText_.clear();
     surface(contentSurface_,380,284,[&](auto* rt){
         const bool logoArt=s.settings.appIcons&&s.playback.available&&(!s.playback.service.empty()||s.playback.appIcon);
         ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink),&b);
@@ -193,31 +193,52 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         auto iconButton=[&](Action a,Icon glyph,float x,float y,float w=32,float h=32,bool primary=false,bool enabled=true){targets.push_back({a,x,y,w,h,enabled});if(primary)box(x,y,w,h,!enabled?raised:s.light?0x252b33:0xe8ecf2,h/2);icon(a,glyph,x+(w-18)/2,y+(h-18)/2,18,!enabled?muted:primary?(s.light?0xffffff:0x161b22):ink);};
         auto value=[](double v,int precision=0){if(v<0)return std::wstring(L"—");wchar_t buf[48];swprintf(buf,48,precision?L"%.1f":L"%.0f",v);return std::wstring(buf);};
         if(s.card&&s.command.active){
-            const auto& c=s.command;const int rowsMax=c.clips?5:3;box(0,0,380,42,raised,14);drawIcon(rt,d2d_.Get(),c.clips?Icon::Clipboard:Icon::Search,14,12,18,c.text.empty()?muted:ink);
+            const auto& c=s.command;const int rowsMax=5;box(0,0,380,42,raised,14);drawIcon(rt,d2d_.Get(),c.clips?Icon::Clipboard:Icon::Search,14,12,18,c.text.empty()?muted:ink);
             // The typed line scrolls left when it is wider than the field, keeping the caret visible.
             const float field=320;float width=measure(c.text,14),before=measure(c.text.substr(0,std::min(c.caret,c.text.size())),14),shift=std::max(0.f,std::min(width-field,before-field+8));
-            if(c.text.empty())text(rt,c.clips?L"Search your copies":L"Type a command, app or search",46,0,field,14,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);
+            if(c.text.empty())text(rt,c.clips?L"Search your copies":L"Type an app, file, command or setting",46,0,field,14,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);
             else{rt->PushAxisAlignedClip(D2D1::RectF(42,0,42+field+4,42),D2D1_ANTIALIAS_MODE_ALIASED);text(rt,c.text,42-shift,0,width+40,14,ink,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);rt->PopAxisAlignedClip();}
             caretTarget_=42+before-shift;
+            // Ghost completion: the rest of the top result, faint after the caret, with a Tab keycap.
+            const std::wstring ghost=!c.clips&&!c.results.empty()&&c.caret==c.text.size()?ghostSuffix(c.text,c.results[0].completion):std::wstring{};
+            if(!ghost.empty()){const float gx=42-shift+width,right=42+field-36;if(right-gx>16){rt->PushAxisAlignedClip(D2D1::RectF(gx,0,right,42),D2D1_ANTIALIAS_MODE_ALIASED);text(rt,ghost,gx,0,right-gx+40,14,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);rt->PopAxisAlignedClip();
+                box(right+4,11,30,20,raised,6);label(L"Tab",right+4,11,30,20,9.5f,muted,DWRITE_FONT_WEIGHT_SEMI_BOLD);}}
             auto glyph=[](CommandKind k){switch(k){case CommandKind::Volume:case CommandKind::VolumeStep:case CommandKind::Unmute:return Icon::Volume;case CommandKind::Mute:return Icon::Muted;case CommandKind::Play:return Icon::Play;case CommandKind::Pause:return Icon::Pause;
                 case CommandKind::Next:return Icon::Next;case CommandKind::Previous:return Icon::Previous;case CommandKind::Timer:return Icon::Focus;case CommandKind::Stopwatch:return Icon::Clock;case CommandKind::StopTimer:return Icon::Reset;case CommandKind::OpenApp:return Icon::Apps;
                 case CommandKind::SearchFiles:return Icon::Search;case CommandKind::OpenSettings:return Icon::Settings;case CommandKind::Workspace:case CommandKind::SaveWorkspace:case CommandKind::DeleteWorkspace:return Icon::Workspace;
-                case CommandKind::Clipboard:case CommandKind::ClearClipboard:return Icon::Clipboard;case CommandKind::Lock:return Icon::Lock;case CommandKind::MicMute:return Icon::MicOff;case CommandKind::Snip:return Icon::Snip;case CommandKind::CopyText:return Icon::Text;case CommandKind::PickColour:return Icon::Eyedropper;case CommandKind::ClipPaste:return Icon::Clipboard;case CommandKind::MicUnmute:case CommandKind::MicToggle:return Icon::Microphone;default:return Icon::Info;}};
+                case CommandKind::Clipboard:case CommandKind::ClearClipboard:return Icon::Clipboard;case CommandKind::Lock:return Icon::Lock;case CommandKind::MicMute:return Icon::MicOff;case CommandKind::Snip:return Icon::Snip;case CommandKind::CopyText:return Icon::Text;case CommandKind::PickColour:return Icon::Eyedropper;case CommandKind::ClipPaste:return Icon::Clipboard;case CommandKind::MicUnmute:case CommandKind::MicToggle:return Icon::Microphone;
+                case CommandKind::DarkMode:case CommandKind::Sleep:return Icon::Moon;case CommandKind::Bluetooth:return Icon::Bluetooth;case CommandKind::WiFi:return Icon::Wifi;case CommandKind::Airplane:return Icon::Plane;case CommandKind::EmptyBin:return Icon::Trash;
+                case CommandKind::Restart:return Icon::Reset;case CommandKind::ShutDown:return Icon::Power;case CommandKind::OpenFile:return Icon::File;case CommandKind::Currency:return Icon::Exchange;default:return Icon::Info;}};
             if(c.results.empty()&&c.clips){drawIcon(rt,d2d_.Get(),Icon::Clipboard,14,62,16,muted);text(rt,s.settings.clipboardHistory?(c.text.empty()?L"Nothing copied yet":L"No copies match"):L"Turn on clipboard history to search your copies",46,52,330,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,38);}
             else if(c.results.empty()){
                 // Nothing typed yet: a few things to try.
-                const std::pair<Icon,const wchar_t*> hints[]={{Icon::Volume,L"volume 40  \u00b7  mute  \u00b7  next"},{Icon::Focus,L"focus 25  \u00b7  timer 10 min  \u00b7  stopwatch"},{Icon::Search,L"open spotify  \u00b7  find budget pdfs from last month"}};
+                const std::pair<Icon,const wchar_t*> hints[]={{Icon::Moon,L"dark mode  \u00b7  bluetooth off  \u00b7  volume 40"},{Icon::Focus,L"focus 25  \u00b7  timer 10 min  \u00b7  empty recycle bin"},{Icon::Search,L"spotify  \u00b7  budget pdfs from last month  \u00b7  100 usd to eur"}};
                 for(int i=0;i<3;++i){float y=52+i*40.f;drawIcon(rt,d2d_.Get(),hints[i].first,14,y+10,16,muted);text(rt,hints[i].second,46,y,330,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,38);}
             }
             for(int i=0;i<int(std::min<size_t>(size_t(rowsMax),c.results.size()));++i){const auto& r=c.results[i];float y=52+i*40.f;Action a=Action(int(Action::CommandResultBase)+i);targets.push_back({a,0,y,380,38,r.kind!=CommandKind::None});
                 const auto* icon=size_t(i)<c.icons.size()?c.icons[i].get():nullptr;
-                if(icon)drawPreview(rt,*icon,7,y+5,28,28);else{box(6,y+4,30,30,raised,15);drawIcon(rt,d2d_.Get(),glyph(r.kind),13,y+11,16,r.kind==CommandKind::None?muted:ink);}
-                const bool keycap=i==c.selected&&r.kind!=CommandKind::None;const wchar_t* cap=c.armed?L"Enter again":L"Enter";const float capWidth=keycap?measure(cap,9.5f,DWRITE_FONT_WEIGHT_SEMI_BOLD)+14:0;const float room=(keycap?372-capWidth-8:374)-46;
-                text(rt,r.title,46,y+2,room,12.5f,r.kind==CommandKind::None?muted:ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,r.detail,46,y+21,room,10,muted);
+                if(icon)drawPreview(rt,*icon,7,y+5,28,28);else{box(6,y+4,30,30,raised,15);drawIcon(rt,d2d_.Get(),r.kind==CommandKind::DarkMode&&r.value==0?Icon::Sun:glyph(r.kind),13,y+11,16,r.kind==CommandKind::None?muted:ink);}
+                const bool keycap=i==c.selected&&r.kind!=CommandKind::None;const wchar_t* cap=c.armed?L"Enter again":L"Enter";const float capWidth=keycap?measure(cap,9.5f,DWRITE_FONT_WEIGHT_SEMI_BOLD)+14:0;
+                // Rows of the empty bar say why they are there; the tag sits before the Enter keycap.
+                const wchar_t* tag=r.section==1?L"Pinned":r.section==2?L"Suggested":r.section==3?L"Recent":nullptr;const float tagWidth=tag?measure(tag,9.5f,DWRITE_FONT_WEIGHT_MEDIUM)+2:0;
+                const float tagRight=keycap?372-capWidth-8:374;const float room=(tag?tagRight-tagWidth-10:tagRight)-46;
+                // An answer is drawn by its rolling-digit layer; matched letters are highlighted.
+                if(r.kind==CommandKind::Currency&&!r.answer.empty()){if(answerY_<0){answerY_=y-1;answerText_=r.answer;}}
+                else if(!r.marks.empty())markedText(rt,r.title,r.marks,46,y+2,room,12.5f,ink,accent);else text(rt,r.title,46,y+2,room,12.5f,r.kind==CommandKind::None?muted:ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+                text(rt,r.detail,46,y+21,room,10,muted);if(tag)text(rt,tag,tagRight-tagWidth,y+10,tagWidth,9.5f,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_TRAILING,19);
                 if(keycap){box(372-capWidth,y+10,capWidth,19,s.light?0xffffff:0x2c323c,6);label(cap,372-capWidth,y+10,capWidth,19,9.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}}
             const float footer=commandFooterY(c.results.empty()?(c.clips?1:3):int(std::min<size_t>(size_t(rowsMax),c.results.size())));
-            if(!c.status.empty()){drawIcon(rt,d2d_.Get(),c.error?Icon::Info:c.armed?Icon::Workspace:Icon::Check,2,footer+6,14,c.error?0xe5484d:accent);text(rt,c.status,22,footer,356,10.5f,c.error?0xe5484d:ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,26);}
-            else{float x=0;const std::initializer_list<std::pair<const wchar_t*,const wchar_t*>> hints=c.clips?(c.paste?std::initializer_list<std::pair<const wchar_t*,const wchar_t*>>{{L"Enter",L"Paste"},{L"Shift+Enter",L"Copy only"},{L"Esc",L"Close"}}:std::initializer_list<std::pair<const wchar_t*,const wchar_t*>>{{L"Enter",L"Copy"},{L"\u2191 \u2193",L"Choose"},{L"Esc",L"Close"}}):std::initializer_list<std::pair<const wchar_t*,const wchar_t*>>{{L"Enter",L"Run"},{L"\u2191 \u2193",L"Choose"},{L"Esc",L"Close"}};for(auto [cap,what]:hints){float w=measure(cap,9,DWRITE_FONT_WEIGHT_SEMI_BOLD)+12;box(x,footer+4,w,18,raised,5);label(cap,x,footer+4,w,18,9,muted,DWRITE_FONT_WEIGHT_SEMI_BOLD);x+=w+6;float t=measure(what,10)+2;text(rt,what,x,footer,t,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,26);x+=t+16;}}
+            if(!c.status.empty()){const bool workspace=size_t(c.selected)<c.results.size()&&c.results[size_t(c.selected)].kind==CommandKind::Workspace;drawIcon(rt,d2d_.Get(),c.error?Icon::Info:c.armed?(workspace?Icon::Workspace:Icon::Info):Icon::Check,2,footer+6,14,c.error?0xe5484d:accent);text(rt,c.status,22,footer,356,10.5f,c.error?0xe5484d:ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,26);}
+            else{float x=0;
+                // The footer names what the keys do for the selected row.
+                const CommandResult* chosen=size_t(c.selected)<c.results.size()?&c.results[size_t(c.selected)]:nullptr;std::vector<std::pair<const wchar_t*,const wchar_t*>> hints;
+                if(c.clips)hints=c.paste?decltype(hints){{L"Enter",L"Paste"},{L"Shift+Enter",L"Copy only"},{L"Esc",L"Close"}}:decltype(hints){{L"Enter",L"Copy"},{L"\u2191 \u2193",L"Choose"},{L"Esc",L"Close"}};
+                else if(chosen&&chosen->kind==CommandKind::OpenFile)hints={{L"Enter",L"Open"},{L"Ctrl+Enter",L"Show in folder"},{L"Ctrl+C",L"Copy path"}};
+                else if(chosen&&chosen->kind==CommandKind::Currency)hints={{L"Enter",L"Copy"},{L"Esc",L"Close"}};
+                else if(!ghost.empty())hints={{L"Enter",L"Run"},{L"Tab",L"Complete"},{L"Esc",L"Close"}};
+                else if(c.text.empty()&&chosen&&chosen->kind!=CommandKind::None)hints={{L"Enter",L"Run"},{L"Ctrl+P",L"Pin"},{L"Esc",L"Close"}};
+                else hints={{L"Enter",L"Run"},{L"\u2191 \u2193",L"Choose"},{L"Esc",L"Close"}};
+                for(auto [cap,what]:hints){float w=measure(cap,9,DWRITE_FONT_WEIGHT_SEMI_BOLD)+12;box(x,footer+4,w,18,raised,5);label(cap,x,footer+4,w,18,9,muted,DWRITE_FONT_WEIGHT_SEMI_BOLD);x+=w+6;float t=measure(what,10)+2;text(rt,what,x,footer,t,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,26);x+=t+16;}}
             return;
         }
         if(s.card&&s.notice.kind>=5&&s.notice.kind<=7){
@@ -266,14 +287,14 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         const wchar_t* titles[]={L"",L"Now playing",L"System overview",L"Make room for focus",L"Make it yours",L"Within reach",L"Sound, your way"};
         int chips=s.page==Page::Media?int(std::min<size_t>(5,s.sessions.size())):0;if(chips<2)chips=0;
         auto tabs=[&](std::initializer_list<std::pair<Action,const wchar_t*>> items,int selected,float y){int i=0;for(auto& [a,name]:items){float x=i*88.f;targets.push_back({a,x,y,82,26});label(name,x,y,82,26,11.5f,i==selected?(s.light?0xf8f8fa:0x171b22):muted,i==selected?DWRITE_FONT_WEIGHT_SEMI_BOLD:DWRITE_FONT_WEIGHT_MEDIUM);++i;}};
-        if(s.page==Page::System)tabs({{Action::StatsSystem,L"System"},{Action::StatsBattery,L"Battery"},{Action::StatsDevices,L"Devices"}},s.statsTab,-2);
+        if(s.page==Page::System)tabs({{Action::StatsSystem,L"System"},{Action::StatsBattery,L"Battery"},{Action::StatsDevices,L"Devices"}},s.statsTab,-3);
         const bool lyricsButton=s.page==Page::Media&&s.settings.lyrics&&s.lyrics&&!s.lyrics->empty(),panel=lyricsPanel(s);
         const float titleRoom=(chips?340.f-chips*28:302.f)-(lyricsButton&&chips?32.f:0.f);
         if(s.page==Page::System){}
-        else if(panel){const float w=std::min(titleRoom,measure(s.playback.title,16,DWRITE_FONT_WEIGHT_SEMI_BOLD)+4);text(rt,s.playback.title,0,0,w,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,24);if(titleRoom-w>40)text(rt,s.playback.artist,w+8,0,titleRoom-w-8,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,24);}
-        else if(*titles[int(s.page)])text(rt,titles[int(s.page)],0,0,titleRoom,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+        else if(panel){const float w=std::min(titleRoom,measure(s.playback.title,16,DWRITE_FONT_WEIGHT_SEMI_BOLD)+4);text(rt,s.playback.title,0,-4,w,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,28);if(titleRoom-w>40)text(rt,s.playback.artist,w+8,-3,titleRoom-w-8,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,28);}
+        else if(*titles[int(s.page)])text(rt,titles[int(s.page)],0,-4,titleRoom,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,28);
         // Home carries today's date in the user's own format ("Thursday, 24 September").
-        else if(s.page==Page::Overview){SYSTEMTIME t{};GetLocalTime(&t);wchar_t day[80]{};if(GetDateFormatEx(LOCALE_NAME_USER_DEFAULT,0,&t,L"dddd, d MMMM",day,80,nullptr))text(rt,day,0,0,280,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}
+        else if(s.page==Page::Overview){SYSTEMTIME t{};GetLocalTime(&t);wchar_t day[80]{};if(GetDateFormatEx(LOCALE_NAME_USER_DEFAULT,0,&t,L"dddd, d MMMM",day,80,nullptr))text(rt,day,0,-4,280,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,28);}
         if(lyricsButton){const float x=chips?344-float(chips)*28-30:318.f;targets.push_back({Action::LyricsToggle,x,-4,28,28});if(s.lyricsView)box(x,-4,28,28,s.light?0x262c34:0xe8ecf2,14);icon(Action::LyricsToggle,Icon::Lyrics,x+5,1,18,s.lyricsView?(s.light?0xf8f8fa:0x171b22):ink);}
         if(s.page==Page::Audio&&s.micAvailable){targets.push_back({Action::MicMute,318,-4,28,28});if(s.micMuted)box(318,-4,28,28,s.light?0xfde2e1:0x3a1d1f,14);icon(Action::MicMute,s.micMuted?Icon::MicOff:Icon::Microphone,323,1,18,s.micMuted?0xe5484d:ink);}
         iconButton(Action::Close,Icon::Close,352,-4,28,28);if(s.page==Page::Overview)iconButton(Action::CommandOpen,Icon::Search,318,-4,28,28);
@@ -283,10 +304,11 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             targets.push_back({Action(int(Action::SessionBase)+i),x,-2,24,24});}
         if(s.page==Page::Overview){
             if(!s.playback.artwork){box(0,43,64,64,raised,15);if(logoArt)identity(rt,s.playback,12,55,40,solidRaised);else drawIcon(rt,d2d_.Get(),Icon::Music,19,62,26,muted);}
-            text(rt,s.playback.available?s.playback.title:L"A quieter place for everything",80,48,252,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.available?s.playback.artist:L"Play something. Find your rhythm.",80,74,252,11,muted);iconButton(Action::Play,s.playback.playing?Icon::Pause:Icon::Play,340,58,40,40,true,s.playback.canToggle);targets.push_back({Action::Media,0,38,328,74});
+            // Title and artist sit as one block centred on the artwork (43..107), as does the play button.
+            text(rt,s.playback.available?s.playback.title:L"A quieter place for everything",80,52,252,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.available?s.playback.artist:L"Play something. Find your rhythm.",80,77,252,11,muted);iconButton(Action::Play,s.playback.playing?Icon::Pause:Icon::Play,340,55,40,40,true,s.playback.canToggle);targets.push_back({Action::Media,0,38,328,74});
             const Icon glyphs[]={Icon::Processor,Icon::Memory,Icon::Battery,Icon::Download,Icon::Upload,Icon::Disk,Icon::Clock};const wchar_t* names[]={L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime"};
             for(int i=0;i<3;++i){int metric=s.settings.homeMetrics[i];float x=i*130.f;box(x,126,120,68,raised,13);drawIcon(rt,d2d_.Get(),glyphs[metric],x+12,137,14,muted);text(rt,names[metric],x+33,136,77,10,muted);std::wstring number;switch(metric){case 0:number=value(s.system.cpu)+ (s.system.cpu>=0?L"%":L"");break;case 1:number=s.system.ramTotalGiB?value(s.system.ramPercent)+L"%":L"—";break;case 2:number=s.battery>=0?std::to_wstring(s.battery)+L"%":L"—";break;case 3:number=s.system.networkAvailable?rateText(s.system.download):L"—";break;case 4:number=s.system.networkAvailable?rateText(s.system.upload):L"—";break;case 5:number=s.system.diskTotalGiB?value(s.system.diskFreeGiB)+L" GB":L"—";break;default:number=clockText(double(s.system.uptime));break;}text(rt,number,x+12,156,100,metric>=3?18:23,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}
-            iconButton(Action::Mute,s.muted?Icon::Muted:Icon::Volume,0,200,28,28);b->SetColor(D2D1::ColorF(line,lineAlpha));rt->DrawLine({38,215},{300,215},b.Get(),2);text(rt,s.muted?L"Muted":std::to_wstring(s.volume)+L"%",306,207,36,10.5f,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,16);iconButton(Action::Audio,Icon::Audio,346,200,34,28);targets.push_back({Action::VolumeSlider,38,201,262,26});
+            iconButton(Action::Mute,s.muted?Icon::Muted:Icon::Volume,0,200,28,28);b->SetColor(D2D1::ColorF(line,lineAlpha));rt->DrawLine({38,214},{300,214},b.Get(),2);text(rt,s.muted?L"Muted":std::to_wstring(s.volume)+L"%",306,206,36,10.5f,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,16);iconButton(Action::Audio,Icon::Audio,346,200,34,28);targets.push_back({Action::VolumeSlider,38,201,262,26});
         }else if(s.page==Page::Media){
             bool video=s.settings.mediaLayout==2||(s.settings.mediaLayout==0&&s.playback.kind==MediaKind::Video);float tx=video?166.f:118.f,tw=380-tx;
             if(!s.playback.artwork){box(0,video?30:44,video?148:100,video?148:100,raised,18);if(logoArt)identity(rt,s.playback,video?42:22,video?72:66,video?64:56,solidRaised);else drawIcon(rt,d2d_.Get(),Icon::Music,video?56:34,video?85:77,32,muted);}
@@ -294,8 +316,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             if(!panel){text(rt,s.playback.title,tx,45,tw,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.artist,tx,74,tw,11,muted);}if(!panel){auto* rule=findService(s.playback.service);std::wstring app=rule?std::wstring(rule->name):s.playback.appName;if(app.empty())app=video?L"Video":L"Music";
                 if(s.sessions.size()>1)app+=L"  ·  "+std::to_wstring(s.session+1)+L" of "+std::to_wstring(s.sessions.size());text(rt,app,tx,100,std::max(40.f,tw-(s.settings.waveform&&s.playback.playing&&s.waveform?104.f:0.f)),9.5f,muted);}
             iconButton(Action::Previous,Icon::Previous,tx,132,36,36,false,s.playback.canPrevious);iconButton(Action::Play,s.playback.playing?Icon::Pause:Icon::Play,tx+54,124,52,52,true,s.playback.canToggle);iconButton(Action::Next,Icon::Next,tx+124,132,36,36,false,s.playback.canNext);
-            double position=std::clamp(s.playback.position+(s.playback.playing?std::max(0.,seconds()-s.playback.sampledAt):0.),0.,s.playback.duration);if(s.playback.canSeek)targets.push_back({Action::Seek,0,178,380,25});if(s.scrub.active)position=s.scrub.value;text(rt,s.playback.duration>0?clockText(position):L"No timeline provided",0,204,160,10,muted);// While scrubbing, the fine-control hint takes the mode button's place.
-            if(s.scrub.active)text(rt,L"Pull away for finer control",100,204,180,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER,22);else button(Action::MediaMode,s.settings.mediaLayout==0?L"Auto":s.settings.mediaLayout==1?L"Music":L"Video",167,204,54,22);text(rt,s.playback.duration>0?clockText(s.playback.duration):L"",300,204,80,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);
+            double position=std::clamp(s.playback.position+(s.playback.playing?std::max(0.,seconds()-s.playback.sampledAt):0.),0.,s.playback.duration);if(s.playback.canSeek)targets.push_back({Action::Seek,0,178,380,25});if(s.scrub.active)position=s.scrub.value;text(rt,s.playback.duration>0?clockText(position):L"No timeline provided",0,204,160,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,22);// While scrubbing, the fine-control hint takes the mode button's place.
+            if(s.scrub.active)text(rt,L"Pull away for finer control",100,204,180,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER,22);else button(Action::MediaMode,s.settings.mediaLayout==0?L"Auto":s.settings.mediaLayout==1?L"Music":L"Video",167,204,54,22);text(rt,s.playback.duration>0?clockText(s.playback.duration):L"",300,204,80,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING,22);
         }else if(s.page==Page::System&&s.statsTab==1){
             const auto& p=s.power;const int percent=s.battery;const bool charging=p.charging||(s.charging&&!p.present);
             drawRing(rt,d2d_.Get(),58,100,40,4,percent>=0?percent/100.:0,charging?0x5fd98a:accent,track);
@@ -396,7 +418,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         const wchar_t* labels[]={L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio"};const Action actions[]={Action::Overview,Action::Media,Action::System,Action::Focus,Action::Settings,Action::Shelf,Action::Audio};const Icon glyphs[]={Icon::Home,Icon::Music,Icon::Stats,Icon::Focus,Icon::Settings,Icon::Shelf,Icon::Audio};
         for(int slot=0;slot<7;++slot){int p=s.settings.navigation[slot];float x=std::round((slot*navStep+4)*scale_)/scale_;bool selected=int(s.page)==p;targets.push_back({actions[p],x,navY,47,44});icon(actions[p],glyphs[p],x+14,navY+5,19,selected?ink:muted,p);label(labels[p],x,navY+26,47,16,9.5f,selected?ink:muted);if(selected){if(s.reducedMotion)navX.reset(x,seconds());else if(navX.target()!=x)navX.retarget(x,seconds(),MotionTokens::navigation);}}
         if(debug){b->SetColor(D2D1::ColorF(0xf98585));for(auto& target:targets)rt->DrawRectangle({target.x,target.y,target.x+target.width,target.y+target.height},b.Get());}
-    });drawingContent_=false;updateCaret(s,caretTarget_,accent);for(auto request:iconRequests_)icon(request.action,request.glyph,request.x,request.y,request.size,request.color,request.slot);for(auto& b:bands_)b.visual->SetContent(contentSurface_.Get());for(auto& item:icons_)if(!item.used)item.effect->SetOpacity(0.f);auto nx=animation(navX,seconds(),scale_,20*scale_);nav_->SetOffsetX(nx.Get());nav_->SetOffsetY((38+navY)*scale_);commit();
+    });drawingContent_=false;updateCaret(s,caretTarget_,accent);updateAnswer(s,ink);for(auto request:iconRequests_)icon(request.action,request.glyph,request.x,request.y,request.size,request.color,request.slot);for(auto& b:bands_)b.visual->SetContent(contentSurface_.Get());for(auto& item:icons_)if(!item.used)item.effect->SetOpacity(0.f);auto nx=animation(navX,seconds(),scale_,20*scale_);nav_->SetOffsetX(nx.Get());nav_->SetOffsetY((38+navY)*scale_);commit();
 }
 
 ComPtr<IDCompositionAnimation> Renderer::animation(const Spring& s,double now,float factor,float bias) {
@@ -458,7 +480,7 @@ void Renderer::animate(const MotionEngine& m,double now) {
     auto nx=animation(navX,now,scale_,20*scale_);nav_->SetOffsetX(nx.Get());nav_->SetOffsetY((38+navY)*scale_);
     auto rx=animation(m.width,now,edge_&&!expanded_?0.f:scale_,edge_&&!expanded_?8*scale_:-58*scale_);rings_->SetOffsetX(rx.Get());rings_->SetOffsetY(edge_&&!expanded_?38*scale_:0.f);
     auto ba=animation(batteryAngle,now),ta=animation(timerAngle,now);batteryRotation_->SetAngle(ba.Get());timerRotation_->SetAngle(ta.Get());
-    auto pulse=animation(m.pulse,now);pulseEffect_->SetOpacity(pulse.Get());glass_.animate(m,now,edge_);
+    auto pulse=animation(m.pulse,now);pulseEffect_->SetOpacity(pulse.Get());glass_.animate(m,now,edge_,attached_);
     {auto slide=animation(m.slide,now,edge_?74*scale_:-44*scale_);if(edge_){stage_->SetOffsetX(slide.Get());stage_->SetOffsetY(0.f);}else{stage_->SetOffsetY(slide.Get());stage_->SetOffsetX(0.f);}
         ComPtr<IDCompositionAnimation> fade;check(device_->CreateAnimation(&fade));check(fade->SetAbsoluteBeginTime(ticks(now)));double duration=0;auto curve=approximateCurve([&](double t){return m.stageOpacity(t);},[&](double t){return m.slide.settled(t);},now,duration);
         for(auto& c:curve)check(fade->AddCubic(c.time,float(c.p),float(c.v),float(c.quadratic),float(c.cubic)));check(fade->End(duration,float(m.stageOpacity(now+10).position)));stageEffect_->SetOpacity(fade.Get());}

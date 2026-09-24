@@ -49,14 +49,16 @@ class IslandWindow {
     void onClipboard();void clipViews();void clearClips();void copyClip(size_t index);
     std::unique_ptr<PrivacyProvider> privacy_;std::vector<PrivacyUse> privacyUses_;void updatePrivacy();void showPrivacyNotice(const PrivacyUse&);
     std::unique_ptr<CommandService> commands_;WorkspaceStore workspaces_;bool hotkey_=false;int hotkeyChoice_=0;HWND commandReturn_=nullptr;uint64_t commandSeq_=0;
-    void syncProductivity();void syncHotkey();void openCommand();void closeCommand(bool restoreFocus=true);bool commandKey(WPARAM);void commandChar(wchar_t);void commandQuery();void commandResults();
+    void syncProductivity();void syncHotkey();void openCommand();void closeCommand(bool restoreFocus=true);bool commandKey(WPARAM);void commandChar(wchar_t);void commandQuery(bool refreshState=false);void commandResults();
+    // Phase 5D: what the command bar remembers (recent and pinned commands, file opens), background system actions.
+    CommandMemory commandMemory_;bool commandMemoryLoaded_=false;void loadCommandMemory();void saveCommandMemory();void rememberCommand(const CommandResult&);CommandContext commandContext();void revealResult(size_t index);void commandJobDone(LPARAM);
     bool productivityMessage(UINT,WPARAM,LPARAM,LRESULT&);void runCommand(size_t index);void commandStatus(std::wstring text,bool error=false,bool close=true);void saveWorkspaces();void commandSelect(int index);void commandShake();
     // Heard loudness of recent tracks for the waveform timeline (memory only).
     WaveformLibrary waves_;void pushWaveform(float live=-1);
     // Phase 5B: synced lyrics (opt-in; the service starts only when they are on), double-click
     // skips, seek detents, the app under the compact logo, and the headphone switch card.
     std::unique_ptr<LyricsService> lyrics_;std::wstring lyricsKey_;void syncLyrics();void tickLyrics(bool redraw=true);void clearLyrics();
-    double skipClickTime_=0,lastDetent_=-1;Action skipClickAction_=Action::None;POINT skipClickPoint_{};void seekBy(double delta);
+    double skipClickTime_=0,lastDetent_=-1;Action skipClickAction_=Action::None;POINT skipClickPoint_{};void seekBy(double delta);void seekLyric(int line);
     void appVolumeWheel(int delta);std::wstring switchBackId_,lastRouteName_;double routeRequestAt_=-10;bool qaMicMuted_=false,micKnown_=false;
     // Phase 5C: capture (snip, text, colour), Shelf item actions, the pinned Shelf, pinned copies and the clipboard picker.
     void startCapture(CaptureMode mode);void captureDone(CaptureResult* r);void captureCard(int kind,std::wstring title,std::wstring detail,std::shared_ptr<const Artwork> icon={},uint32_t colour=0);void copyText(const std::wstring& text,bool keep=true);

@@ -19,6 +19,9 @@
 #include "FileShelf/Zip.h"
 #include "FileShelf/ShelfStore.h"
 #include "Capture/CaptureModel.h"
+#include "Productivity/Currency.h"
+#include "Productivity/FileSearch.h"
+#include "Productivity/CommandMemory.h"
 #include <iostream>
 #include <random>
 #include <set>
@@ -90,7 +93,7 @@ int main(){try{
     for(int a=0;a<7;++a)for(int slot=0;slot<3;++slot){auto metrics=defaultMetrics;assignMetric(metrics,slot,a);test(metrics[slot]==a&&metrics[0]!=metrics[1]&&metrics[1]!=metrics[2]&&metrics[0]!=metrics[2],"statistics stay unique when assigned");}
     {Settings s;for(auto& item:items)if(item.control==SettingControl::Order)for(int d:{1,-1,1,1,-1}){item.set(s,d);test(validNavigation(s.navigation),"navigation order stays a permutation");}}
     std::stringstream v5("version 5\nglass 1\nuiMode 2\ncompactWidth 300\n");auto migrated=Settings::parse(v5);test(migrated.material==0&&migrated.uiMode==2&&migrated.compactWidth==300&&migrated.waveform&&migrated.hud,"v5 settings migrate; legacy interior glass is not reinterpreted");
-    Settings glass;glass.material=1;test(glass.floating()&&glass.gap()==8,"glass floats with a gap");glass.verticalOffset=20;test(glass.gap()==0,"explicit offset replaces the glass gap");Settings solid;test(!solid.floating()&&solid.gap()==0,"solid stays attached");
+    Settings glass;glass.material=1;test(!glass.floating(),"glass meets the screen edge with shoulders, like solid");glass.material=2;test(!glass.floating(),"clear glass is attached too");glass.verticalOffset=20;test(glass.floating(),"an explicit offset floats glass");Settings solid;test(!solid.floating(),"solid stays attached");
     // Browser identity is exact enough not to capture unrelated apps.
     for(auto name:{L"Google Chrome",L"MSEdge",L"Microsoft Edge",L"firefox.exe",L"Brave",L"arc.exe"})test(isBrowserName(name),"browser recognized");
     for(auto name:{L"Spotify",L"Arcade Studio",L"Citizen",L"VLC media player",L"Apple Music",L"Search"})test(!isBrowserName(name),"non-browser not misclassified");
@@ -363,5 +366,83 @@ int main(){try{
     auto back=loadShelf(saveShelf(items),[](const std::wstring& path){return path.find(L"Gone")==std::wstring::npos;});
     test(back.size()==2&&back[0].value==L"C:\\Docs\\a.txt"&&back[0].label==L"a.txt"&&back[1].value==L"note\twith\nlines"&&back[1].label==L"note with lines","shelf round trip drops missing files and duplicates");
     test(loadShelf(L"shelf 2\nf\tC:\\x",[](auto&){return true;}).empty()&&loadShelf(L"shelf 1\nq\tx\nf\t\n",[](auto&){return true;}).empty(),"bad shelf files are ignored");}
-    std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery, auto-hide, command, clipboard, workspace, privacy, waveform, lab, accent, lyrics, palette, seeking and audio-route checks\n";return 0;
+    // ---- Phase 5D: currency ---------------------------------------------------------------------
+    {const std::string xml="<?xml version=\"1.0\"?><gesmes:Envelope><Cube><Cube time='2026-09-24'><Cube currency='USD' rate='1.1000'/><Cube currency='JPY' rate='180.20'/><Cube currency=\"INR\" rate=\"92.40\"/><Cube currency='GBP' rate='0.8500'/><Cube currency='BAD' rate='x'/></Cube></Cube></gesmes:Envelope>";
+        auto rates=parseEcbRates(xml);test(rates&&rates->date==L"2026-09-24"&&rates->perEuro.size()==4&&std::abs(*rates->rate(L"USD")-1.1)<1e-9&&*rates->rate(L"EUR")==1&&!rates->rate(L"CHF"),"ECB daily rates are read, bad entries skipped");
+        test(!parseEcbRates("<html>no rates</html>")&&!parseEcbRates(""),"a page without rates is rejected");
+        auto q=[&](const wchar_t* t,const wchar_t* home=L"USD"){return parseCurrency(t,home);};
+        {auto a=q(L"100 usd to inr");test(a&&a->amount==100&&a->from==L"USD"&&a->to==L"INR"&&a->explicitAmount,"100 usd to inr");}
+        {auto a=q(L"$50 in \u20ac");test(a&&a->amount==50&&a->from==L"USD"&&a->to==L"EUR","symbols on either side");}
+        {auto a=q(L"convert 20 pounds into euros");test(a&&a->amount==20&&a->from==L"GBP"&&a->to==L"EUR","spoken names and 'convert'");}
+        {auto a=q(L"usd inr");test(a&&a->amount==1&&!a->explicitAmount&&a->to==L"INR","a currency pair means one unit");}
+        {auto a=q(L"20 eur",L"INR");test(a&&a->from==L"EUR"&&a->to==L"INR","an amount alone converts to the home currency");}
+        {auto a=q(L"20 inr",L"INR");test(a&&a->to==L"USD","home currency amounts go to US dollars");}
+        {auto a=q(L"1.5k jpy to usd");test(a&&a->amount==1500,"k suffix");auto b=q(L"12,5 eur to usd");test(b&&std::abs(b->amount-12.5)<1e-9,"decimal comma");auto c=q(L"1,234.56 usd to eur");test(c&&std::abs(c->amount-1234.56)<1e-9,"grouped thousands");auto d=q(L"100usd to inr");test(d&&d->amount==100&&d->from==L"USD","no space after the number");}
+        for(const wchar_t* t:{L"next",L"real",L"pound cake",L"usd to",L"open spotify",L"100",L"volume 30",L"euro truck simulator",L"won",L"rand"})test(!q(t),"ordinary words are not currency questions");
+        const ExchangeRates r=*rates;
+        {auto a=convertCurrency({100,L"USD",L"INR",true},r);test(a&&a->answer==L"\u20b98,400.00"&&a->plain==L"8400.00"&&a->detail.find(L"ECB rate of 24 Sep")!=std::wstring::npos&&a->detail.starts_with(L"100 USD in Indian rupees"),"USD to INR through the euro");}
+        {auto a=convertCurrency({250,L"EUR",L"JPY",true},r);test(a&&a->answer==L"\u00a545,050"&&a->plain==L"45050","yen has no minor unit");}
+        test(!convertCurrency({1,L"USD",L"CHF",true},r),"a currency without a rate has no answer");
+        test(groupedNumber(1234567.891,2)==L"1,234,567.89"&&groupedNumber(999,2)==L"999.00"&&groupedNumber(0.004567,2).starts_with(L"0.0045")&&groupedNumber(45050,0)==L"45,050","grouped numbers");
+        test(rateDay(L"2026-09-24")==L"24 Sep"&&rateDay(L"bad")==L"bad","rate dates");
+        std::vector<InstalledApp> none;CommandEnv off;auto offRows=parseCommand(L"100 usd to inr",none,{},L"C:\\",off);test(offRows.size()==1&&offRows[0].kind==CommandKind::None&&offRows[0].title==L"Currency conversion is off","currency stays off until turned on");
+        CommandEnv on;on.currency=true;on.rates=&r;auto ans=parseCommand(L"100 usd to inr",none,{},L"C:\\",on);test(ans.size()==1&&ans[0].kind==CommandKind::Currency&&ans[0].answer==L"\u20b98,400.00"&&ans[0].target==L"8400.00","a currency answer row");
+        CommandEnv loading;loading.currency=true;loading.ratesLoading=true;auto wait=parseCommand(L"5 gbp",none,{},L"C:\\",loading);test(wait.size()==1&&wait[0].kind==CommandKind::None&&wait[0].title.find(L"Getting")==0,"rates on their way");}
+    {std::stringstream v11("version 11\npinnedShelf 1\n");auto old=Settings::parse(v11);test(old.version==Settings::currentVersion&&old.pinnedShelf&&!old.currency&&old.commandHistory,"v11 files get the v12 defaults (currency off, command history on)");
+        Settings s;s.currency=true;s.commandHistory=false;std::stringstream out;s.write(out);auto back=Settings::parse(out);test(back.currency&&!back.commandHistory,"v12 preferences round trip");}
+    // ---- Phase 5D: system actions ------------------------------------------------------------------
+    {std::vector<InstalledApp> none;auto rows=[&](const wchar_t* t,CommandEnv e){return parseCommand(t,none,{},L"C:\\",e);};
+        CommandEnv e;e.bluetooth=1;e.wifi=0;e.dark=0;e.binItems=3;e.binBytes=2048;
+        {auto r=rows(L"bluetooth",e);test(r.size()==2&&r[0].kind==CommandKind::Bluetooth&&r[0].value==0&&r[0].title==L"Turn Bluetooth off"&&r[0].detail==L"Bluetooth is on now"&&r[1].kind==CommandKind::OpenSettings,"the Bluetooth row reads the live state");}
+        {auto r=rows(L"bluetooth on",e);test(r[0].kind==CommandKind::None&&r[0].title==L"Bluetooth is already on","asking for the current state changes nothing");}
+        {auto r=rows(L"turn on wifi",e);test(r[0].kind==CommandKind::WiFi&&r[0].value==1&&r[0].title==L"Turn Wi-Fi on","turn on wifi");}
+        {CommandEnv x=e;x.bluetooth=-2;auto r=rows(L"bt",x);test(r[0].kind==CommandKind::None&&r[0].title==L"No Bluetooth radio found","no radio");x.bluetooth=-1;r=rows(L"bt",x);test(r[0].kind==CommandKind::Bluetooth&&r[0].value==-1,"unknown state toggles");}
+        {auto r=rows(L"bluetooth settings",e);test(r[0].kind==CommandKind::OpenSettings&&r[0].target==L"ms-settings:bluetooth","Bluetooth settings still open the page");}
+        {auto r=rows(L"airplane mode",e);test(r[0].kind==CommandKind::Airplane&&r[0].value==1,"airplane mode turns radios off");CommandEnv q=e;q.bluetooth=0;r=rows(L"flight mode",q);test(r[0].value==0&&r[0].title==L"Turn Wi-Fi and Bluetooth back on","and back on");}
+        {auto r=rows(L"dark mode",e);test(r[0].kind==CommandKind::DarkMode&&r[0].value==1&&r[0].title==L"Switch to dark mode","dark mode");CommandEnv d=e;d.dark=1;r=rows(L"dark mode",d);test(r[0].value==0&&r[0].title==L"Switch to light mode","asking for dark when dark offers light");r=rows(L"theme",d);test(r[0].value==0,"theme toggles");}
+        {auto r=rows(L"empty recycle bin",e);test(r[0].kind==CommandKind::EmptyBin&&r[0].confirm&&r[0].detail.find(L"3 items")==0&&r[0].detail.find(L"2.0 KB")!=std::wstring::npos,"recycle bin shows what it holds and asks first");CommandEnv z=e;z.binItems=0;r=rows(L"empty bin",z);test(r[0].kind==CommandKind::None,"an empty bin has nothing to do");}
+        for(const wchar_t* t:{L"sleep",L"restart",L"shut down",L"lock"}){auto r=rows(t,e);test(!r.empty()&&r[0].confirm&&r[0].kind!=CommandKind::None,"sleep, restart, shut down and lock ask for a second Enter");}
+        test(byteText(1)==L"1 byte"&&byteText(2048)==L"2.0 KB"&&byteText(56*1048576ull)==L"56 MB","byte sizes");}
+    // ---- Phase 5D: matched letters, ghost completion -----------------------------------------------
+    {auto marks=matchMarks(L"Visual Studio Code",L"vsc");test(marks.size()==3&&marks[0].first==0&&marks[1].first==7&&marks[2].first==14,"initials are marked");
+        test(matchMarks(L"Spotify",L"spo")==MatchMarks{{0,3}},"prefix marked");test(matchMarks(L"EA SPORTS FC 26",L"spo")==MatchMarks{{3,3}},"word start marked");
+        test(matchMarks(L"Quarterly budget 2026.xlsx",L"budget 2026")==MatchMarks{{10,11}},"a phrase at a word start is one run");test(matchMarks(L"Budget review notes",L"notes budget")==MatchMarks({{0,6},{14,5}}),"each word marked, in order");
+        test(matchMarks(L"abc",L"zz").empty()&&matchMarks(L"",L"a").empty(),"no match, no marks");
+        std::vector<InstalledApp> apps{{L"Spotify",L"spotify.id"}};auto r=parseCommand(L"spo",apps,{},L"C:\\");test(!r.empty()&&r[0].kind==CommandKind::OpenApp&&r[0].marks==MatchMarks{{5,3}}&&r[0].completion==L"spotify","app rows mark letters in \"Open …\" and complete the name");
+        r=parseCommand(L"Open Spo",apps,{},L"C:\\");test(r[0].completion==L"Open Spotify","completion keeps what was typed");
+        test(ghostSuffix(L"spo",L"spotify")==L"tify"&&ghostSuffix(L"SPO",L"spotify")==L"tify"&&ghostSuffix(L"spx",L"spotify").empty()&&ghostSuffix(L"",L"x").empty(),"ghost suffix");
+        test(phraseCompletion(L"blu")==L"bluetooth"&&phraseCompletion(L"empty r")==L"empty recycle bin"&&phraseCompletion(L"x").empty()&&phraseCompletion(L"bluetooth").empty(),"command phrases complete");}
+    // ---- Phase 5D: file search ------------------------------------------------------------------------
+    {auto s=fileSpec(L"budget pdfs from last week in downloads");test(s.terms==std::vector<std::wstring>{L"budget"}&&s.extensions==std::vector<std::wstring>{L".pdf"}&&s.date==L"last week"&&s.folder==L"downloads","typed filters become a file spec");
+        s=fileSpec(L"screenshots in pictures");test(s.kind==L"picture"&&s.folder==L"pictures"&&s.terms.empty(),"a folder word is not a kind");
+        test(fileSpec(L"the").empty()&&!fileSpec(L"notes").empty(),"empty specs");
+        auto range=dateRange(L"last week",{2026,9,24},4);test(range&&range->first==Day{2026,9,14}&&range->second==Day{2026,9,21},"last week runs Monday to Monday");
+        range=dateRange(L"this month",{2026,9,24},4);test(range&&range->first==Day{2026,9,1}&&range->second==Day{2026,10,1},"this month");
+        range=dateRange(L"last month",{2026,1,15},4);test(range&&range->first==Day{2025,12,1}&&range->second==Day{2026,1,1},"last month across a year");
+        range=dateRange(L"today",{2026,12,31},4);test(range&&range->second==Day{2027,1,1},"today ends at midnight");test(addDays({2028,2,28},1)==Day{2028,2,29}&&addDays({2027,3,1},-1)==Day{2027,2,28},"leap years");
+        auto sql=searchSql(fileSpec(L"budget pdfs"),L"file:C:/Users/Sam",L"2026-09-14 00:00:00",L"",40);
+        test(sql.starts_with(L"SELECT TOP 40 \"System.ItemUrl\"")&&sql.find(L"SCOPE='file:C:/Users/Sam'")!=std::wstring::npos&&sql.find(L"CONTAINS(\"System.FileName\",'\"budget*\"')")!=std::wstring::npos&&sql.find(L"\"System.FileExtension\"='.pdf'")!=std::wstring::npos&&sql.find(L"\"System.DateModified\">='2026-09-14 00:00:00'")!=std::wstring::npos&&sql.ends_with(L"ORDER BY \"System.Search.Rank\" DESC"),"index SQL");
+        test(sql.find(L"<>'.pyc'")!=std::wstring::npos&&sql.find(L"LIKE '%\\node[_]modules\\%'")!=std::wstring::npos,"build output and tool folders are excluded");
+        auto odd=searchSql(fileSpec(L"o'brien c++ 100%_done"),L"file:C:/x's",L"",L"",5);test(odd.find(L"LIKE '%o''brien%'")!=std::wstring::npos&&odd.find(L"LIKE '%c++%'")!=std::wstring::npos&&odd.find(L"LIKE '%100[%][_]done%'")!=std::wstring::npos&&odd.find(L"SCOPE='file:C:/x''s'")!=std::wstring::npos&&odd.find(L"ORDER BY")!=std::wstring::npos,"quotes and wildcards are escaped");
+        test(sqlLiteral(std::wstring(L"a\nb'")+wchar_t(7))==L"ab''","control characters never reach the SQL");
+        test(pathFromItemUrl(L"file:C:/Users/Public/Documents/a%20b.pdf")==L"C:\\Users\\Public\\Documents\\a b.pdf"&&pathFromItemUrl(L"file:C:/x/caf%C3%A9.txt")==L"C:\\x\\caf\u00e9.txt"&&pathFromItemUrl(L"http://x").empty()&&pathFromItemUrl(L"file:///C:/a")==L"C:\\a","item URLs become paths");
+        auto spec=fileSpec(L"budget pdf");test(fileMatches(spec,L"Budget notes.pdf",false)&&!fileMatches(spec,L"Budget.txt",false)&&!fileMatches(spec,L"notes.pdf",false),"scan matching");
+        test(fileMatches(fileSpec(L"folders"),L"Work",true)&&!fileMatches(fileSpec(L"folders"),L"a.txt",false)&&fileMatches(fileSpec(L"photos"),L"x.JPG",false),"kinds in the scan");
+        test(noisyFile(L"C:\\p\\node_modules\\a.js")&&noisyFile(L"C:\\p\\x.pyc")&&!noisyFile(L"C:\\p\\report.pdf"),"noise files");
+        test(fileRank(L"budget.xlsx",fileSpec(L"budget"),0,100)>fileRank(L"old budget.xlsx",fileSpec(L"budget"),0,100)&&fileRank(L"old budget.xlsx",fileSpec(L"budget"),3,100)>fileRank(L"budget.xlsx",fileSpec(L"budget"),0,100),"names that start with the words rank first; files you open often rise");
+        test(fileAge(30)==L"just now"&&fileAge(3*86400.)==L"3 days ago"&&fileAge(86400*1.5)==L"yesterday"&&fileAge(400*86400.)==L"1 year ago","file ages");}
+    // ---- Phase 5D: command memory ----------------------------------------------------------------
+    {CommandMemory m;CommandResult a;a.kind=CommandKind::DarkMode;a.title=L"Switch to dark mode";a.value=1;CommandResult b;b.kind=CommandKind::OpenApp;b.title=L"Open Spotify";b.target=L"spotify.id";
+        m.record(a,L"dark mode",100);m.record(b,L"spo",200);m.record(a,L"dark",300);
+        auto recent=m.recent(5);test(m.items().size()==2&&recent.size()==2&&recent[0]->kind==CommandKind::DarkMode&&recent[0]->count==2&&recent[0]->phrase==L"dark","recent commands, newest first, counted");
+        test(m.togglePin(b,L"spo",400)==1&&m.isPinned(b)&&m.recent(5).size()==1&&m.pinned().size()==1,"pinning moves a command out of recent");
+        CommandResult money;money.kind=CommandKind::Currency;money.title=L"x";m.record(money,L"1 usd",1);test(m.items().size()==2&&m.togglePin(money,L"",1)==-1,"answers are not remembered");
+        for(int i=0;i<8;++i){CommandResult c;c.kind=CommandKind::OpenFile;c.title=L"f"+std::to_wstring(i);c.target=L"C:\\f"+std::to_wstring(i);m.togglePin(c,L"",500+i);}test(m.pinned().size()==CommandMemory::pinLimit,"at most six pins");
+        test(m.togglePin(b,L"",600)==0&&!m.isPinned(b),"unpin");
+        const size_t pins=m.pinned().size();for(int i=0;i<60;++i){CommandResult c;c.kind=CommandKind::OpenFile;c.title=L"g";c.target=L"C:\\g"+std::to_wstring(i);m.record(c,L"",1000+i);}test(pins==5&&m.items().size()==CommandMemory::limit&&m.pinned().size()==pins,"the list is capped, pins kept");
+        CommandMemory n;CommandResult tricky;tricky.kind=CommandKind::OpenSettings;tricky.title=L"Open \u00e9 settings";tricky.detail=L"tab\there\nline\\slash";tricky.target=L"ms-settings:x";n.record(tricky,L"s\tx",42);n.togglePin(tricky,L"s\tx",43);
+        std::stringstream io;n.write(io);auto back=CommandMemory::read(io);test(back.items().size()==1&&back.items()[0].detail==L"tab\there\nline\\slash"&&back.items()[0].phrase==L"s\tx"&&back.items()[0].pinned&&back.items()[0].title==L"Open \u00e9 settings","memory file round trip");
+        std::stringstream bad("commands 2\n1\t0\t0\t0\t0\ta\tb\tc\td\n");test(CommandMemory::read(bad).items().empty(),"unknown versions are ignored");
+        CommandMemory f;CommandResult file;file.kind=CommandKind::OpenFile;file.title=L"a";file.target=L"C:\\A";f.record(file,L"",0);f.record(file,L"",0);test(std::abs(f.frecency(CommandKind::OpenFile,L"c:\\a",7*86400)-1)<1e-9&&f.frecency(CommandKind::OpenFile,L"C:\\B",0)==0,"use counts fade by half each week");}
+    std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery, auto-hide, command, clipboard, workspace, privacy, waveform, lab, accent, lyrics, palette, seeking, audio-route, currency, system-action, completion, file-search and command-memory checks\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

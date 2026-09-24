@@ -12,6 +12,8 @@
 #endif
 #include <windows.ui.composition.h>
 #include <windows.ui.composition.interop.h>
+#include <windows.graphics.effects.h>
+#include <d2d1.h>
 #include <dispatcherqueue.h>
 #include <winstring.h>
 #include <roapi.h>
@@ -111,6 +113,32 @@ struct LinearGradientBrush:IInspectable {
     virtual HRESULT STDMETHODCALLTYPE get_StartPoint(Vector2*)=0;virtual HRESULT STDMETHODCALLTYPE put_StartPoint(Vector2)=0;
 };
 
+struct GradientBrush2:IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE get_MappingMode(INT32*)=0;virtual HRESULT STDMETHODCALLTYPE put_MappingMode(INT32)=0;// 0 absolute, 1 relative
+};
+// Windows.Graphics.IGeometrySource2D has no methods of its own; composition reads
+// the Direct2D geometry through the documented interop interface.
+struct GeometrySource2D:IInspectable {};
+struct GeometrySource2DInterop:IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE GetGeometry(ID2D1Geometry**)=0;
+    virtual HRESULT STDMETHODCALLTYPE TryGetGeometryUsingFactory(ID2D1Factory*,ID2D1Geometry**)=0;
+};
+struct CompositionPathFactory:IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE Create(IInspectable* source,IInspectable** path)=0;
+};
+struct EffectSourceParameterFactory:IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE Create(HSTRING name,IInspectable** parameter)=0;
+};
+// windows.graphics.effects.interop.h: how composition reads a Direct2D effect description.
+struct GraphicsEffectD2D1Interop:IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE GetEffectId(GUID*)=0;
+    virtual HRESULT STDMETHODCALLTYPE GetNamedPropertyMapping(LPCWSTR,UINT*,INT32*)=0;
+    virtual HRESULT STDMETHODCALLTYPE GetPropertyCount(UINT*)=0;
+    virtual HRESULT STDMETHODCALLTYPE GetProperty(UINT,ABI::Windows::Foundation::IPropertyValue**)=0;
+    virtual HRESULT STDMETHODCALLTYPE GetSource(UINT,ABI::Windows::Graphics::Effects::IGraphicsEffectSource**)=0;
+    virtual HRESULT STDMETHODCALLTYPE GetSourceCount(UINT*)=0;
+};
+
 class String {
     HSTRING value_=nullptr;
 public:
@@ -133,4 +161,10 @@ __CRT_UUID_DECL(nexus::wincomp::ShapeVisual,0xf2bd13c3,0xba7e,0x4b0f,0x91,0x26,0
 __CRT_UUID_DECL(nexus::wincomp::GradientBrush,0x1d9709e0,0xffc6,0x4c0e,0xa9,0xab,0x34,0x14,0x4d,0x4c,0x90,0x98)
 __CRT_UUID_DECL(nexus::wincomp::LinearGradientBrush,0x983bc519,0xa9db,0x413c,0xa2,0xd8,0x2a,0x90,0x56,0xfc,0x52,0x5e)
 __CRT_UUID_DECL(nexus::wincomp::Visual2,0x3052b611,0x56c3,0x4c3e,0x8b,0xf3,0xf6,0xe1,0xad,0x47,0x3f,0x06)
+__CRT_UUID_DECL(nexus::wincomp::GradientBrush2,0x899dd5a1,0xb4c7,0x4b33,0xa1,0xb6,0x26,0x4a,0xdd,0xc2,0x6d,0x10)
+__CRT_UUID_DECL(nexus::wincomp::GeometrySource2D,0xcaff7902,0x670c,0x4181,0xa6,0x24,0xda,0x97,0x72,0x03,0xb8,0x45)
+__CRT_UUID_DECL(nexus::wincomp::GeometrySource2DInterop,0x0657af73,0x53fd,0x47cf,0x84,0xff,0xc8,0x49,0x2d,0x2a,0x80,0xa3)
+__CRT_UUID_DECL(nexus::wincomp::CompositionPathFactory,0x9c1e8c6a,0x0f33,0x4751,0x94,0x37,0xeb,0x3f,0xb9,0xd3,0xab,0x07)
+__CRT_UUID_DECL(nexus::wincomp::EffectSourceParameterFactory,0xb3d9f276,0xaba3,0x4724,0xac,0xf3,0xd0,0x39,0x74,0x64,0xdb,0x1c)
+__CRT_UUID_DECL(nexus::wincomp::GraphicsEffectD2D1Interop,0x2fc57384,0xa068,0x44d7,0xa3,0x31,0x30,0x98,0x2f,0xcf,0x71,0x77)
 __CRT_UUID_DECL(nexus::wincomp::KeyFrameAnimation,0x126e7f22,0x3ae9,0x4540,0x9a,0x8a,0xde,0xae,0x8a,0x4a,0x4a,0x84)

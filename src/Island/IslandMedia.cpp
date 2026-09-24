@@ -116,6 +116,12 @@ void IslandWindow::seekBy(double delta){
         renderer_->skipFeedback(delta>0,20+size*(delta>0?.75f:.25f),38+top+size/2,motion_.reduced);}
     tickLyrics(false);refresh();store_.log("Info","media_skip");
 }
+// A tapped lyric line: playback jumps to where that line begins.
+void IslandWindow::seekLyric(int line){
+    auto& p=content_.playback;if(!p.canSeek||!(p.duration>0)||!content_.lyrics||line<0||size_t(line)>=content_.lyrics->size())return;
+    const double hi=p.seekMax>p.seekMin?p.seekMax:p.duration,target=std::clamp((*content_.lyrics)[size_t(line)].time,p.seekMin,hi);
+    if(media_)media_->seek(target,p);p.position=target;p.sampledAt=seconds();tickLyrics(false);refresh();store_.log("Info","lyrics_seek");
+}
 // The wheel over the compact island's logo changes the volume of the app that is playing.
 void IslandWindow::appVolumeWheel(int delta){
     std::vector<MixerName> names;for(auto& e:content_.mixer)names.push_back({e.name,e.active,e.system});

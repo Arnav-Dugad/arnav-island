@@ -3,7 +3,7 @@
 #include "Animation/SpringExpression.h"
 #include <string>
 namespace nexus {
-// Real backdrop glass for the island body. A Windows.UI.Composition target sits
+// Real backdrop glass for the island body and its shoulders. A Windows.UI.Composition target sits
 // beneath the existing DirectComposition tree on the same HWND and samples the
 // desktop through the documented host backdrop brush. Its rounded geometry is
 // driven by compositor expressions that evaluate the same analytical springs as
@@ -17,7 +17,8 @@ public:
     ~GlassBackdrop();
     bool initialize(HWND,float scale,float canvasWidth,float canvasHeight);
     void style(const GlassStyle&);
-    void animate(const MotionEngine&,double now,int edge);
+    void animate(const MotionEngine&,double now,int edge,bool attached);
+    bool vibrant()const;
     bool available()const{return available_;}
     GlassStyle current()const;
     static bool effectsEnabled();

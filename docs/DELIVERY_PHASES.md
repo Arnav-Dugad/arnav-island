@@ -123,3 +123,15 @@ Deviations from the plan, each deliberate:
 Also delivered: a polish pass (Home date, mixer button, Shelf chevrons), a local crash report, and two fixes found by testing — a release-only crash class in hand-declared Windows interfaces (fixed for text recognition and for Bluetooth audio connect) and drag-and-drop registration hidden by a comment during development.
 
 Next: Phase 5D, command bar v2.
+
+## Status after v0.13 — Phase 5D, command bar v2 — 2026-09-24
+
+Shipped, as selected: instant file results, system actions with live state and confirmations, recent/pinned/suggested commands, currency conversion (opt-in), matched-letter highlighting, ghost completion and rolling answer digits; plus attached glass with vibrancy, a lyrics redesign and an alignment pass.
+
+Deviations from the plan, each deliberate:
+- **Not in this release, as chosen:** the calculator and units, emoji search, editing and input methods, and smarter workspaces. They remain candidates for a later release.
+- **Airplane mode** turns every radio off (or back on) through Windows.Devices.Radios; Windows has no public API for its own airplane-mode switch.
+- **Answer count-up** applies to currency answers, the one answer type in this release.
+- **Karaoke fill** follows line timing (LRCLIB has no word timing).
+
+Next: Phase 5E, live widgets and awareness.

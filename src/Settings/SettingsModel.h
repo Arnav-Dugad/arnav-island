@@ -111,7 +111,9 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(8,L"Privacy cards",L"Announce which app just started using the camera or microphone","privacyCards",&Settings::privacyCards);
     button(8,L"Windows privacy settings",L"Choose which apps may use the camera, microphone and location",L"Open",SettingAction::PrivacySettings);
     number(8,C::Choice,L"Command shortcut",L"Opens the command bar","commandShortcut",&Settings::commandShortcut,0,3,1,{L"Off",L"Alt+Shift+Space",L"Ctrl+Alt+Space",L"Win+Alt+Space"});
-    button(8,L"Command bar",L"Volume, timers, apps, file search, settings and workspaces by typing",L"Open",SettingAction::OpenCommand);
+    button(8,L"Command bar",L"Apps, files, system switches, timers, settings and workspaces by typing",L"Open",SettingAction::OpenCommand);
+    toggle(8,L"Remember recent commands",L"The empty command bar shows your pinned and recent commands; kept only on this PC","commandHistory",&Settings::commandHistory);
+    toggle(8,L"Currency conversion",L"Type \u201c100 usd to inr\u201d. Fetches the European Central Bank\u2019s public daily rates, at most twice a day; nothing about you is sent","currency",&Settings::currency);
     toggle(8,L"Capture and clipboard shortcuts",L"Alt+Shift+S snip  \u00b7  Alt+Shift+T copy text  \u00b7  Alt+Shift+C pick a colour  \u00b7  Alt+Shift+V clipboard","captureShortcuts",&Settings::captureShortcuts);
     toggle(8,L"Keep the Shelf after restarts",L"Remembers links to your Shelf files and dropped text on this PC, never copies of the files","pinnedShelf",&Settings::pinnedShelf);
     button(8,L"Saved workspaces",L"Remove every saved app set; open apps are not affected",L"Remove",SettingAction::ClearWorkspaces);

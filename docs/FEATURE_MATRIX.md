@@ -1,4 +1,4 @@
-# Feature status — v0.12 preview
+# Feature status — v0.13 preview
 
 | Area | Implemented | Limits |
 |---|---|---|
@@ -98,3 +98,14 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | ZIP | Built-in deflate (LZ77 + fixed Huffman, stored fallback), CRC-32, UTF-8 names, DOS dates, folders recursed | No ZIP64 (4 GB), fixed Huffman compresses less than dynamic; symlinked folders are followed as normal folders |
 | Pinned Shelf | Opt-in `shelf.nexus`: file paths and dropped text, missing files skipped, 32 items | Files moved while the island is closed drop off the Shelf |
 | Clipboard v2 | Search (every word), up to 12 pins never evicted and saved with DPAPI, secret masking, Alt+Shift+V picker that pastes into the previous app | Picker appears in the island, not at the text cursor; kept copies are plain text |
+
+| v0.13 feature | Implemented | Limits |
+|---|---|---|
+| Attached glass | Frosted and Clear use the Solid outline: body plus two concave shoulders clipped by composition path geometry, whole-pixel joins, edge docking with shoulders above and below | Real blur needs Windows Transparency effects; without them Frosted is a dense translucent frost |
+| Glass material | Colour-matrix saturation over the host backdrop (1.75 dark, 1.65 light), specular rim and two-step inner glow along the whole outline | Region-clipped window, so no outer drop shadow |
+| Lyrics scroller | Spring scroll, growing sung line, fading ghost, compositor-timed fill per row, three-dot gaps, tap to seek, brighter neighbours on see-through glass | LRCLIB is line-timed, so the fill runs at a singing pace, not per word |
+| File results | Windows Search index (OLE DB), words/type/date/folder filters, noise excluded, frecency ranking, Enter / Ctrl+Enter / Ctrl+C, thumbnails and icons | Only indexed locations; fallback scan covers the user folder for 0.4 s |
+| System actions | Dark/light mode, Bluetooth, Wi-Fi, all radios (airplane), recycle bin with count and size, sleep, restart, shut down, lock; live state; second Enter for the last five | No public API for Windows' own airplane-mode switch, night light or do not disturb |
+| Empty bar | Pinned (Ctrl+P, up to 6), suggested (media, mute, microphone, timer, dark mode by time of day) and recent commands | Kept in `commands.nexus` on this PC |
+| Currency | Opt-in; ECB daily rates cached 12 h; strict grammar; rolling digits; Enter copies | About 30 currencies (those the ECB publishes); rates are the previous working day's |
+| Typing aids | Matched letters highlighted, ghost completion with Tab, a command preview while its name is typed, per-row footer keys | — |

@@ -1,10 +1,22 @@
 #include "Island/IslandWindow.h"
 #include <shlobj.h>
+#include <powrprof.h>
+#include <ctime>
+#include <fstream>
+#include <thread>
 namespace nexus {
 namespace {
 constexpr int HotkeyId=0x4e49;
 constexpr UINT_PTR ClipboardRetryTimer=31,CommandCloseTimer=32;
-constexpr UINT WorkspaceMessage=WM_APP+32;
+constexpr UINT WorkspaceMessage=WM_APP+32,CommandJobMessage=WM_APP+36;
+// A system action finished on a worker: radios, the recycle bin or the theme.
+struct CommandJob {CommandKind kind=CommandKind::None;int which=0,value=0,result=0;};
+int64_t unixTime(){return int64_t(std::time(nullptr));}
+// Restart and shut down need the shutdown privilege, which every signed-in user holds but must switch on.
+bool shutdownPrivilege(){HANDLE token=nullptr;if(!OpenProcessToken(GetCurrentProcess(),TOKEN_ADJUST_PRIVILEGES|TOKEN_QUERY,&token))return false;TOKEN_PRIVILEGES p{};p.PrivilegeCount=1;p.Privileges[0].Attributes=SE_PRIVILEGE_ENABLED;
+    bool ok=LookupPrivilegeValueW(nullptr,SE_SHUTDOWN_NAME,&p.Privileges[0].Luid)&&AdjustTokenPrivileges(token,FALSE,&p,0,nullptr,nullptr)&&GetLastError()==ERROR_SUCCESS;CloseHandle(token);return ok;}
+const wchar_t* confirmText(CommandKind k){switch(k){case CommandKind::EmptyBin:return L"Press Enter again to delete them for good";case CommandKind::Sleep:return L"Press Enter again to put the PC to sleep";
+    case CommandKind::Restart:return L"Press Enter again to restart  \u00b7  save your work first";case CommandKind::ShutDown:return L"Press Enter again to shut down  \u00b7  save your work first";case CommandKind::Lock:return L"Press Enter again to lock the PC";default:return L"Press Enter again to go ahead";}}
 // Result of a workspace save or open, finished on a worker thread.
 struct WorkspaceDone {bool save=false;std::wstring name;std::vector<WorkspaceApp> apps;LaunchReport report;};
 std::wstring userFolder(){PWSTR path=nullptr;std::wstring out;if(SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Profile,0,nullptr,&path))&&path)out=path;CoTaskMemFree(path);return out;}
@@ -25,7 +37,11 @@ void IslandWindow::syncProductivity(){
     if(privacy&&!privacy_)privacy_=std::make_unique<PrivacyProvider>(window_);
     else if(!privacy&&privacy_){privacy_.reset();privacyUses_.clear();content_.privacy.clear();}
     if(!settings_.privacyDots)content_.privacy.clear();else content_.privacy=privacyUses_;
-    if(!commands_)commands_=std::make_unique<CommandService>(window_,userFolder());
+    // Test runs search only the Public folder, where the sample files live, never the user's own files.
+    if(!commands_){wchar_t pub[MAX_PATH]{};GetEnvironmentVariableW(L"PUBLIC",pub,MAX_PATH);commands_=std::make_unique<CommandService>(window_,testing_&&*pub?std::wstring(pub):userFolder(),store_.directory);}
+    // Command history follows its setting; turning it off forgets it (the file too).
+    if(settings_.commandHistory){if(!commandMemoryLoaded_)loadCommandMemory();}
+    else if(commandMemoryLoaded_||!commandMemory_.items().empty()){commandMemory_.forget();commandMemoryLoaded_=false;std::error_code ignored;std::filesystem::remove(store_.directory/L"commands.nexus",ignored);}
     syncHotkey();
 }
 void IslandWindow::syncHotkey(){
@@ -95,7 +111,7 @@ void IslandWindow::openCommand(){
     content_.command=ContentSnapshot::Command{};content_.command.active=true;content_.notice.kind=0;content_.pinned=false;KillTimer(window_,CommandCloseTimer);
     // The island takes keyboard focus only while the command bar is open.
     SetWindowLongPtrW(window_,GWL_EXSTYLE,GetWindowLongPtrW(window_,GWL_EXSTYLE)&~WS_EX_NOACTIVATE);
-    motion_.commandHeight=commandIslandHeight(3);transition(IslandState::Command);commandQuery();
+    motion_.commandHeight=commandIslandHeight(3);transition(IslandState::Command);commandQuery(true);
     SetForegroundWindow(window_);SetFocus(window_);store_.log("Info","command_bar_opened");
 }
 void IslandWindow::closeCommand(bool restoreFocus){
@@ -104,19 +120,38 @@ void IslandWindow::closeCommand(bool restoreFocus){
     transition(IslandState::Compact);feedback(Action::None);
     HWND back=commandReturn_;commandReturn_=nullptr;if(restoreFocus&&back&&IsWindow(back))SetForegroundWindow(back);
 }
-void IslandWindow::commandQuery(){if(content_.command.clips){clipResults();return;}if(commands_)commands_->query(content_.command.text,workspaces_.names());}
+void IslandWindow::commandQuery(bool refreshState){if(content_.command.clips){clipResults();return;}if(commands_)commands_->query(content_.command.text,workspaces_.names(),commandContext(),commandMemory_.items(),settings_.currency,refreshState);}
+// What the island is doing, so an empty bar can suggest the obvious next step.
+CommandContext IslandWindow::commandContext(){
+    CommandContext c;const auto& p=content_.playback;c.media=p.available&&p.canToggle;c.playing=c.media&&p.playing;c.track=p.title.empty()?L"":p.title+(p.artist.empty()?L"":L"  \u00b7  "+p.artist);
+    c.muted=audio_&&audio_->muted.load();c.micMuted=audio_&&audio_->micAvailable.load()&&audio_->micMuted.load();c.timer=content_.focus.running;SYSTEMTIME t{};GetLocalTime(&t);c.hour=t.wHour;return c;
+}
+void IslandWindow::loadCommandMemory(){
+    commandMemoryLoaded_=true;if(testing_)return;std::ifstream in(store_.directory/L"commands.nexus",std::ios::binary);if(in)commandMemory_=CommandMemory::read(in);
+}
+void IslandWindow::saveCommandMemory(){
+    if(testing_||!settings_.commandHistory)return;auto temp=store_.directory/L"commands.nexus.tmp";{std::ofstream out(temp,std::ios::binary|std::ios::trunc);commandMemory_.write(out);}
+    MoveFileExW(temp.c_str(),(store_.directory/L"commands.nexus").c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);
+}
+void IslandWindow::rememberCommand(const CommandResult& r){if(!settings_.commandHistory)return;commandMemory_.record(r,content_.command.text.empty()?r.phrase:content_.command.text,unixTime());saveCommandMemory();}
+// Ctrl+Enter on a file: its folder opens with the file selected.
+void IslandWindow::revealResult(size_t index){
+    auto& c=content_.command;if(index>=c.results.size()||c.results[index].kind!=CommandKind::OpenFile){commandShake();return;}const auto r=c.results[index];
+    if(auto* pidl=ILCreateFromPathW(r.target.c_str())){const HRESULT hr=SHOpenFolderAndSelectItems(pidl,0,nullptr,0);ILFree(pidl);if(SUCCEEDED(hr)){rememberCommand(r);store_.log("Info","command_reveal");closeCommand(false);return;}}
+    commandStatus(L"Windows could not show that file",true);
+}
 void IslandWindow::commandResults(){
     if(!commands_||!content_.command.active||content_.command.clips)return;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;
     auto seq=commands_->results(results,icons);if(seq<commandSeq_)return;commandSeq_=seq;
     auto& c=content_.command;bool same=results.size()==c.results.size();for(size_t i=0;same&&i<results.size();++i)same=results[i].title==c.results[i].title;
-    c.results=std::move(results);c.icons=std::move(icons);if(!same){c.selected=0;c.armed=false;}c.selected=std::clamp(c.selected,0,std::max(0,int(std::min<size_t>(3,c.results.size()))-1));
+    c.results=std::move(results);c.icons=std::move(icons);if(!same){c.selected=0;if(c.armed){c.armed=false;c.status.clear();}}c.selected=std::clamp(c.selected,0,std::max(0,int(std::min<size_t>(5,c.results.size()))-1));
     // The bar grows and shrinks with its results, on the body spring.
-    const int rows=c.results.empty()?3:int(std::min<size_t>(3,c.results.size()));const double height=commandIslandHeight(rows);if(std::abs(motion_.commandHeight-height)>.5){motion_.commandHeight=height;animate();}
+    const int rows=c.results.empty()?3:int(std::min<size_t>(5,c.results.size()));const double height=commandIslandHeight(rows);if(std::abs(motion_.commandHeight-height)>.5){motion_.commandHeight=height;animate();}
     refresh();commandSelect(c.selected);
 }
 void IslandWindow::commandSelect(int index){
-    auto& c=content_.command;int rows=int(std::min<size_t>(c.clips?5:3,c.results.size()));if(rows==0){content_.hovered=Action::None;feedback(Action::None);return;}
-    c.selected=std::clamp(index,0,rows-1);content_.hovered=Action(int(Action::CommandResultBase)+c.selected);feedback(content_.hovered);
+    auto& c=content_.command;int rows=int(std::min<size_t>(5,c.results.size()));if(rows==0){content_.hovered=Action::None;feedback(Action::None);return;}
+    const int next=std::clamp(index,0,rows-1);if(next!=c.selected&&c.armed){c.armed=false;c.status.clear();refresh();}c.selected=next;content_.hovered=Action(int(Action::CommandResultBase)+c.selected);feedback(content_.hovered);
 }
 // A short horizontal shake: nothing to run.
 void IslandWindow::commandShake(){if(motion_.reduced)return;double now=seconds();motion_.dragX.reset(0,now,-420);motion_.dragX.retarget(0,now,{1,900,16});animate();}
@@ -135,7 +170,17 @@ bool IslandWindow::commandKey(WPARAM key){
     bool edited=false;
     switch(key){
     case VK_ESCAPE:closeCommand();return true;
-    case VK_RETURN:runCommand(size_t(c.selected));return true;
+    case VK_RETURN:if(ctrl&&!c.clips){revealResult(size_t(c.selected));return true;}runCommand(size_t(c.selected));return true;
+    // Tab takes the ghost completion (the rest of an app, command or file name).
+    case VK_TAB:{if(c.clips||c.results.empty())return true;const auto ghost=ghostSuffix(c.text,c.results[0].completion);if(ghost.empty()||c.caret!=c.text.size()){commandShake();return true;}
+        c.text=c.results[0].completion.substr(0,160);c.caret=c.text.size();edited=true;break;}
+    case 'C':{if(!ctrl)return false;if(size_t(c.selected)<c.results.size()){const auto& r=c.results[size_t(c.selected)];
+        if(r.kind==CommandKind::OpenFile){copyText(r.target);commandStatus(L"Path copied",false,false);}else if(r.kind==CommandKind::Currency){copyText(r.target);commandStatus(L"Copied "+r.answer,false,false);}}return true;}
+    case 'P':{if(!ctrl||c.clips)return ctrl;if(size_t(c.selected)>=c.results.size())return true;const auto r=c.results[size_t(c.selected)];
+        if(!settings_.commandHistory){commandStatus(L"Turn on \u201cRemember recent commands\u201d in Settings to pin",true,false);return true;}
+        const int state=commandMemory_.togglePin(r,c.text.empty()?r.phrase:c.text,unixTime());
+        if(state<0){commandStatus(CommandMemory::memorable(r.kind)?L"Up to six commands can be pinned":L"This row can\u2019t be pinned",true,false);return true;}
+        saveCommandMemory();commandStatus(state?L"Pinned to the empty bar":L"Unpinned",false,false);if(c.text.empty())commandQuery();return true;}
     case VK_UP:commandSelect(c.selected-1);return true;
     case VK_DOWN:commandSelect(c.selected+1);return true;
     case VK_LEFT:c.caret=ctrl?wordLeft(c.caret):(c.caret?c.caret-1:0);break;
@@ -164,8 +209,27 @@ void IslandWindow::saveWorkspaces(){
 void IslandWindow::runCommand(size_t index){
     auto& c=content_.command;if(index>=c.results.size()){commandShake();return;}const CommandResult r=c.results[index];const double now=seconds();
     auto shell=[&](const std::wstring& target){return reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr,L"open",target.c_str(),nullptr,nullptr,SW_SHOWNORMAL))>32;};
-    auto done=[&]{store_.log("Info","command_run");closeCommand(r.kind!=CommandKind::OpenApp&&r.kind!=CommandKind::SearchFiles&&r.kind!=CommandKind::OpenSettings);};
+    auto done=[&]{store_.log("Info","command_run");closeCommand(r.kind!=CommandKind::OpenApp&&r.kind!=CommandKind::SearchFiles&&r.kind!=CommandKind::OpenSettings&&r.kind!=CommandKind::OpenFile);};
+    // Anything hard to undo asks for a second Enter first (workspaces word their own).
+    if(r.confirm&&r.kind!=CommandKind::Workspace&&!c.armed){c.armed=true;c.error=false;c.status=confirmText(r.kind);refresh();return;}
+    if(r.kind!=CommandKind::None)rememberCommand(r);
+    auto background=[&](int which,int value,const std::wstring& working){commandStatus(working,false,false);auto job=new CommandJob{r.kind,which,value,0};HWND self=window_;
+        std::thread([job,self]{if(job->kind==CommandKind::EmptyBin)job->result=SUCCEEDED(SHEmptyRecycleBinW(nullptr,nullptr,SHERB_NOCONFIRMATION|SHERB_NOPROGRESSUI|SHERB_NOSOUND))?1:-1;
+            else if(job->kind==CommandKind::DarkMode)job->result=setDarkMode(job->value==1)?1:-1;
+            else{if(job->value<0){const int now=radioOn(job->which);job->value=now==1?0:1;}job->result=setRadios(job->which,job->value==1);}
+            if(!PostMessageW(self,CommandJobMessage,0,reinterpret_cast<LPARAM>(job)))delete job;}).detach();};
     switch(r.kind){
+    case CommandKind::DarkMode:background(0,r.value,r.value?L"Switching to dark mode\u2026":L"Switching to light mode\u2026");return;
+    case CommandKind::Bluetooth:background(2,r.value,L"Changing Bluetooth\u2026");return;
+    case CommandKind::WiFi:background(1,r.value,L"Changing Wi-Fi\u2026");return;
+    case CommandKind::Airplane:background(3,r.value?0:1,r.value?L"Turning radios off\u2026":L"Turning radios back on\u2026");return;
+    case CommandKind::EmptyBin:background(0,0,L"Emptying the recycle bin\u2026");return;
+    case CommandKind::Sleep:closeCommand(false);store_.log("Info","command_sleep");SetSuspendState(FALSE,FALSE,FALSE);return;
+    case CommandKind::Restart:case CommandKind::ShutDown:{const bool restart=r.kind==CommandKind::Restart;shutdownPrivilege();
+        if(ExitWindowsEx(restart?EWX_REBOOT:(EWX_SHUTDOWN|EWX_POWEROFF|EWX_HYBRID_SHUTDOWN),SHTDN_REASON_MAJOR_OTHER|SHTDN_REASON_MINOR_OTHER|SHTDN_REASON_FLAG_PLANNED)){store_.log("Info",restart?"command_restart":"command_shutdown");closeCommand(false);}
+        else commandStatus(restart?L"Windows did not restart":L"Windows did not shut down",true);return;}
+    case CommandKind::Currency:copyText(r.target);commandStatus(L"Copied "+r.answer);return;
+    case CommandKind::OpenFile:if(shell(r.target))done();else commandStatus(L"Windows could not open that file",true);return;
     case CommandKind::None:commandShake();return;
     case CommandKind::Volume:if(audio_){audio_->setVolume(r.value);if(audio_->muted)audio_->toggleMute();}done();return;
     case CommandKind::VolumeStep:if(audio_)audio_->setVolume(audio_->value+r.value);done();return;
@@ -199,12 +263,24 @@ void IslandWindow::runCommand(size_t index){
         return;}
     }
 }
+void IslandWindow::commandJobDone(LPARAM l){
+    std::unique_ptr<CommandJob> job(reinterpret_cast<CommandJob*>(l));if(!content_.command.active)return;
+    if(job->result==-2){commandStatus(job->which==2?L"No Bluetooth radio was found":job->which==1?L"No Wi-Fi radio was found":L"No radios were found",true);return;}
+    if(job->result<0){commandStatus(job->kind==CommandKind::EmptyBin?L"The recycle bin could not be emptied":job->kind==CommandKind::DarkMode?L"Windows did not change the mode":L"Windows did not allow that change",true);return;}
+    const bool on=job->value==1;std::wstring text;
+    switch(job->kind){case CommandKind::EmptyBin:text=L"The recycle bin is empty";break;case CommandKind::DarkMode:text=on?L"Dark mode is on":L"Light mode is on";break;
+        case CommandKind::Bluetooth:text=on?L"Bluetooth is on":L"Bluetooth is off";break;case CommandKind::WiFi:text=on?L"Wi-Fi is on":L"Wi-Fi is off";break;
+        default:text=on?L"Wi-Fi and Bluetooth are back on":L"Wi-Fi and Bluetooth are off";break;}
+    commandStatus(text);store_.log("Info","command_system_action");
+}
 // Handles the Phase 4 window messages; returns true when one was handled.
 bool IslandWindow::productivityMessage(UINT m,WPARAM w,LPARAM l,LRESULT& result){
     switch(m){
     case WM_CLIPBOARDUPDATE:onClipboard();result=0;return true;
     case PrivacyMessage:updatePrivacy();result=0;return true;
-    case CommandMessage:commandResults();result=0;return true;
+    // wParam 1: exchange rates arrived, so the open query is asked again.
+    case CommandMessage:if(w==1){if(content_.command.active&&!content_.command.clips)commandQuery();}else commandResults();result=0;return true;
+    case CommandJobMessage:commandJobDone(l);result=0;return true;
     case WM_HOTKEY:if(int(w)==HotkeyId){if(content_.command.active)closeCommand();else openCommand();}result=0;return true;
     case WM_CHAR:if(content_.command.active){commandChar(wchar_t(w));result=0;return true;}return false;
     // Clicking elsewhere closes the command bar (captures run without focus, so not in tests).

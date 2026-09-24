@@ -112,3 +112,19 @@ Larger requested integrations are tracked honestly in DELIVERY_PHASES.md in the 
 **Shelf actions.** Click a Shelf item for Open, Open with, In folder, Copy path, and for images Copy text, To PNG/To JPG and Half size. Zip turns a file or folder into an archive beside it; the Zip button in the Shelf footer zips everything on the Shelf. Settings → Privacy & productivity → *Keep the Shelf after restarts* remembers the Shelf.
 
 **Clipboard.** Alt+Shift+V opens your copies in the command bar: type to filter, Enter pastes into the app you were in, Shift+Enter only copies. On the Shelf's Clipboard tab, the pin keeps a copy at the top (and across restarts) and the search button finds older ones. Copies that look like passwords or codes stay dotted until you point at them. The shortcuts can be turned off in Settings → Privacy & productivity.
+
+## v0.13 command bar, glass and lyrics
+
+**Find files.** Open the command bar (Alt+Shift+Space) and type part of a file's name; matches from the Windows Search index appear under the apps. Add a type, a date and a folder in plain words: "budget pdfs from last week in downloads", "screenshots in pictures", "notes from yesterday". **Enter** opens, **Ctrl+Enter** shows the file in its folder, **Ctrl+C** copies its path. "find ..." lists only files, with a row to see everything in File Explorer.
+
+**Switch things.** "dark mode", "light mode", "bluetooth", "wifi off", "airplane mode", "empty recycle bin", "sleep", "restart", "shut down", "lock". Each row says what it will do right now; the last five ask for a second Enter.
+
+**The empty bar** shows pinned commands, a few suggestions and your recent commands. **Ctrl+P** pins or unpins the selected row (up to six). Settings → Privacy & productivity → *Remember recent commands* turns this off and forgets it.
+
+**Complete with Tab.** A faint completion follows what you type; Tab accepts it. Matched letters are highlighted in every row.
+
+**Currency** (Settings → Privacy & productivity → *Currency conversion*): "100 usd to inr", "$50 in €", "20 pounds" (into your own currency). Enter copies the amount.
+
+**Glass.** Frosted and Clear now meet the screen with shoulders, like Solid. For real blur, turn on Windows Settings → Personalization → Colors → *Transparency effects*.
+
+**Lyrics.** On the Media page with lyrics on, the sung line fills as it is sung; tap any line to jump there.

@@ -1,25 +1,29 @@
-# Arnav Island 0.12 — capture and Shelf superpowers
+# Arnav Island 0.13 — command bar v2, glass that meets the screen, new lyrics
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.12.0-preview.1)
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.13.0-preview.1)
 
-![Copying text from the screen](docs/evidence/v0.12/overlay-text.png)
+![Frosted glass attached to the screen with its shoulders](docs/evidence/v0.13/glass-frosted.png)
 
-- **Snip, copy text, pick a colour**: Alt+Shift+S, Alt+Shift+T and Alt+Shift+C freeze the screen (without the island) for a region, a window or a pixel. Snips land on the Shelf and the clipboard; text is read on your PC by Windows' own recognition; colours copy as HEX or RGB.
-- **Shelf quick actions**: open, open with, show in folder, copy path, copy text from images, convert to PNG or JPG, half size, and ZIP a file, folder or the whole Shelf.
-- **Clipboard v2**: search your copies, pin favourites (saved encrypted), paste from the Alt+Shift+V picker, and passwords stay hidden until you point at them.
-- **Keep the Shelf** across restarts (opt-in; links only, never copies).
-- Carried forward: synced lyrics, artwork colours, smart seeking, headphone card, per-app volume, glass materials, Animation Lab, waveform timeline, command bar, workspaces, privacy dots, edge reveal, device and battery cards, mixer, focus timer and 180 brand marks.
+- **Glass in the island's own shape**: Frosted and Clear glass meet the top of the screen with concave shoulders, like Solid. Frosted adds vibrancy to Windows' blur, and a specular rim and inner glow trace the whole outline.
+- **Lyrics, redesigned**: the sung line springs into place, and a fill sweeps across it with the song. Instrumental breaks show three dots, and you can tap any line to jump there.
+- **Command bar v2**:
+  - your files from the Windows Search index as you type
+  - system switches that know their state: dark mode, Bluetooth, Wi-Fi, airplane mode, recycle bin, sleep, restart
+  - pinned, suggested and recent commands
+  - highlighted matches and Tab completion
+  - optional currency conversion with rolling digits
+- Carried forward: snip, copy text from the screen, colour picker, Shelf actions, clipboard with pins, synced lyrics, artwork colours, smart seeking, per-app volume, glass materials, Animation Lab, command bar, workspaces, privacy dots, edge reveal, device and battery cards, mixer, focus timer and 180 brand marks.
 
-![A Shelf item and its actions](docs/evidence/v0.12/shelf-item.png)
+![Lyrics](docs/evidence/v0.13/lyrics.png)
 
-No account, subscription, browser engine, driver or administrator access is required. Extract the ZIP and run ArnavIsland.exe. The only feature that goes online is synced lyrics, and it is off until you turn it on.
+No account, subscription, browser engine, driver or administrator access is required. Extract the ZIP and run ArnavIsland.exe. Only two features go online, and both are off until you turn them on: synced lyrics and currency conversion.
 
 [Release notes](docs/RELEASE_NOTES.md) · [Quick start](docs/QUICK_START.md) · [Report](docs/REPORT.md) · [Feature limits](docs/FEATURE_MATRIX.md) · [Delivery phases](docs/DELIVERY_PHASES.md) · [Design system](docs/DESIGN_SYSTEM.md) · [Performance](docs/PERFORMANCE_RESULTS.md) · [Privacy](docs/PRIVACY.md)
 
 ## Build
 
-MinGW-w64 GCC 16 and CMake: `scripts/build.ps1 -Test` builds the app and runs the unit suites; `scripts/package.ps1` makes the release ZIP. Backend: Win32, DirectComposition, Direct2D/DirectWrite, Windows.UI.Composition for glass, Windows.Media.Ocr for text recognition, WIC for images and WinHTTP for the optional lyrics lookup. Unavailable values are shown as unavailable, never invented.
+MinGW-w64 GCC 16 and CMake: `scripts/build.ps1 -Test` builds the app and runs the unit suites; `scripts/package.ps1` makes the release ZIP. Backend: Win32, DirectComposition, Direct2D/DirectWrite, Windows.UI.Composition for glass, Windows.Media.Ocr for text recognition, WIC for images, the Windows Search index (OLE DB) for files, Windows.Devices.Radios for Bluetooth and Wi-Fi, and WinHTTP for the optional lyrics and exchange rates. Unavailable values are shown as unavailable, never invented.
 
-![The clipboard picker](docs/evidence/v0.12/clipboard-picker.png)
+![Files in the command bar](docs/evidence/v0.13/command-files.png)

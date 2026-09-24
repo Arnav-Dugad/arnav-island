@@ -55,3 +55,14 @@ or service; no endorsement is implied.
 
 The command bar's file search uses Windows Advanced Query Syntax through File
 Explorer's search-ms: protocol; no search engine or index is bundled.
+
+Currency conversion (off by default) uses the euro foreign exchange reference
+rates published by the European Central Bank (https://www.ecb.europa.eu/stats/
+policy_and_exchange_rates/euro_reference_exchange_rates/). The rates are shown
+as published; the ECB reference rates are for information purposes only.
+
+The Windows.Devices.Radios, OLE DB and Windows Search interfaces are the
+declarations shipped with MinGW-w64 and Windows; the composition path and
+effect interop interfaces in `src/Composition/WinCompAbi.h` were written from
+Windows' installed metadata (IIDs read by reflection) and Microsoft's public
+documentation, and contain no third-party code.

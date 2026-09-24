@@ -68,7 +68,7 @@ void IslandWindow::receiveSettings(Settings next){
     if(next.startAtLogin!=previous.startAtLogin){if(testing_)startupRequest_=next.startAtLogin;else if(!startup::apply(next.startAtLogin)){next.startAtLogin=previous.startAtLogin;content_.feedback=L"Windows could not update sign-in settings";}}
     const bool monitor=next.monitor!=previous.monitor;if(monitor){displays_.remember(currentDisplay_,previous);selectDisplay_=true;}
     const bool rebuild=monitor||next.scale!=previous.scale||next.edge!=previous.edge;
-    const bool reposition=next.verticalOffset!=previous.verticalOffset||next.horizontalOffset!=previous.horizontalOffset||next.glassy()!=previous.glassy()||next.compactWidth!=previous.compactWidth;
+    const bool reposition=next.verticalOffset!=previous.verticalOffset||next.horizontalOffset!=previous.horizontalOffset||next.compactWidth!=previous.compactWidth;
     settings_=next;if(next.edge!=previous.edge){motion_.dragX.reset(0,now);motion_.dragY.reset(0,now);}
     if(!monitor)displays_.remember(currentDisplay_,settings_);
     applySettings(rebuild,reposition);if(battery_)battery_->setHistory(settings_.batteryHistory);syncProductivity();if(next.hideFullscreen!=previous.hideFullscreen)fullscreen();clockTimer();scheduleSave();
@@ -101,13 +101,13 @@ std::string IslandWindow::verifySetting(const SettingItem& item){
     const auto& k=item.key;const double s=dpi_/96;RECT r{};GetWindowRect(window_,&r);MONITORINFO mi{sizeof(mi)};GetMonitorInfoW(MonitorFromWindow(window_,MONITOR_DEFAULTTONEAREST),&mi);
     auto fail=[](std::string why){return why;};
     if(k=="uiMode"||k=="compactWidth"){double expected=settings_.uiMode==0?72:settings_.compactWidth;if(motion_.compactWidth!=expected)return fail("compact width not applied");}
-    if(k=="edge"){if(motion_.edge!=settings_.edge)return fail("motion edge not applied");if(settings_.edge?std::abs(r.right-(mi.rcMonitor.right-int(settings_.gap()*s)))>1:std::abs(r.top-(mi.rcMonitor.top+int((settings_.verticalOffset+settings_.gap())*s)))>1)return fail("window not docked to edge");}
-    if(k=="verticalOffset"&&settings_.edge==0&&std::abs(r.top-(mi.rcMonitor.top+int((settings_.verticalOffset+settings_.gap())*s)))>1)return fail("vertical position not applied");
+    if(k=="edge"){if(motion_.edge!=settings_.edge)return fail("motion edge not applied");if(settings_.edge?std::abs(r.right-mi.rcMonitor.right)>1:std::abs(r.top-(mi.rcMonitor.top+int(settings_.verticalOffset*s)))>1)return fail("window not docked to edge");}
+    if(k=="verticalOffset"&&settings_.edge==0&&std::abs(r.top-(mi.rcMonitor.top+int(settings_.verticalOffset*s)))>1)return fail("vertical position not applied");
     if(k=="horizontalOffset"&&settings_.edge==0){int center=(r.left+r.right)/2-(mi.rcMonitor.left+mi.rcMonitor.right)/2;int expected=int(settings_.horizontalOffset*s);int limit=((mi.rcMonitor.right-mi.rcMonitor.left)-int((std::max(420,settings_.compactWidth)+56)*s))/2;if(std::abs(center-std::clamp(expected,-limit,limit))>2)return fail("horizontal position not applied");}
     if(k=="scale"){UINT dx=96,dy=96;GetDpiForMonitor(MonitorFromWindow(window_,MONITOR_DEFAULTTONEAREST),MDT_EFFECTIVE_DPI,&dx,&dy);if(std::abs(dpi_-dx*settings_.scale/100.f)>.5f)return fail("scale not applied to DPI");}
     if(k=="corner"&&motion_.corner!=settings_.corner)return fail("corner radius not applied");
     if(k=="theme"){DWORD light=0,size=sizeof(light);RegGetValueW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",L"AppsUseLightTheme",RRF_RT_REG_DWORD,nullptr,&light,&size);bool expected=settings_.theme==1||(settings_.theme==2&&light);if(content_.light!=expected)return fail("theme not applied");}
-    if(k=="material"||k=="glassTint"){auto style=renderer_->glassStyle();if(renderer_->glassAvailable()&&style.visible!=settings_.glassy())return fail("glass visibility not applied");if(settings_.glassy()&&std::abs(style.tint-settings_.glassTint/100.f)>.001f)return fail("glass tint not applied");if(k=="material"&&settings_.edge==0&&std::abs(r.top-(mi.rcMonitor.top+int((settings_.verticalOffset+settings_.gap())*s)))>1)return fail("glass float gap not applied");}
+    if(k=="material"||k=="glassTint"){auto style=renderer_->glassStyle();if(renderer_->glassAvailable()&&style.visible!=settings_.glassy())return fail("glass visibility not applied");if(settings_.glassy()&&std::abs(style.tint-settings_.glassTint/100.f)>.001f)return fail("glass tint not applied");if(k=="material"&&settings_.edge==0&&std::abs(r.top-(mi.rcMonitor.top+int(settings_.verticalOffset*s)))>1)return fail("glass left the screen edge");}
     if(k=="preset"||k=="springStiffness"||k=="springDamping"||k=="springMass"||k=="labSpeed"){auto p=bodySpring(settings_);if(motion_.body.stiffness!=p.stiffness||motion_.body.damping!=p.damping||motion_.body.mass!=p.mass)return fail("motion preset not applied");}
     if(k=="reduceMotion"){BOOL animations=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animations,0);if(motion_.reduced!=(settings_.reduceMotion||!animations))return fail("reduced motion not applied");}
     if(k=="hoverOpen"){

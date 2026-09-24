@@ -71,6 +71,9 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     if(testing_&&cmd.find(L"--qa-peek")!=std::wstring::npos){content_.hovered=Action::ShelfItemBase;refresh();}
     if(cmd.find(L"--settings")!=std::wstring::npos&&!settingsTest_){auto at=cmd.find(L"--settings-section=");openSettings(at==std::wstring::npos?-1:_wtoi(cmd.c_str()+at+19));}
     if(testing_&&cmd.find(L"--qa-glass")!=std::wstring::npos){settings_.material=cmd.find(L"--qa-clear")!=std::wstring::npos?2:1;applySettings(false,true);}
+    if(testing_&&cmd.find(L"--qa-edge")!=std::wstring::npos){settings_.edge=1;applySettings(false,true);}
+    if(testing_&&cmd.find(L"--qa-currency")!=std::wstring::npos)settings_.currency=true;
+    if(testing_&&cmd.find(L"--qa-answer-cycle")!=std::wstring::npos)SetTimer(window_,44,1500,nullptr);
     if(settingsTest_){settingsTestPhase_=0;SetTimer(window_,21,400,nullptr);}
     // Synthetic 100 Hz band levels through the real bar-animation path; measures rendering cost without playing audio.
     if(testing_&&cmd.find(L"--qa-spectrum")!=std::wstring::npos){content_.playback.available=content_.playback.playing=true;content_.playback.title=L"Spectrum load study";content_.waveform=true;analyzer_.reset();refresh();animate();SetTimer(window_,22,10,nullptr);}
@@ -120,7 +123,7 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
         privacyUses_={camera,mic};content_.privacy=privacyUses_;
         if(cmd.find(L"--qa-privacy-card")!=std::wstring::npos)showPrivacyNotice(camera);else{refresh();animate();}}
     if(auto at=cmd.find(L"--qa-command");testing_&&at!=std::wstring::npos){std::wstring text;auto eq=cmd.find(L'=',at);if(eq!=std::wstring::npos&&eq<cmd.find(L' ',at)){auto end=cmd.find(L" --",eq);text=cmd.substr(eq+1,end==std::wstring::npos?std::wstring::npos:end-eq-1);for(auto& c:text)if(c==L'_')c=L' ';}
-        if(!commands_)commands_=std::make_unique<CommandService>(window_,L"C:\\Users\\Public");openCommand();content_.command.text=text;content_.command.caret=text.size();commandQuery();refresh();}
+        if(!commands_)commands_=std::make_unique<CommandService>(window_,[]{wchar_t pub[MAX_PATH]{};GetEnvironmentVariableW(L"PUBLIC",pub,MAX_PATH);return *pub?std::wstring(pub):std::wstring(L"C:\\Users\\Public");}(),store_.directory);openCommand();content_.command.text=text;content_.command.caret=text.size();commandQuery();refresh();}
     if(testing_&&cmd.find(L"--qa-device-card")!=std::wstring::npos){auto devices=qaDevices();auto it=std::find_if(devices.begin(),devices.end(),[](auto& d){return d.battery>=0&&!d.brand.empty();});if(it==devices.end()&&!devices.empty())it=devices.begin();if(it!=devices.end())showNotice(1,*it);}
     if(testing_&&cmd.find(L"--qa-power-card")!=std::wstring::npos){if(battery_)updateBattery();showNotice(content_.charging?3:4);}
     for(auto pair:{std::pair{L"--qa-battery",1},std::pair{L"--qa-devices",2}})if(testing_&&cmd.find(pair.first)!=std::wstring::npos){content_.page=Page::System;content_.statsTab=pair.second;content_.pinned=true;if(bluetooth_||sample)content_.devices=qaDevices();if(battery_){battery_->setFast(true);updateBattery();}transition(IslandState::Expanded);refresh();}
@@ -153,7 +156,7 @@ void IslandWindow::position(){
     int x=(info.rcMonitor.left+info.rcMonitor.right-width)/2+int(settings_.horizontalOffset*s);
     // Widest body plus its shoulders (twice the radius each side) must stay on the monitor.
     int footprint=int(std::max(440+2*64,settings_.compactWidth+2*34)*s);if(footprint<=info.rcMonitor.right-info.rcMonitor.left)x=std::clamp<int>(x,info.rcMonitor.left-(width-footprint)/2,info.rcMonitor.right-(width+footprint)/2);else x=(info.rcMonitor.left+info.rcMonitor.right-width)/2;
-    if(settings_.edge)x=info.rcMonitor.right-width-int(settings_.gap()*s);int y=settings_.edge?(info.rcMonitor.top+info.rcMonitor.bottom-height)/2+int(settings_.verticalOffset*s):info.rcMonitor.top+int((settings_.verticalOffset+settings_.gap())*s);SetWindowPos(window_,HWND_TOPMOST,x,y,width,height,SWP_NOACTIVATE);positioning_=false;dpi_=float(GetDpiForWindow(window_))*settings_.scale/100.f;
+    if(settings_.edge)x=info.rcMonitor.right-width;int y=settings_.edge?(info.rcMonitor.top+info.rcMonitor.bottom-height)/2+int(settings_.verticalOffset*s):info.rcMonitor.top+int(settings_.verticalOffset*s);SetWindowPos(window_,HWND_TOPMOST,x,y,width,height,SWP_NOACTIVATE);positioning_=false;dpi_=float(GetDpiForWindow(window_))*settings_.scale/100.f;
 }
 void IslandWindow::updateRegion(bool envelope){
     if(!window_)return;double scale=dpi_/96,now=seconds();HRGN region=CreateRectRgn(0,0,0,0);
@@ -323,6 +326,8 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
         return 0;
     case TrayMessage:if(l==WM_RBUTTONUP||l==WM_CONTEXTMENU)showMenu();else if(l==WM_LBUTTONDBLCLK)openSettings();return 0;
     case WM_TIMER: if(w==17){KillTimer(window_,17);fullscreen();return 0;}
+        // QA: alternate two currency answers so the rolling digits can be filmed.
+        if(w==44){auto& c=content_.command;if(c.active){c.text=c.text==L"250 eur to jpy"?L"987 eur to jpy":L"250 eur to jpy";c.caret=c.text.size();commandQuery();refresh();}return 0;}
                 if(w==16){
             DwmFlush();captureWindow(window_,store_.directory/(L"motion-"+std::to_wstring(motionStudyStep_)+L".png"));
             if(motionStudyStep_==0||motionStudyStep_==2){auto old=content_.playback.artwork;if(old){auto art=std::make_shared<Artwork>(*old);for(size_t i=0;i<art->pixels.size();i+=4){std::swap(art->pixels[i],art->pixels[i+2]);art->pixels[i+1]=BYTE((art->pixels[i+1]+77)%256);}content_.playback.artwork=art;refresh();animate();}}
@@ -355,7 +360,9 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                 SetCursorPos((w.left+w.right)/2,mi.rcMonitor.top+6);autoHideTick();pass=pass&&autoHide_.hidden;
                 SetCursorPos((w.left+w.right)/2,mi.rcMonitor.top);autoHideTick();pass=pass&&!autoHide_.hidden&&motion_.slide.target()==0;SetTimer(window_,13,900,nullptr);break;}
             case 14:{RECT box{};pass=GetWindowRgnBox(window_,&box)!=NULLREGION&&box.bottom-box.top>int(20*dpi_/96);MONITORINFO mi{sizeof(mi)};GetMonitorInfoW(MonitorFromWindow(window_,MONITOR_DEFAULTTONEAREST),&mi);
-                SetCursorPos((mi.rcMonitor.left+mi.rcMonitor.right)/2,(mi.rcMonitor.top+mi.rcMonitor.bottom)/2);autoHideTick();SetTimer(window_,13,1400,nullptr);break;}
+                // The reveal at the top pixel is also a hover over the attached island, which opens it; the pointer
+                // has now left, so the island settles back to rest before the away timer is measured.
+                SetCursorPos((mi.rcMonitor.left+mi.rcMonitor.right)/2,(mi.rcMonitor.top+mi.rcMonitor.bottom)/2);KillTimer(window_,7);interaction_=InteractionState::Rest;content_.pinned=false;transition(IslandState::Compact);autoHideTick();SetTimer(window_,13,1400,nullptr);break;}
             case 15:autoHideTick();SetTimer(window_,13,settings_.collapseDelay+500,nullptr);return 0;
             case 16:{autoHideTick();SendMessageW(window_,WM_TIMER,SettleTimer,0);RECT box{};int kind=GetWindowRgnBox(window_,&box);pass=autoHide_.hidden&&(kind==NULLREGION||box.bottom<=0||box.top>=box.bottom);settings_.autoHide=false;SetTimer(window_,13,100,nullptr);break;}
             // Phase 5B: double-click skips on the artwork halves, arrow keys on the timeline, seek detents.
@@ -374,9 +381,29 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                 const bool history=settings_.clipboardHistory;settings_.clipboardHistory=true;clips_.forget();{ClipEntry a;a.text=L"alpha one";clips_.add(a,seconds());ClipEntry b;b.text=L"beta two";clips_.add(b,seconds());}
                 clipSearch(false);pass=pass&&content_.command.active&&content_.command.clips&&content_.command.results.size()==2;for(wchar_t ch:std::wstring(L"beta"))commandChar(ch);pass=pass&&content_.command.results.size()==1&&content_.command.results[0].title==L"beta two";
                 closeCommand(false);clipViews();perform(Action::ShelfClipboard);perform(Action::ClipPinBase);pass=pass&&clips_.pinned()==1&&content_.clips.front().pinned;
-                clips_.forget();clipViews();settings_.clipboardHistory=history;content_.shelf.clear();perform(Action::Close);break;}
+                clips_.forget();clipViews();settings_.clipboardHistory=history;content_.shelf.clear();perform(Action::Close);SetTimer(window_,13,100,nullptr);break;}
+            // Phase 5D: glass is attached with shoulders (its input region includes them); a lyric line is a seek target.
+            case 19:settings_.material=1;settings_.verticalOffset=0;applySettings(false,true);transition(IslandState::Compact);SetTimer(window_,13,900,nullptr);break;
+            // The shoulders make the region's top row wider than its middle by nearly four corner radii, whatever the pose.
+            case 20:{RECT box{};GetWindowRgnBox(window_,&box);const double r=motion_.radius.sample(seconds()).position,scale=dpi_/96;
+                HRGN shape=CreateRectRgn(0,0,0,0);GetWindowRgn(window_,shape);auto span=[&](int y){int n=0;for(int x=box.left;x<box.right;++x)n+=PtInRegion(shape,x,y)?1:0;return n;};
+                const int topRow=span(box.top+2),middleRow=span((box.top+box.bottom)/2);DeleteObject(shape);
+                pass=!settings_.floating()&&(!renderer_->glassAvailable()||renderer_->glassStyle().visible)&&topRow>middleRow+int(2*r*scale);
+                perform(Action::Media);auto& p=content_.playback;p.available=true;p.canSeek=true;p.playing=false;p.id=0xfffffffffffeull;p.title=L"UI test song";p.artist=L"QA";p.source=L"qa.test";p.kind=MediaKind::Music;settings_.mediaLayout=0;p.duration=p.seekMax=240;p.seekMin=0;p.position=72;p.sampledAt=seconds();
+                const bool lyricsWere=settings_.lyrics;settings_.lyrics=true;content_.settings=settings_;content_.lyricsView=true;content_.lyrics=std::make_shared<std::vector<LyricLine>>(parseLrc(L"[01:10.00]First line\n[01:16.50]Second line\n[01:22.00]Third line"));content_.lyricsState=int(LyricsService::State::Found);tickLyrics(false);refresh();
+                pass=pass&&content_.lyricLine==0&&std::any_of(renderer_->targets.begin(),renderer_->targets.end(),[](auto& t){return t.action==Action(int(Action::LyricLineBase)+3);});
+                perform(Action(int(Action::LyricLineBase)+3));pass=pass&&std::abs(p.position-76.5)<.01&&content_.lyricLine==1;
+                settings_.lyrics=lyricsWere;content_.settings=settings_;content_.lyrics=nullptr;content_.lyricLine=-1;perform(Action::Close);SetTimer(window_,13,100,nullptr);break;}
+            // Command bar v2: a ghost completion Tab accepts, a live system row, and a second Enter before locking.
+            // Enter is pressed exactly once, so the PC is never actually locked.
+            case 21:openCommand();for(wchar_t ch:std::wstring(L"dark mo"))commandChar(ch);SetTimer(window_,13,700,nullptr);break;
+            case 22:pass=content_.command.active&&!content_.command.results.empty()&&ghostSuffix(content_.command.text,content_.command.results[0].completion)==L"de";commandKey(VK_TAB);SetTimer(window_,13,700,nullptr);break;
+            case 23:{auto& c=content_.command;pass=c.text==L"dark mode"&&!c.results.empty()&&c.results[0].kind==CommandKind::DarkMode&&(c.results[0].value==0||c.results[0].value==1);
+                c.text.clear();c.caret=0;for(wchar_t ch:std::wstring(L"lock"))commandChar(ch);SetTimer(window_,13,700,nullptr);break;}
+            case 24:{auto& c=content_.command;pass=!c.results.empty()&&c.results[0].kind==CommandKind::Lock&&c.results[0].confirm;
+                if(pass){commandKey(VK_RETURN);pass=c.armed&&c.status.starts_with(L"Press Enter again");}closeCommand(false);break;}
             }
-            if(!pass||scenarioStep_==19){SetCursorPos(qaCursor_.x,qaCursor_.y);auto result=pass?"PASS native hover open, leave close, disabled hover, navigation, timer actions, hit targets, edge/scale/theme, OLE drop and shelf clear, navigation reorder, metric choices, detail toggles, app-switch collapse, pin and drag protection, precision seeking and cancel, hover-only surface, mini/live modes, wide compact settings, auto-hide tucks away (click-through region) and reveals only at its edge (visible region), double-click and arrow-key skips and seek detents, Shelf item view and clipboard search with pins":"FAIL native interaction regression";store_.submit([dir=store_.directory,result,step=scenarioStep_,state=int(state_),interaction=int(interaction_),width=motion_.width.sample(seconds()).position]{std::ofstream(dir/L"ui-test.txt")<<"stage "<<step<<" state "<<state<<" interaction "<<interaction<<" width "<<width<<": "<<result<<'\n';});PostMessageW(window_,WM_CLOSE,0,0);}return 0;
+            if(!pass||scenarioStep_==25){SetCursorPos(qaCursor_.x,qaCursor_.y);auto result=pass?"PASS native hover open, leave close, disabled hover, navigation, timer actions, hit targets, edge/scale/theme, OLE drop and shelf clear, navigation reorder, metric choices, detail toggles, app-switch collapse, pin and drag protection, precision seeking and cancel, hover-only surface, mini/live modes, wide compact settings, auto-hide tucks away (click-through region) and reveals only at its edge (visible region), double-click and arrow-key skips and seek detents, Shelf item view and clipboard search with pins, attached glass with shoulders, lyric tap-to-seek, ghost completion with Tab, live system rows and a second Enter before locking":"FAIL native interaction regression";store_.submit([dir=store_.directory,result,step=scenarioStep_,state=int(state_),interaction=int(interaction_),width=motion_.width.sample(seconds()).position]{std::ofstream(dir/L"ui-test.txt")<<"stage "<<step<<" state "<<state<<" interaction "<<interaction<<" width "<<width<<": "<<result<<'\n';});PostMessageW(window_,WM_CLOSE,0,0);}return 0;
         }
         if(w==34){KillTimer(window_,34);perform(Action::Media);}// QA: page change 100 ms before the capture
         if(w==19){KillTimer(window_,19);if(content_.live&&content_.hovered==Action::Overview&&interaction_==InteractionState::Hover)perform(Action::Overview);}
@@ -479,6 +506,7 @@ void IslandWindow::perform(Action a){
     if(a==Action::CaptureSnip||a==Action::CaptureText||a==Action::CaptureColour){startCapture(a==Action::CaptureSnip?CaptureMode::Snip:a==Action::CaptureText?CaptureMode::Text:CaptureMode::Colour);return;}
     if(a==Action::ClipSearch){clipSearch(false);return;}
     if(inRange(a,Action::CommandResultBase,Action::CommandResultEnd)){runCommand(size_t(int(a)-int(Action::CommandResultBase)));return;}
+    if(inRange(a,Action::LyricLineBase,Action::LyricLineEnd)){seekLyric(content_.lyricLine+int(a)-int(Action::LyricLineBase)-2);return;}
     if(inRange(a,Action::SessionBase,Action::DeviceConnectBase)){switchSession(int(a)-int(Action::SessionBase),true);return;}
     if(inRange(a,Action::DeviceConnectBase,Action::DeviceConnectEnd)){size_t i=int(a)-int(Action::DeviceConnectBase);if(bluetooth_&&i<content_.devices.size()){auto& d=content_.devices[i];bluetooth_->request(d.name,!d.connected);deviceRequest_=true;content_.deviceFeedback=(d.connected?L"Disconnecting ":L"Connecting ")+d.name+L"…";}refresh();return;}
     if(int(a)>=int(Action::DeviceBase)&&int(a)<int(Action::ShelfItemBase)){size_t index=int(a)-int(Action::DeviceBase);if(audio_&&index<content_.outputs.size()){if(settings_.directAudio){routeRequestAt_=seconds();audio_->selectDevice(content_.outputs[index].id,true);content_.feedback=L"Switching output…";}else perform(Action::SoundSettings);}refresh();return;}

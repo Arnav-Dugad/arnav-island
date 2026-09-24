@@ -96,3 +96,11 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **The clipboard picker** sends a Ctrl+V keystroke to the app you were in, only when you press Enter in it.
 - **crash.txt**: if the island crashes, it records the error code and code offsets inside the program. No memory contents, file names, text or device data.
 - Public screenshots use sample files in a public folder, illustrative clips and a painted backdrop for the overlay.
+
+## v0.13 command bar
+
+- **File results** come from the Windows Search index already on this PC, queried locally; nothing is sent anywhere. If the index is off, the island scans your user folder briefly, also locally.
+- **Remembered commands** (on by default) are kept in `commands.nexus` in the island's folder: what you ran, the text you typed for it, when and how often, pins, and the paths of files you opened from the bar. Turning *Remember recent commands* off deletes the file.
+- **Currency conversion** (off by default) downloads the European Central Bank's public daily rates file, at most twice a day. The request contains nothing about you or what you converted; like any web request, it reveals your IP address to the ECB. The file is cached as `rates.xml`.
+- **System actions** (theme, radios, recycle bin, sleep, restart, shut down, lock) run only when you choose them, and the ones that are hard to undo ask for a second Enter first.
+- Public screenshots use the showcase track, sample lyric lines and sample files in the Public folder; test runs never search your own files.

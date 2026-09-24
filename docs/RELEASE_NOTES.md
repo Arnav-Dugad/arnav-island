@@ -1,45 +1,67 @@
-# Arnav Island 0.12.0-preview.1 — Capture and Shelf superpowers
+# Arnav Island 0.13.0-preview.1 — Command bar v2, glass that meets the screen, new lyrics
 
-Phase 5C: capture the screen, read text from it, pick colours, do more with Shelf files, and a smarter clipboard.
+Phase 5D:
+- The command bar finds files and switches system settings.
+- Frosted and Clear glass take the island's full shape.
+- Lyrics are redesigned.
 
-## Snip, copy text, pick a colour
-- **Alt+Shift+S: snip.** The screen freezes and dims, with the island left out of the picture. Drag a region, or click a window or a whole screen. The snip is saved as a PNG in *Pictures › Screenshots*, added to the Shelf and copied, and a card shows it with an *Open Shelf* button.
-- **Alt+Shift+T: copy text from anything.** Drag over text on screen; Windows' own on-device text recognition reads it and the text is copied, keeping its line breaks. Nothing leaves your PC.
-- **Alt+Shift+C: colour picker.** A magnifier shows the pixels around the pointer. Click to copy the colour as HEX, or hold Shift for `rgb(...)`. The arrow keys nudge one pixel.
-- A size label follows your selection, and the corners carry your accent colour. Esc or right-click cancels.
-- The same tools are buttons at the bottom of the Shelf, and command-bar words: "snip", "copy text" and "pick colour".
+## Glass that meets the screen
+- **The full shape.** Frosted and Clear glass now attach to the top of the screen with the same concave shoulders as Solid, as one continuous piece of glass. On the right edge, the shoulders run above and below. A vertical offset in Settings still floats the island.
+- **Vibrancy.** Frosted glass boosts the colour of the blurred desktop behind it, as Apple's materials do. The GPU applies it.
+- **A finished edge.** A fine specular rim and a soft inner glow follow the whole outline, curves included, so the pane looks thick.
+- **Real blur needs Windows' Transparency effects**, under Settings › Personalization › Colors. When they're off, Frosted uses a dense translucent frost instead.
 
-## Shelf quick actions
-- **Click a Shelf item** to open it: a preview, its type, size and dimensions, and actions:
-  - **Open**, **Open with**, **In folder**, **Copy path**
-  - for images: **Copy text** (on-device recognition), **To PNG / To JPG** and **Half size**, saved next to the original
-  - **Zip** a file or folder, or zip the whole Shelf from its footer. The archive is compressed, keeps Unicode names, and opens in File Explorer and other ZIP tools.
-  - **Remove**
-- Converted and zipped files join the Shelf automatically.
+## Lyrics, redesigned
+- **A proper lyrics view.** It sits between the title and the controls:
+  - the line being sung is large and bold, and the lines around it are dimmed
+  - each new line springs up into place while the old one fades away
+- **A fill that follows the song.** It sweeps across the sung line row by row and is always complete before the next line begins.
+- **Instrumental breaks.** Three dots light up one by one across the gap.
+- **Tap a line to jump there.**
+- **Easier to read on see-through glass.**
 
-## Keep the Shelf (off until you turn it on)
-- Settings → Privacy & productivity → *Keep the Shelf after restarts*. It remembers **links** to your Shelf files and any dropped text, never copies of the files. Files that have been deleted are skipped.
+## Command bar v2
+- **Your files, as you type.** Results come from the Windows Search index.
+  - Say the type, date and folder in plain words: "budget pdfs from last week in downloads".
+  - **Enter** opens a file, **Ctrl+Enter** shows it in its folder, and **Ctrl+C** copies its path.
+  - Files you open often rise to the top.
+  - If the index is off, the bar does a quick scan of your user folder instead.
+- **System switches that know the current state:**
+  - dark or light mode
+  - Bluetooth and Wi-Fi
+  - airplane mode, which turns every radio off or back on
+  - empty the recycle bin (the row shows how many items and how much space)
+  - sleep, restart, shut down and lock
 
-## Clipboard v2
-- **Search your copies:** the search button on the Shelf's Clipboard tab, or type "clip " in the command bar. Every word you type must match.
-- **Alt+Shift+V: the clipboard picker.** It lists your last copies in the command bar. Type to filter; **Enter pastes** into the app you were in, and **Shift+Enter** only copies. Copies are kept as plain text, so pasting from history never brings formatting.
-- **Pin** a copy with the pin on its row. Pinned copies stay at the top and are never pushed out. Up to 12 are kept, and they survive restarts, **encrypted for your Windows account**.
-- **Passwords and codes stay hidden:** copies that look like a password, one-time code or API key show as dots until you point at them.
-- The Shelf's *Clear* keeps pins; Settings' *Clear clipboard history*, or turning history off, removes everything.
+  Each row says what will actually happen, for example "Turn Bluetooth off" while it's on. Anything hard to undo asks for a second Enter.
+- **The empty bar is useful:**
+  - your pinned commands (**Ctrl+P** pins one)
+  - suggestions such as *Pause* while music plays, *Unmute* when you're muted, or dark mode in the evening
+  - your recent commands
+- **Currency conversion (off until you turn it on).**
+  - Type "100 usd to inr", "$50 in €" or just "20 pounds".
+  - Rates are the European Central Bank's daily reference rates, fetched at most twice a day.
+  - Enter copies the amount, and the digits roll into place.
+- **Typing aids:**
+  - The letters that matched are highlighted.
+  - A faint completion follows the cursor, and **Tab** accepts it.
+  - While you type a command's name, the bar already shows what it will do.
+- **Context keys.** The keys at the bottom change with the selected row.
 
 ## Polish
-- Home shows today's date in your own date format where the old heading was.
-- The *Windows volume mixer* button's arrow now sits inside the button.
-- Shelf rows show a chevron, and the Shelf's empty state mentions snipping.
+- Page titles now sit on the same line as the header buttons.
+- Home: the title, artist and play button are centred on the artwork, and the volume track, its fill and its icons share one line.
+- Media: the time labels are centred with the mode button.
+- New icons: moon, Wi-Fi, plane and currency exchange.
 
-## Fixed
-- **Bluetooth audio Connect/Disconnect:** the interface behind the buttons was declared in a way that let the compiler's optimiser treat calls through it as unreachable in release builds. It is now declared safely, the same way as the new text recognition, which had the same problem during development and crashed until fixed.
+## Settings (version 12)
+- **Remember recent commands** is on. The file stays on this PC, and turning the setting off deletes it.
+- **Currency conversion** is off.
 
-## New in the background
-- If the island ever crashes, it writes `crash.txt` next to its logs: the error code and code offsets only, no content, file names or personal data.
+Existing preferences are kept.
 
-Windows 11 x64, unsigned preview. Settings move to version 11; existing preferences are kept.
+Windows 11 x64, unsigned preview.
 
 ---
 
-Previous release: [0.11.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.11.0-preview.1): synced lyrics, artwork colours, smarter seeking, the headphone card and audio controls.
+Previous release: [0.12.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.12.0-preview.1): snip, copy text and colour picker, Shelf quick actions, and clipboard v2.

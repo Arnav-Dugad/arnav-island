@@ -3,7 +3,7 @@
 #include <d2d1.h>
 #include <cmath>
 namespace nexus {
-enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous,Next,Pin,Close,Plus,Minus,Muted,Volume,Battery,Processor,Memory,Download,Upload,Disk,Clock,File,Text,Check,Chevron,ArrowLeft,ArrowRight,Reset,Sun,Spark,Power,Link,Island,Info,Sliders,ArrowUp,ArrowDown,Brightness,Apps,Earbuds,Speaker,Phone,Keyboard,Mouse,Gamepad,Watch,Bluetooth,Bolt,Heart,Gauge,Shield,Camera,Microphone,Location,Clipboard,Search,Lock,Image,Workspace,MicOff,Lyrics,Snip,Eyedropper,Folder,Copy,Archive,Resize,Convert,Trash,External};
+enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous,Next,Pin,Close,Plus,Minus,Muted,Volume,Battery,Processor,Memory,Download,Upload,Disk,Clock,File,Text,Check,Chevron,ArrowLeft,ArrowRight,Reset,Sun,Spark,Power,Link,Island,Info,Sliders,ArrowUp,ArrowDown,Brightness,Apps,Earbuds,Speaker,Phone,Keyboard,Mouse,Gamepad,Watch,Bluetooth,Bolt,Heart,Gauge,Shield,Camera,Microphone,Location,Clipboard,Search,Lock,Image,Workspace,MicOff,Lyrics,Snip,Eyedropper,Folder,Copy,Archive,Resize,Convert,Trash,External,Moon,Wifi,Plane,Exchange};
 // Original 24-unit optical grid. Rounded stroke ends are consistent at every DPI.
 inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float x,float y,float size,UINT32 color,float opacity=1){
     D2D1_MATRIX_3X2_F saved;rt->GetTransform(&saved);rt->SetTransform(D2D1::Matrix3x2F::Scale(size/24,size/24)*D2D1::Matrix3x2F::Translation(x,y)*saved);
@@ -80,6 +80,15 @@ inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float
     case Icon::Resize:rect(3.5f,11,12.5f,20,2);path({{13.5f,3.5f},{20.5f,3.5f},{20.5f,10.5f}});line(20.5f,3.5f,14.5f,9.5f);break;
     case Icon::Convert:line(4.5f,8.5f,18,8.5f);path({{14.5f,5},{18,8.5f},{14.5f,12}});line(19.5f,15.5f,6,15.5f);path({{9.5f,12},{6,15.5f},{9.5f,19}});break;
     case Icon::External:path({{13.5f,4},{20,4},{20,10.5f}});line(20,4,11.5f,12.5f);path({{17,14},{17,19},{5,19},{5,7},{10,7}});break;
+    // Phase 5D: dark mode and sleep, Wi-Fi, airplane mode, currency.
+    case Icon::Moon:{ComPtr<ID2D1PathGeometry> g;factory->CreatePathGeometry(&g);ComPtr<ID2D1GeometrySink> s;g->Open(&s);s->BeginFigure({15,3.6f},D2D1_FIGURE_BEGIN_HOLLOW);
+        s->AddArc(D2D1::ArcSegment({20.4f,15},D2D1::SizeF(8.8f,8.8f),0,D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,D2D1_ARC_SIZE_LARGE));s->AddArc(D2D1::ArcSegment({15,3.6f},D2D1::SizeF(7.4f,7.4f),0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL));
+        s->EndFigure(D2D1_FIGURE_END_CLOSED);s->Close();rt->DrawGeometry(g.Get(),brush.Get(),1.65f,stroke.Get());break;}
+    case Icon::Wifi:{for(float r:{3.6f,7.6f,11.6f}){ComPtr<ID2D1PathGeometry> g;factory->CreatePathGeometry(&g);ComPtr<ID2D1GeometrySink> s;g->Open(&s);const float k=.7071f;
+        s->BeginFigure({12-r*k,19.5f-r*k},D2D1_FIGURE_BEGIN_HOLLOW);s->AddArc(D2D1::ArcSegment({12+r*k,19.5f-r*k},D2D1::SizeF(r,r),0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL));s->EndFigure(D2D1_FIGURE_END_OPEN);s->Close();rt->DrawGeometry(g.Get(),brush.Get(),1.65f,stroke.Get());}
+        dot(12,19.5f,1.5f);break;}
+    case Icon::Plane:path({{12,2.5f},{13.6f,4.4f},{13.6f,9.4f},{21,13.8f},{21,15.8f},{13.6f,13.6f},{13.6f,18.4f},{16.2f,20.4f},{16.2f,21.6f},{12,20.6f},{7.8f,21.6f},{7.8f,20.4f},{10.4f,18.4f},{10.4f,13.6f},{3,15.8f},{3,13.8f},{10.4f,9.4f},{10.4f,4.4f}},true);break;
+    case Icon::Exchange:line(4,8.5f,19,8.5f);path({{15.5f,5},{19,8.5f},{15.5f,12}});line(20,15.5f,5,15.5f);path({{8.5f,12},{5,15.5f},{8.5f,19}});break;
     case Icon::Trash:line(4,6.5f,20,6.5f);path({{9,6.5f},{9.6f,4},{14.4f,4},{15,6.5f}});path({{6,6.5f},{7,20},{17,20},{18,6.5f}});line(10,10,10,16.5f);line(14,10,14,16.5f);break;
     case Icon::Workspace:rect(3,3.5f,10.5f,10.5f,2);rect(13.5f,3.5f,21,10.5f,2);rect(3,13.5f,10.5f,20.5f,2);rect(13.5f,13.5f,21,20.5f,2);break;
     case Icon::Bolt:path({{13,2},{5,13},{11,13},{10,22},{19,10},{13,10},{13,2}},true,true);break;

@@ -49,9 +49,9 @@ int main(int argc,char** argv){
     {auto records=PrivacyProvider::records();auto now=PrivacyProvider::current();std::cout<<"Privacy: "<<records.size()<<" consent records, "<<now.size()<<" capabilities in use now\n";}
     {auto open=openApps(nullptr);size_t ids=0;for(auto& a:open)ids+=a.appId;std::cout<<"Workspace capture: "<<open.size()<<" open apps ("<<ids<<" by app ID)\n";if(open.size()>WorkspaceStore::maxApps)return 30;}
     {auto t0=std::chrono::steady_clock::now();auto tabs=browserTabTitles();std::cout<<"Browser tabs: "<<tabs.size()<<" titles in "<<std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-t0).count()<<" ms\n";}
-    {CommandService service(window,L"C:\\Users\\Public");service.query(L"volume 30",{});std::vector<CommandResult> r;std::vector<std::shared_ptr<const Artwork>> icons;uint64_t seq=0;
+    {CommandService service(window,L"C:\\Users\\Public",std::filesystem::temp_directory_path());service.query(L"volume 30",{},{},{},false);std::vector<CommandResult> r;std::vector<std::shared_ptr<const Artwork>> icons;uint64_t seq=0;
         for(int i=0;i<200&&seq<1;++i){Sleep(25);seq=service.results(r,icons);}if(seq<1||r.empty()||r[0].kind!=CommandKind::Volume||r[0].value!=30)return 31;
-        service.query(L"open edge",{});for(int i=0;i<400&&seq<2;++i){Sleep(25);seq=service.results(r,icons);}
+        service.query(L"open edge",{},{},{},false);for(int i=0;i<400&&seq<2;++i){Sleep(25);seq=service.results(r,icons);}
         std::cout<<"Command service: parsed on its worker; \"open edge\" gave "<<r.size()<<" result(s)"<<(!r.empty()&&r[0].kind==CommandKind::OpenApp?", an installed app with "+std::string(icons[0]?"its icon":"no icon"):std::string())<<"\n";}
     // Clipboard round trip, only when the clipboard holds plain text that can be restored.
     {std::wstring original;bool text=false;if(OpenClipboard(window)){if(IsClipboardFormatAvailable(CF_UNICODETEXT)){if(HANDLE h=GetClipboardData(CF_UNICODETEXT))if(auto* p=static_cast<const wchar_t*>(GlobalLock(h))){original=p;text=true;GlobalUnlock(h);}}else if(CountClipboardFormats()==0)text=true;CloseClipboard();}

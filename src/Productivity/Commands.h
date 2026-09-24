@@ -8,20 +8,64 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include "Productivity/Currency.h"
 namespace nexus {
 // A small, fixed command language. Nothing typed is ever executed as a shell
 // command: every result is one of these kinds, shown before it runs.
-enum class CommandKind { None,Volume,VolumeStep,Mute,Unmute,Play,Pause,Next,Previous,Timer,Stopwatch,StopTimer,OpenApp,SearchFiles,OpenSettings,Workspace,SaveWorkspace,DeleteWorkspace,Clipboard,ClearClipboard,Lock,MicMute,MicUnmute,MicToggle,Snip,CopyText,PickColour,ClipPaste };
+enum class CommandKind { None,Volume,VolumeStep,Mute,Unmute,Play,Pause,Next,Previous,Timer,Stopwatch,StopTimer,OpenApp,SearchFiles,OpenSettings,Workspace,SaveWorkspace,DeleteWorkspace,Clipboard,ClearClipboard,Lock,MicMute,MicUnmute,MicToggle,Snip,CopyText,PickColour,ClipPaste,
+    // Phase 5D: system actions (value 1 = on / dark, 0 = off / light, -1 = toggle), files and answers.
+    DarkMode,Bluetooth,WiFi,Airplane,EmptyBin,Sleep,Restart,ShutDown,OpenFile,Currency };
 struct InstalledApp {std::wstring name,id;};
 struct CommandResult {
     CommandKind kind=CommandKind::None;std::wstring title,detail,target;int value=0;
-    bool confirm=false;// needs a second Enter (launching several apps)
+    bool confirm=false;// needs a second Enter (launching several apps, sleep, restart, emptying the bin)
     std::wstring appId;// installed app, for its icon
+    // Matched letters in the title as (start, length) runs, drawn highlighted.
+    std::vector<std::pair<uint16_t,uint16_t>> marks;
+    // What Tab would turn the typed text into (empty: no ghost completion).
+    std::wstring completion;
+    // Empty-bar rows: 1 pinned, 2 suggested, 3 recent. `phrase` is the text that produced a remembered command.
+    int section=0;std::wstring phrase;
+    // A number answer (currency), shown large with rolling digits.
+    std::wstring answer;
 };
+using MatchMarks=std::vector<std::pair<uint16_t,uint16_t>>;
 inline std::wstring lowered(std::wstring s){for(auto& c:s)c=wchar_t(std::towlower(c));return s;}
 inline std::wstring trimmed(const std::wstring& s){size_t a=s.find_first_not_of(L" \t"),b=s.find_last_not_of(L" \t");return a==std::wstring::npos?std::wstring{}:s.substr(a,b-a+1);}
 inline std::vector<std::wstring> words(const std::wstring& s){std::vector<std::wstring> out;std::wstring w;for(wchar_t c:s){if(c==L' '||c==L'\t'){if(!w.empty())out.push_back(std::move(w));w.clear();}else w.push_back(c);}if(!w.empty())out.push_back(std::move(w));return out;}
 inline std::optional<int> wholeNumber(std::wstring_view s){if(s.empty()||s.size()>6)return std::nullopt;int v=0;for(wchar_t c:s){if(c<L'0'||c>L'9')return std::nullopt;v=v*10+(c-L'0');}return v;}
+inline bool wordStartAt(const std::wstring& s,size_t i){return i==0||!std::iswalnum(s[i-1]);}
+// Which letters of `name` explain the match with `typed`: the whole query at a word start,
+// then every typed word, then initials ("vsc" in Visual Studio Code), then a plain substring.
+inline MatchMarks matchMarks(const std::wstring& name,const std::wstring& typed){
+    MatchMarks out;const auto n=lowered(name),q=lowered(trimmed(typed));if(q.empty()||n.empty()||n.size()>0xffff)return out;
+    auto atWordStart=[&](const std::wstring& w)->size_t{for(size_t at=n.find(w);at!=std::wstring::npos;at=n.find(w,at+1))if(wordStartAt(n,at))return at;return std::wstring::npos;};
+    if(size_t at=atWordStart(q);at!=std::wstring::npos){out.push_back({uint16_t(at),uint16_t(q.size())});return out;}
+    const auto ws=words(q);
+    if(ws.size()>1){MatchMarks parts;for(auto& w:ws){size_t at=atWordStart(w);if(at==std::wstring::npos&&w.size()>=2)at=n.find(w);if(at==std::wstring::npos){parts.clear();break;}parts.push_back({uint16_t(at),uint16_t(w.size())});}
+        if(!parts.empty()){std::sort(parts.begin(),parts.end());for(auto& p:parts){if(!out.empty()&&p.first<=out.back().first+out.back().second){out.back().second=uint16_t(std::max<size_t>(out.back().first+out.back().second,p.first+p.second)-out.back().first);}else out.push_back(p);}return out;}}
+    if(ws.size()==1&&q.size()>=2){MatchMarks initials;size_t k=0;for(size_t i=0;i<n.size()&&k<q.size();++i)if(wordStartAt(n,i)&&std::iswalnum(n[i])&&n[i]==q[k]){initials.push_back({uint16_t(i),1});++k;}if(k==q.size())return initials;}
+    if(size_t at=n.find(q);at!=std::wstring::npos)out.push_back({uint16_t(at),uint16_t(q.size())});
+    return out;
+}
+inline MatchMarks shiftedMarks(MatchMarks m,size_t by){for(auto& r:m)r.first=uint16_t(r.first+by);return m;}
+// Phrases the ghost completion offers once two letters are typed.
+inline constexpr std::wstring_view commandPhrases[]={L"volume ",L"mute",L"unmute",L"play",L"pause",L"next track",L"previous track",L"focus 25",L"timer 10 min",L"stopwatch",L"stop timer",
+    L"snip",L"copy text",L"pick colour",L"clipboard",L"clear clipboard",L"lock",L"dark mode",L"light mode",L"bluetooth",L"wifi",L"airplane mode",L"empty recycle bin",L"sleep",L"restart",
+    L"shut down",L"find ",L"workspace ",L"save workspace ",L"mute mic",L"unmute mic",L"settings",L"convert "};
+// Tab completion: the typed text keeps its own letters and gains the rest of the phrase.
+inline std::wstring phraseCompletion(const std::wstring& typed){
+    const auto t=lowered(typed);if(t.size()<2||t.find_first_not_of(L" ")==std::wstring::npos)return {};
+    for(auto p:commandPhrases)if(p.size()>t.size()&&std::wstring(p).starts_with(t))return typed+std::wstring(p.substr(t.size()));return {};
+}
+// The ghost after the caret: only a completion that still starts with what is typed now.
+inline std::wstring ghostSuffix(const std::wstring& typed,const std::wstring& completion){
+    if(typed.empty()||completion.size()<=typed.size())return {};return lowered(completion).starts_with(lowered(typed))?completion.substr(typed.size()):std::wstring{};
+}
+inline std::wstring byteText(unsigned long long bytes){
+    const wchar_t* units[]={L"bytes",L"KB",L"MB",L"GB",L"TB"};double v=double(bytes);int u=0;while(v>=1000&&u<4){v/=1024;++u;}
+    wchar_t b[32];if(u==0)swprintf(b,32,L"%llu %ls",bytes,bytes==1?L"byte":L"bytes");else swprintf(b,32,v<10?L"%.1f %ls":L"%.0f %ls",v,units[u]);return b;
+}
 // How well an installed app's name matches what was typed (0 = no match).
 inline int appScore(const std::wstring& name,const std::wstring& typed){
     auto n=lowered(name),q=lowered(trimmed(typed));if(q.empty()||n.starts_with(L"uninstall"))return 0;
@@ -92,9 +136,14 @@ inline std::optional<int> durationSeconds(const std::vector<std::wstring>& ws,si
     if(unit.empty()||unit==L"m"||unit==L"min"||unit==L"mins"||unit==L"minute"||unit==L"minutes")scale=60;else if(unit==L"s"||unit==L"sec"||unit==L"secs"||unit==L"second"||unit==L"seconds")scale=1;else if(unit==L"h"||unit==L"hr"||unit==L"hour"||unit==L"hours")scale=3600;else return std::nullopt;
     long long total=(long long)*n*scale;if(total<1||total>12*3600)return std::nullopt;return int(total);
 }
+// Live state the command language answers from (-1 = unknown), and the currency setup.
+struct CommandEnv {
+    int dark=-1,bluetooth=-1,wifi=-1;long long binItems=-1,binBytes=-1;
+    bool currency=false,ratesLoading=false;const ExchangeRates* rates=nullptr;std::wstring home=L"USD";
+};
 // Parses what was typed into the intent to show (first) and alternatives.
 // `workspaces` are saved workspace names; `scope` is the folder file searches cover.
-inline std::vector<CommandResult> parseCommand(const std::wstring& typed,const std::vector<InstalledApp>& apps,const std::vector<std::wstring>& workspaces,const std::wstring& scope){
+inline std::vector<CommandResult> parseCommand(const std::wstring& typed,const std::vector<InstalledApp>& apps,const std::vector<std::wstring>& workspaces,const std::wstring& scope,const CommandEnv& env={}){
     std::vector<CommandResult> out;const std::wstring text=trimmed(typed),t=lowered(text);if(t.empty())return out;const auto ws=words(t);const auto& first=ws[0];
     auto add=[&](CommandKind k,std::wstring title,std::wstring detail,int value=0,std::wstring target={}){CommandResult r;r.kind=k;r.title=std::move(title);r.detail=std::move(detail);r.value=value;r.target=std::move(target);out.push_back(std::move(r));};
     auto after=[&](size_t n){size_t at=0;for(size_t i=0;i<n&&at!=std::wstring::npos;++i){at=text.find_first_not_of(L" \t",at);at=text.find_first_of(L" \t",at);}return at==std::wstring::npos?std::wstring{}:trimmed(text.substr(at));};
@@ -132,7 +181,41 @@ inline std::vector<CommandResult> parseCommand(const std::wstring& typed,const s
     // Clipboard and session.
     if(t==L"clipboard"||t==L"clipboard history"){add(CommandKind::Clipboard,L"Show clipboard history",L"On the Shelf");return out;}
     if(t==L"clear clipboard"||t==L"clear clipboard history"){add(CommandKind::ClearClipboard,L"Clear clipboard history",L"Removes every kept copy");return out;}
-    if(t==L"lock"||t==L"lock pc"||t==L"lock screen"){add(CommandKind::Lock,L"Lock this PC",L"Windows lock screen");return out;}
+    if(t==L"lock"||t==L"lock pc"||t==L"lock screen"){add(CommandKind::Lock,L"Lock this PC",L"Windows lock screen  \u00b7  asks first");out.back().confirm=true;return out;}
+    // System actions. Each row reads the current state, so it says what will actually happen.
+    {auto onOff=[&](const std::wstring& base,std::initializer_list<const wchar_t*> names)->int{for(auto n:names){const std::wstring w=n;if(base==w)return -1;if(base==w+L" on"||base==L"turn on "+w||base==L"turn "+w+L" on"||base==L"enable "+w)return 1;if(base==w+L" off"||base==L"turn off "+w||base==L"turn "+w+L" off"||base==L"disable "+w)return 0;}return -2;};
+        auto radio=[&](CommandKind kind,const std::wstring& label,int state,int want,const wchar_t* settingsUri){
+            if(state==-2){add(CommandKind::None,L"No "+label+L" radio found",L"This PC does not report one");return;}
+            const int goal=want==-1?(state==1?0:1):want;
+            if(state>=0&&want>=0&&state==want){add(CommandKind::None,label+(want?L" is already on":L" is already off"),L"Nothing to change");}
+            else add(kind,state<0?L"Turn "+label+L" on or off":goal?L"Turn "+label+L" on":L"Turn "+label+L" off",state<0?L"Current state unknown":state?label+L" is on now":label+L" is off now",state<0&&want<0?-1:goal);
+            add(CommandKind::OpenSettings,L"Open "+label+L" settings",L"Windows Settings",0,settingsUri);};
+        if(int want=onOff(t,{L"bluetooth",L"bt"});want!=-2){radio(CommandKind::Bluetooth,L"Bluetooth",env.bluetooth,want,L"ms-settings:bluetooth");return out;}
+        if(int want=onOff(t,{L"wifi",L"wi-fi",L"wlan",L"wireless"});want!=-2){radio(CommandKind::WiFi,L"Wi-Fi",env.wifi,want,L"ms-settings:network-wifi");return out;}
+        if(int want=onOff(t,{L"airplane mode",L"airplane",L"aeroplane mode",L"flight mode"});want!=-2){
+            // There is no public switch for Windows' airplane mode itself; this turns every radio off, or back on.
+            const bool quiet=env.bluetooth<=0&&env.wifi<=0&&(env.bluetooth==0||env.wifi==0);const int goal=want==-1?(quiet?0:1):want;
+            add(CommandKind::Airplane,goal?L"Turn Wi-Fi and Bluetooth off":L"Turn Wi-Fi and Bluetooth back on",goal?L"Airplane mode  \u00b7  every radio off":L"Leaves airplane mode",goal);
+            add(CommandKind::OpenSettings,L"Open Airplane mode settings",L"Windows Settings",0,L"ms-settings:network-airplanemode");return out;}
+        const bool darkWords=t==L"dark mode"||t==L"dark"||t==L"dark theme"||t==L"go dark",lightWords=t==L"light mode"||t==L"light"||t==L"light theme",themeWords=t==L"theme"||t==L"toggle theme"||t==L"switch theme";
+        if(darkWords||lightWords||themeWords){const int goal=themeWords?(env.dark==1?0:1):darkWords?(env.dark==1?0:1):(env.dark==0?1:0);
+            // Asking for the mode that is already on offers the other one.
+            add(CommandKind::DarkMode,goal?L"Switch to dark mode":L"Switch to light mode",env.dark<0?L"Windows and apps":env.dark?L"Dark mode is on now":L"Light mode is on now",goal);
+            add(CommandKind::OpenSettings,L"Open Colors settings",L"Windows Settings",0,L"ms-settings:colors");return out;}
+        if(t==L"empty recycle bin"||t==L"empty the recycle bin"||t==L"empty bin"||t==L"recycle bin"||t==L"empty trash"||t==L"clear recycle bin"||t==L"empty the bin"){
+            if(env.binItems==0){add(CommandKind::None,L"The recycle bin is already empty",L"Nothing to remove");return out;}
+            add(CommandKind::EmptyBin,L"Empty the recycle bin",(env.binItems>0?std::to_wstring(env.binItems)+(env.binItems==1?L" item":L" items")+(env.binBytes>0?L"  \u00b7  "+byteText((unsigned long long)env.binBytes):L""):std::wstring(L"Deletes its files for good"))+L"  \u00b7  asks first");out.back().confirm=true;return out;}
+        if(t==L"sleep"||t==L"go to sleep"||t==L"suspend"||t==L"sleep pc"){add(CommandKind::Sleep,L"Put this PC to sleep",L"Asks first");out.back().confirm=true;return out;}
+        if(t==L"restart"||t==L"reboot"||t==L"restart pc"||t==L"restart computer"){add(CommandKind::Restart,L"Restart this PC",L"Apps with unsaved work can stop it  \u00b7  asks first");out.back().confirm=true;return out;}
+        if(t==L"shut down"||t==L"shutdown"||t==L"power off"||t==L"turn off pc"||t==L"turn off computer"||t==L"shut down pc"){add(CommandKind::ShutDown,L"Shut down this PC",L"Apps with unsaved work can stop it  \u00b7  asks first");out.back().confirm=true;return out;}
+    }
+    // Currency, only when the words say so ("100 usd to inr", "$50 in eur").
+    if(auto cq=parseCurrency(text,env.home)){
+        if(!env.currency){add(CommandKind::None,L"Currency conversion is off",L"Turn it on in Settings \u203a Privacy & productivity (daily rates from the European Central Bank)");return out;}
+        if(!env.rates||env.rates->empty()){add(CommandKind::None,env.ratesLoading?L"Getting today\u2019s exchange rates\u2026":L"Exchange rates are unavailable",env.ratesLoading?L"From the European Central Bank":L"Check your connection and try again");return out;}
+        if(auto a=convertCurrency(*cq,*env.rates)){CommandResult r;r.kind=CommandKind::Currency;r.answer=a->answer;r.title=a->answer;r.detail=a->detail;r.target=a->plain;out.push_back(std::move(r));return out;}
+        add(CommandKind::None,L"No rate for that currency",L"The European Central Bank publishes about 30 currencies");return out;
+    }
     // Workspaces.
     if((first==L"save"||first==L"remember")&&ws.size()>=2&&(ws[1]==L"workspace"||ws[1]==L"ws")){auto name=after(2);if(name.empty()){add(CommandKind::None,L"Name the workspace",L"For example “save workspace study”");return out;}
         if(name.size()>32)name.resize(32);add(CommandKind::SaveWorkspace,L"Save open apps as “"+name+L"”",workspaceNamed(name)&&lowered(*workspaceNamed(name))==lowered(name)?L"Replaces the saved workspace":L"New workspace",0,name);return out;}
@@ -153,7 +236,10 @@ inline std::vector<CommandResult> parseCommand(const std::wstring& typed,const s
         add(CommandKind::SearchFiles,L"Find "+q.description,L"File Explorer search in your user folder",0,searchUri(q.aqs,scope));return out;}
     // Apps.
     std::wstring appText=text;bool explicitOpen=false;for(auto verb:{L"open ",L"launch ",L"start ",L"run "})if(t.starts_with(verb)){appText=trimmed(text.substr(wcslen(verb)));explicitOpen=true;break;}
-    for(auto& a:matchApps(apps,appText)){CommandResult r;r.kind=CommandKind::OpenApp;r.title=L"Open "+a.name;r.detail=L"App";r.target=a.id;r.appId=a.id;out.push_back(std::move(r));}
+    for(auto& a:matchApps(apps,appText)){CommandResult r;r.kind=CommandKind::OpenApp;r.title=L"Open "+a.name;r.detail=L"App";r.target=a.id;r.appId=a.id;r.marks=shiftedMarks(matchMarks(a.name,appText),5);
+        // Tab completes the app's name when what is typed is the start of it.
+        if(lowered(a.name).starts_with(lowered(appText))&&a.name.size()>appText.size())r.completion=text+a.name.substr(appText.size());
+        out.push_back(std::move(r));}
     if(out.empty())add(CommandKind::None,explicitOpen?L"No installed app by that name":L"Nothing to do yet",explicitOpen?L"Only apps in the Start menu can be opened":L"Try “open spotify”, “volume 30”, “focus 25” or “find notes pdf”");
     return out;
 }
