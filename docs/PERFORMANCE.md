@@ -2,7 +2,7 @@
 
 Arnav Island uses compositor animation for size, corners and offsets. It does not render a frame from an application 60 Hz loop. A short 30 ms Win32 region timer runs only during physical movement for input bounds; it is not the animation clock.
 
-Idle workers wait on events. CPU/RAM/network collection activates after Overview/System remains visible for 400 ms and samples at 1 second intervals. Disk space is refreshed about every 30 active samples. Media timeline repainting runs once per second only for a visible, playing media view. Focus uses a 1 second timer while running, including when collapsed. The app does not continuously query GPU sensors or use a monitoring driver.
+Idle workers wait on events. CPU/RAM/network collection activates after Overview/System remains visible for 400 ms and samples at 1 second intervals. Disk space is refreshed about every 30 active samples. Media timeline repainting runs once per second only for a visible, playing media view. Focus uses a 1 second timer while running, including when collapsed. GPU use (v0.14) comes from Windows' PDH performance counters, sampled with the rest of the system readings and only while the Stats page, Home or the idle glance shows it; the app uses no monitoring driver and reads no GPU sensors.
 
 Thumbnail decoding happens on the media worker and is capped to 512 pixels on its longest edge. Input compressed stream size, dimensions and pixel count are bounded. Surface rasterization occurs for changed content and button hover states, not each body-animation frame. D2D surface updates can still allocate render targets/bitmaps; richer retained content caching is future optimization work.
 

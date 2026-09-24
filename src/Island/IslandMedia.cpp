@@ -33,6 +33,8 @@ void IslandWindow::updateProviders(){
     bool bars=settings_.waveform&&visible&&content_.playback.playing&&content_.hud==0&&(state_==IslandState::Compact?settings_.edge==0&&settings_.compactMedia:(content_.live||content_.page==Page::Media));
     // The waveform timeline needs the same real audio while the Media page shows it.
     bars=bars||(settings_.waveTimeline&&visible&&content_.playback.playing&&state_!=IslandState::Compact&&!content_.live&&content_.page==Page::Media);
+    // So does the beat pulse of the cover on the Home page.
+    bars=bars||(settings_.artPulse&&!motion_.reduced&&visible&&content_.playback.playing&&content_.playback.artwork&&state_!=IslandState::Compact&&!content_.live&&content_.page==Page::Overview);
     if(analyzer_)analyzer_->setActive(bars);bool delivering=bars&&analyzer_&&analyzer_->available.load();if(!analyzer_&&testing_)delivering=content_.waveform;
     if(delivering!=content_.waveform){content_.waveform=delivering;if(renderer_)refresh();}
     if(mixer_)mixer_->setMetering(visible&&state_!=IslandState::Compact&&!content_.live&&content_.page==Page::Audio&&content_.audioTab==0);
@@ -40,7 +42,7 @@ void IslandWindow::updateProviders(){
 // The pointer has moved onto the island body, clear of the edge rows that reveal it.
 bool IslandWindow::pointerOffEdge(){
     POINT c{};GetCursorPos(&c);MONITORINFO mi{sizeof(mi)};GetMonitorInfoW(MonitorFromWindow(window_,MONITOR_DEFAULTTONEAREST),&mi);const double band=10*dpi_/96;
-    return settings_.edge?mi.rcMonitor.right-1-c.x>band:c.y-mi.rcMonitor.top>band;
+    return settings_.edge==1?mi.rcMonitor.right-1-c.x>band:settings_.edge==2?c.x-mi.rcMonitor.left>band:c.y-mi.rcMonitor.top>band;
 }
 void IslandWindow::autoHideTick(){
     if(!renderer_||!IsWindowVisible(window_))return;double now=seconds(),s=dpi_/96;POINT c{};GetCursorPos(&c);MONITORINFO mi{sizeof(mi)};GetMonitorInfoW(MonitorFromWindow(window_,MONITOR_DEFAULTTONEAREST),&mi);RECT w{};GetWindowRect(window_,&w);
@@ -49,13 +51,14 @@ void IslandWindow::autoHideTick(){
     const double left=w.left+origin.x*s,top=w.top+origin.y*s,right=left+bw*s,bottom=top+bh*s;
     const double center=settings_.edge?(top+bottom)/2:(left+right)/2,half=(settings_.edge?bh:bw)*s/2+56*s;
     bool atEdge=atIslandEdge(c.x,c.y,mi.rcMonitor.left,mi.rcMonitor.top,mi.rcMonitor.right,mi.rcMonitor.bottom,settings_.edge,center,half);
-    bool over=settings_.edge?(c.x>=left-8*s&&c.y>=top-8*s&&c.y<=bottom+8*s):(c.x>=left-8*s&&c.x<=right+8*s&&c.y>=mi.rcMonitor.top&&c.y<=bottom+8*s);
+    bool over=settings_.edge==1?(c.x>=left-8*s&&c.y>=top-8*s&&c.y<=bottom+8*s):settings_.edge==2?(c.x<=right+8*s&&c.y>=top-8*s&&c.y<=bottom+8*s):(c.x>=left-8*s&&c.x<=right+8*s&&c.y>=mi.rcMonitor.top&&c.y<=bottom+8*s);
     bool engaged=state_!=IslandState::Compact||content_.pinned||interaction_!=InteractionState::Rest||content_.dropHover||content_.scrub.active||(settings_.alertsReveal&&events_.active().has_value()&&events_.active()->kind!=ActivityKind::Media);
     bool before=autoHide_.hidden,hidden=autoHide_.update(settings_.autoHide,engaged,atEdge,over,now,settings_.collapseDelay/1000.);
     if(hidden==before)return;
     if(hidden){KillTimer(window_,7);KillTimer(window_,19);content_.hovered=Action::None;}
     if(motion_.reduced)motion_.slide.reset(hidden?1:0,now);else motion_.slide.retarget(hidden?1:0,now,hidden?SpringSpec{1,300,34}:SpringSpec{.9,420,26});
-    animate();store_.log("Info",hidden?"island_tucked":"island_revealed_at_edge");
+    // The idle glance's readings stop while the island is tucked away.
+    animate();clockTimer();store_.log("Info",hidden?"island_tucked":"island_revealed_at_edge");
 }
 // Connection and charging cards: a short Notification-state island.
 void IslandWindow::showNotice(int kind,const BluetoothDevice& device){

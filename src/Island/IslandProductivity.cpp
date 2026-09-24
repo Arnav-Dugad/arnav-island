@@ -100,7 +100,7 @@ void IslandWindow::updatePrivacy(){
 void IslandWindow::showPrivacyNotice(const PrivacyUse& u){
     if(!renderer_||(state_!=IslandState::Compact&&state_!=IslandState::Notification))return;
     if(settings_.autoHide&&autoHide_.hidden&&!settings_.alertsReveal)return;
-    content_.notice={u.capability==Capability::Camera?5:u.capability==Capability::Microphone?6:7,{},u.app,u.icon};
+    content_.notice={u.capability==Capability::Camera?5:u.capability==Capability::Microphone?6:u.capability==Capability::ScreenCapture?12:7,{},u.app,u.icon};
     events_.publish({ActivityKind::Notification,"privacy",70,double(content_.notice.kind),2.4,3.4},seconds());
     transition(IslandState::Notification);presentActivity();store_.log("Info","privacy_card_shown");
 }
@@ -146,7 +146,7 @@ void IslandWindow::commandResults(){
     auto& c=content_.command;bool same=results.size()==c.results.size();for(size_t i=0;same&&i<results.size();++i)same=results[i].title==c.results[i].title;
     c.results=std::move(results);c.icons=std::move(icons);if(!same){c.selected=0;if(c.armed){c.armed=false;c.status.clear();}}c.selected=std::clamp(c.selected,0,std::max(0,int(std::min<size_t>(5,c.results.size()))-1));
     // The bar grows and shrinks with its results, on the body spring.
-    const int rows=c.results.empty()?3:int(std::min<size_t>(5,c.results.size()));const double height=commandIslandHeight(rows);if(std::abs(motion_.commandHeight-height)>.5){motion_.commandHeight=height;animate();}
+    const double height=c.results.empty()?commandIslandHeight(3):commandIslandHeightAt(commandRows(c.results,5).footer);if(std::abs(motion_.commandHeight-height)>.5){motion_.commandHeight=height;animate();}
     refresh();commandSelect(c.selected);
 }
 void IslandWindow::commandSelect(int index){
@@ -170,6 +170,8 @@ bool IslandWindow::commandKey(WPARAM key){
     bool edited=false;
     switch(key){
     case VK_ESCAPE:closeCommand();return true;
+    // Space is typed (it arrives as WM_CHAR); the island's own "Space activates the highlight" must not run a result.
+    case VK_SPACE:return true;
     case VK_RETURN:if(ctrl&&!c.clips){revealResult(size_t(c.selected));return true;}runCommand(size_t(c.selected));return true;
     // Tab takes the ghost completion (the rest of an app, command or file name).
     case VK_TAB:{if(c.clips||c.results.empty())return true;const auto ghost=ghostSuffix(c.text,c.results[0].completion);if(ghost.empty()||c.caret!=c.text.size()){commandShake();return true;}
@@ -229,6 +231,7 @@ void IslandWindow::runCommand(size_t index){
         if(ExitWindowsEx(restart?EWX_REBOOT:(EWX_SHUTDOWN|EWX_POWEROFF|EWX_HYBRID_SHUTDOWN),SHTDN_REASON_MAJOR_OTHER|SHTDN_REASON_MINOR_OTHER|SHTDN_REASON_FLAG_PLANNED)){store_.log("Info",restart?"command_restart":"command_shutdown");closeCommand(false);}
         else commandStatus(restart?L"Windows did not restart":L"Windows did not shut down",true);return;}
     case CommandKind::Currency:copyText(r.target);commandStatus(L"Copied "+r.answer);return;
+    case CommandKind::Colour:copyText(r.target);commandStatus(L"Copied "+r.target);return;
     case CommandKind::OpenFile:if(shell(r.target))done();else commandStatus(L"Windows could not open that file",true);return;
     case CommandKind::None:commandShake();return;
     case CommandKind::Volume:if(audio_){audio_->setVolume(r.value);if(audio_->muted)audio_->toggleMute();}done();return;

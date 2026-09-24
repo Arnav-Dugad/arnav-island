@@ -25,8 +25,8 @@ inline SpringSpec bodySpring(const Settings& s){
     const double k=s.labSpeed==2?4:s.labSpeed==1?2:1;spec.stiffness/=k*k;spec.damping/=k;return spec;
 }
 inline const std::vector<std::wstring>& pageNames(){static const std::vector<std::wstring> names{L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio"};return names;}
-inline const std::vector<std::wstring>& metricNames(){static const std::vector<std::wstring> names{L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime"};return names;}
-inline void assignMetric(std::array<int,3>& metrics,int slot,int value){value=std::clamp(value,0,6);for(int i=0;i<3;++i)if(i!=slot&&metrics[i]==value)metrics[i]=metrics[slot];metrics[slot]=value;}
+inline const std::vector<std::wstring>& metricNames(){static const std::vector<std::wstring> names{L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime",L"GPU"};return names;}
+inline void assignMetric(std::array<int,3>& metrics,int slot,int value){value=std::clamp(value,0,7);for(int i=0;i<3;++i)if(i!=slot&&metrics[i]==value)metrics[i]=metrics[slot];metrics[slot]=value;}
 inline std::vector<SettingItem> settingItems(int monitors=1){
     std::vector<SettingItem> v;
     auto toggle=[&](int section,std::wstring title,std::wstring detail,std::string key,bool Settings::*field){SettingItem i;i.section=section;i.title=std::move(title);i.detail=std::move(detail);i.key=std::move(key);i.control=SettingControl::Toggle;i.get=[field](const Settings& s){return int(s.*field);};i.set=[field](Settings& s,int x){s.*field=x!=0;};v.push_back(std::move(i));};
@@ -44,7 +44,7 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(0,L"Scroll anywhere for volume",L"Otherwise only the volume slider responds to the wheel","wheelVolume",&Settings::wheelVolume);
     number(1,C::Choice,L"Everyday mode",L"How much the island shows while resting","uiMode",&Settings::uiMode,0,2,1,{L"Mini Pill",L"Live Island",L"Command Center"});
     number(1,C::Slider,L"Compact width",L"Resting width in Live Island and Command Center","compactWidth",&Settings::compactWidth,160,560,4,{},L" px");
-    number(1,C::Choice,L"Dock edge",L"Where the island lives on the screen","edge",&Settings::edge,0,1,1,{L"Top",L"Right"});
+    number(1,C::Choice,L"Dock edge",L"Where the island lives on the screen","edge",&Settings::edge,0,2,1,{L"Top",L"Right",L"Left"});
     std::vector<std::wstring> displays{L"Primary"};for(int i=1;i<=std::max(1,monitors);++i)displays.push_back(L"Display "+std::to_wstring(i));
     number(1,C::Stepper,L"Display",L"Each display remembers its own placement","monitor",&Settings::monitor,0,std::max(1,monitors),1,displays);
     number(1,C::Slider,L"Edge offset",L"Distance from the docked edge","verticalOffset",&Settings::verticalOffset,0,60,1,{},L" px");
@@ -57,6 +57,7 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     button(2,L"Windows transparency effects",L"Lets Frosted glass blur what is behind it",L"Open Windows settings",SettingAction::TransparencySettings);
     number(2,C::Swatch,L"Accent",L"Used when artwork colors are off \u00b7 the last one follows your wallpaper","accent",&Settings::accent,0,4,1,{L"Mint",L"Sky",L"Lilac",L"Peach",L"Wallpaper"});
     toggle(2,L"Artwork colors",L"Tint controls and a soft glow from the current cover","albumAccents",&Settings::albumAccents);
+    toggle(2,L"Soft shadow",L"A gentle shadow under the island lifts it off the desktop","shadow",&Settings::shadow);
     number(3,C::Choice,L"Motion character",L"","preset",&Settings::preset,0,5,1,{L"Balanced",L"Fluid",L"Playful",L"Snappy",L"Calm",L"Custom"});
     // Choosing a preset shows its values on the sliders below; moving a slider makes the spring Custom.
     v.back().set=[](Settings& s,int x){s.preset=std::clamp(x,0,5);if(s.preset<5){auto p=preset(MotionPreset(s.preset));s.springStiffness=int(std::lround(p.stiffness));s.springDamping=int(std::lround(p.damping));s.springMass=int(std::lround(p.mass*100));}};
@@ -79,12 +80,14 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(4,L"Battery",L"Charge level and charging state","compactBattery",&Settings::compactBattery);
     toggle(4,L"Timer",L"Focus and break countdowns","compactTimer",&Settings::compactTimer);
     toggle(4,L"Clock",L"Time of day","compactClock",&Settings::compactClock);
+    toggle(4,L"Glance when idle",L"With nothing else to show: today\u2019s date, and CPU and GPU use where there is room","compactGlance",&Settings::compactGlance);
     number(4,C::Choice,L"Glance rings",L"Progress rings at the end of the island","glanceRings",&Settings::glanceRings,0,3,1,{L"Off",L"Battery",L"Timer",L"Both"});
     toggle(4,L"Volume and brightness indicator",L"The island grows to show level changes","hud",&Settings::hud);
     number(5,C::Choice,L"Media layout",L"Artwork size on the Media page","mediaLayout",&Settings::mediaLayout,0,2,1,{L"Auto",L"Music",L"Video"});
     toggle(5,L"Waveform timeline",L"The Media timeline draws the track\u2019s loudness, filling in as it plays","waveTimeline",&Settings::waveTimeline);
     toggle(5,L"Synced lyrics",L"From LRCLIB, a free lyrics library. Only the song title and artist are sent; lyrics are saved on this PC","lyrics",&Settings::lyrics);
     toggle(5,L"Lyrics in the compact island",L"Show the line being sung while music plays","lyricsCompact",&Settings::lyricsCompact);
+    toggle(5,L"Artwork pulses to the beat",L"The cover swells gently with the bass of what Windows is playing","artPulse",&Settings::artPulse);
     button(5,L"Saved lyrics",L"Remove the lyrics kept on this PC",L"Clear",SettingAction::ClearLyrics);
     toggle(5,L"App logos",L"Show the real icon of the app that is playing","appIcons",&Settings::appIcons);
     toggle(5,L"Follow the active player",L"Switch to whichever app Windows marks as current","followSession",&Settings::followSession);
@@ -100,7 +103,7 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     button(6,L"Armoury Crate",L"Performance profiles, GPU mode and lighting on ASUS ROG",L"Open",SettingAction::OpenArmoury);
     for(int slot=0;slot<7;++slot){SettingItem i;i.section=7;i.control=SettingControl::Order;i.key="nav"+std::to_string(slot);i.lo=0;i.hi=6;i.options=pageNames();i.title=L"Position "+std::to_wstring(slot+1);
         i.get=[slot](const Settings& s){return s.navigation[slot];};i.set=[slot](Settings& s,int direction){int from=slot;moveNavigation(s.navigation,from,direction<0?-1:1);};v.push_back(std::move(i));}
-    for(int slot=0;slot<3;++slot){SettingItem i;i.section=7;i.control=SettingControl::Stepper;i.key="home"+std::to_string(slot);i.lo=0;i.hi=6;i.options=metricNames();i.title=std::wstring(L"Home statistic ")+wchar_t(L'1'+slot);i.detail=L"Values never repeat";
+    for(int slot=0;slot<3;++slot){SettingItem i;i.section=7;i.control=SettingControl::Stepper;i.key="home"+std::to_string(slot);i.lo=0;i.hi=7;i.options=metricNames();i.title=std::wstring(L"Home statistic ")+wchar_t(L'1'+slot);i.detail=L"Values never repeat";
         i.get=[slot](const Settings& s){return s.homeMetrics[slot];};i.set=[slot](Settings& s,int x){assignMetric(s.homeMetrics,slot,x);};v.push_back(std::move(i));}
     button(7,L"Restore navigation and statistics",L"Other preferences stay as they are",L"Reset layout",SettingAction::ResetLayout);
     toggle(8,L"Clipboard history",L"Your last 24 copies, in memory only (pins are saved encrypted). Password managers are skipped","clipboardHistory",&Settings::clipboardHistory);

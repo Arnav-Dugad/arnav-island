@@ -128,3 +128,19 @@ Larger requested integrations are tracked honestly in DELIVERY_PHASES.md in the 
 **Glass.** Frosted and Clear now meet the screen with shoulders, like Solid. For real blur, turn on Windows Settings → Personalization → Colors → *Transparency effects*.
 
 **Lyrics.** On the Media page with lyrics on, the sung line fills as it is sung; tap any line to jump there.
+
+## v0.14 glass, awareness and motion
+
+**Try the new glass.** Settings › Appearance › Material: *Frosted glass* or *Clear glass*. Frosted needs Windows' Transparency effects (Settings › Personalization › Colors); the island's Appearance page has a button that opens them. *Soft shadow* on the same page turns the shadow under the island on or off.
+
+**Screen capture dot.** When an app captures your screen through Windows (sharing a screen in a browser, the Snipping Tool's recorder), a purple dot joins the privacy dots and a card names the app.
+
+**GPU.** The Stats page shows GPU use with a history line. On Home, choose GPU for any of the three statistics (Settings › Home & navigation).
+
+**Idle glance.** With nothing playing and no timer running, the compact island shows the date, and CPU and GPU where there is room. Settings › Compact › *Glance when idle* turns it off.
+
+**Dock on the left.** Settings › Island › Dock edge › Left.
+
+**Command bar.** Space between words works as you'd expect. Type a colour code (#3A7BD5, #39f, rgb(58, 123, 213)) to see it; Enter copies the hex. A misspelt app or command offers the closest match.
+
+**The artwork pulses to the beat** while music plays (Settings › Media & sound › *Artwork pulses to the beat*).

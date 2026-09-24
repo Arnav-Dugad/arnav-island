@@ -22,6 +22,7 @@
 #include "Productivity/Currency.h"
 #include "Productivity/FileSearch.h"
 #include "Productivity/CommandMemory.h"
+#include "Hardware/GpuModel.h"
 #include <iostream>
 #include <random>
 #include <set>
@@ -444,5 +445,35 @@ int main(){try{
         std::stringstream io;n.write(io);auto back=CommandMemory::read(io);test(back.items().size()==1&&back.items()[0].detail==L"tab\there\nline\\slash"&&back.items()[0].phrase==L"s\tx"&&back.items()[0].pinned&&back.items()[0].title==L"Open \u00e9 settings","memory file round trip");
         std::stringstream bad("commands 2\n1\t0\t0\t0\t0\ta\tb\tc\td\n");test(CommandMemory::read(bad).items().empty(),"unknown versions are ignored");
         CommandMemory f;CommandResult file;file.kind=CommandKind::OpenFile;file.title=L"a";file.target=L"C:\\A";f.record(file,L"",0);f.record(file,L"",0);test(std::abs(f.frecency(CommandKind::OpenFile,L"c:\\a",7*86400)-1)<1e-9&&f.frecency(CommandKind::OpenFile,L"C:\\B",0)==0,"use counts fade by half each week");}
-    std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery, auto-hide, command, clipboard, workspace, privacy, waveform, lab, accent, lyrics, palette, seeking, audio-route, currency, system-action, completion, file-search and command-memory checks\n";return 0;
+    // ---- Phase 5E: rolling digits ---------------------------------------------------------------------
+    {auto r=digitRoll(18,7);test(r.from==18&&r.to==17,"a countdown rolls one step back");r=digitRoll(19,0);test(r.from==19&&r.to==20,"9 to 0 rolls one step forward");
+        r=digitRoll(10,9);test(r.to==9,"0 to 9 rolls one step back");r=digitRoll(12,5);test(r.from==12&&r.to==15,"small changes roll directly");
+        r=digitRoll(9.98,0);test(std::abs(r.from-19.98)<1e-9&&r.to==20,"a column still settling re-bases without a jump");
+        bool bounded=true;for(double p=0;p<=30;p+=.37)for(int d=0;d<10;++d){auto k=digitRoll(p,d);bounded=bounded&&k.to>=5&&k.to<=25&&std::abs(k.to-k.from)<=5+1e-9&&std::abs(std::fmod(k.from-p+100,10.))<1e-9;}test(bounded,"rolls stay on the strip, at most five digits, from an equivalent place");}
+    // ---- Phase 5E: GPU use ----------------------------------------------------------------------------
+    {const std::vector<std::pair<std::wstring,double>> s{{L"pid_1_luid_0x0_0x1_phys_0_eng_0_engtype_3D",20},{L"pid_2_luid_0x0_0x1_phys_0_eng_0_engtype_3D",15},{L"pid_1_luid_0x0_0x1_phys_0_eng_1_engtype_Copy",30},{L"bogus",90},{L"pid_3_luid_0x0_0x1_phys_0_eng_2_engtype_VideoDecode",std::nan("")}};
+        test(std::abs(gpuBusy(s)-35)<1e-9,"the GPU is as busy as its busiest engine, summed over processes");test(gpuBusy({})==-1&&gpuBusy({{L"bogus",5}})==-1,"no engines, no reading");
+        test(gpuBusy({{L"pid_1_luid_0_eng_0",80},{L"pid_2_luid_0_eng_0",70}})==100,"at most 100%");}
+    // ---- Phase 5E: colour codes, typos and grouped rows ---------------------------------------------
+    {test(parseColourCode(L"#3A7BD5")==0x3A7BD5u&&parseColourCode(L"#39f")==0x3399FFu&&parseColourCode(L"colour 3a7bd5")==0x3A7BD5u&&parseColourCode(L"color #3A7BD5FF")==0x3A7BD5u&&parseColourCode(L"rgb(58, 123, 213)")==0x3A7BD5u,"colour codes");
+        test(!parseColourCode(L"#12345")&&!parseColourCode(L"rgb(300,0,0)")&&!parseColourCode(L"#zzzzzz")&&!parseColourCode(L"3a7bd5")&&!parseColourCode(L"rgb(1,2)"),"not colour codes");
+        test(colourHex(0x3A7BD5)==L"#3A7BD5"&&colourDetail(0x3A7BD5)==L"rgb(58, 123, 213)  \u00b7  hsl(215, 65%, 53%)"&&colourDetail(0x808080)==L"rgb(128, 128, 128)  \u00b7  hsl(0, 0%, 50%)","colour details");
+        const std::vector<InstalledApp> apps{{L"Spotify",L"spotify.id"},{L"Microsoft Edge",L"MSEdge"}};
+        auto c=parseCommand(L"#3a7bd5",apps,{},L"C:\\");test(c.size()==1&&c[0].kind==CommandKind::Colour&&c[0].value==0x3A7BD5&&c[0].title==L"#3A7BD5"&&!CommandMemory::memorable(CommandKind::Colour),"a colour row, not remembered");
+        test(editDistance(L"ab",L"ba")==1&&editDistance(L"kitten",L"sitting")==3&&editDistance(L"",L"abc")==3&&typoAllowance(3)==0&&typoAllowance(5)==1&&typoAllowance(9)==2,"edit distance");
+        auto t=parseCommand(L"spotfy",apps,{},L"C:\\");test(!t.empty()&&t[0].kind==CommandKind::OpenApp&&t[0].target==L"spotify.id","a misspelt app is found");
+        t=parseCommand(L"bluetoth",apps,{},L"C:\\");test(!t.empty()&&t[0].kind==CommandKind::Bluetooth&&t[0].detail.find(L"Did you mean")==0,"a misspelt command is suggested");
+        t=parseCommand(L"spx",apps,{},L"C:\\");test(t.size()==1&&t[0].kind==CommandKind::None,"short words are not guessed at");
+        std::vector<CommandResult> rows(4);rows[0].kind=rows[1].kind=CommandKind::OpenApp;rows[2].kind=CommandKind::OpenFile;rows[3].kind=CommandKind::DarkMode;
+        auto laid=commandRows(rows,5);test(laid.headers.size()==3&&laid.headers[0]==std::pair{52.f,1}&&laid.rows==std::vector<float>{70,110,168,226}&&laid.headers[2]==std::pair{208.f,4}&&laid.footer==268,"a header before each group");
+        test(commandRows(rows,5,false).headers.empty()&&commandRows(rows,5,false).footer==214,"clipboard rows have no headers");
+        rows.resize(2);laid=commandRows(rows,5);test(laid.headers.empty()&&laid.rows==std::vector<float>{52,92}&&laid.footer==134,"one group needs no header");
+        rows[0].section=1;rows[1].section=2;test(commandRows(rows,5).headers.size()==2&&std::wstring(groupName(resultGroup(rows[1])))==L"Suggested","the empty bar's sections");}
+    // ---- Phase 5E: left dock, screen capture, settings v13 ------------------------------------------
+    test(atIslandEdge(0,540,0,0,1920,1080,2,540,130)&&!atIslandEdge(20,540,0,0,1920,1080,2,540,130)&&!atIslandEdge(0,100,0,0,1920,1080,2,540,130),"left edge band");
+    test(capabilityOrder[2]==Capability::ScreenCapture&&std::wstring(capabilityName(Capability::ScreenCapture))==L"Screen capture"&&capabilityColour(Capability::ScreenCapture)==0xbf5af2,"screen capture is the purple dot, after the microphone");
+    {std::stringstream v12("version 12\nedge 1\n");auto s=Settings::parse(v12);test(s.version==Settings::currentVersion&&s.edge==1&&s.shadow&&s.compactGlance&&s.artPulse,"v12 settings gain the shadow, the idle glance and the beat pulse");
+        std::stringstream left("version 13\nedge 2\n"),beyond("version 13\nedge 3\n");test(Settings::parse(left).edge==2&&Settings::parse(beyond).edge==2,"the left dock is kept, beyond it clamped");
+        Settings off;off.shadow=off.compactGlance=off.artPulse=false;std::stringstream io;off.write(io);auto back=Settings::parse(io);test(!back.shadow&&!back.compactGlance&&!back.artPulse,"the new switches round-trip");}
+    std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery, auto-hide, command, clipboard, workspace, privacy, waveform, lab, accent, lyrics, palette, seeking, audio-route, currency, system-action, completion, file-search, command-memory, rolling-digit, GPU, colour, typo, row-group and left-dock checks\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

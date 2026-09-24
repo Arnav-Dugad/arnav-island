@@ -4,7 +4,8 @@
 #include <cmath>
 namespace nexus {
 struct PointD{double x,y;};
-inline PointD bodyOrigin(double w,double h,double canvasW,double canvasH,int edge){return edge?PointD{canvasW-w,(canvasH-h)/2}:PointD{(canvasW-w)/2,0};}
+// Dock edges: 0 top, 1 right, 2 left.
+inline PointD bodyOrigin(double w,double h,double canvasW,double canvasH,int edge){return edge==1?PointD{canvasW-w,(canvasH-h)/2}:edge==2?PointD{0,(canvasH-h)/2}:PointD{(canvasW-w)/2,0};}
 // Concave shoulders carry an attached island out of the screen edge. Each is
 // twice as wide as it is deep and flows from the edge (horizontal tangent) into
 // the island's side (vertical tangent). The drawn wings and the input region
@@ -16,7 +17,8 @@ constexpr double shoulderSideControl=.42;// fraction of the depth, from the edge
 // One connected outline, used for real input regions and numerical QA.
 inline std::vector<PointD> dockOutline(double width,double height,double radius,int edge,bool attached){
     double w=edge?height:width,h=edge?width:height,r=std::min({radius,w/2,h/2});std::vector<PointD> result;
-    auto point=[&](double x,double y){result.push_back(edge?PointD{width-y,x}:PointD{x,y});};
+    // Side docks: x runs down the screen edge, y away from it (a rotation for the right edge, a reflection for the left).
+    auto point=[&](double x,double y){result.push_back(edge==1?PointD{width-y,x}:edge==2?PointD{y,x}:PointD{x,y});};
     auto curve=[&](PointD a,PointD b,PointD c,PointD d){for(int i=1;i<=12;++i){double t=i/12.,q=1-t;point(q*q*q*a.x+3*q*q*t*b.x+3*q*t*t*c.x+t*t*t*d.x,q*q*q*a.y+3*q*q*t*b.y+3*q*t*t*c.y+t*t*t*d.y);}};
     const auto sh=shoulderShape(r);const double sw=sh.width,sd=sh.depth;
     if(attached){point(-sw,0);curve({-sw,0},{-sw*(1-shoulderEdgeControl),0},{0,sd*shoulderSideControl},{0,sd});}

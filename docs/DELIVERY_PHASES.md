@@ -135,3 +135,14 @@ Deviations from the plan, each deliberate:
 - **Karaoke fill** follows line timing (LRCLIB has no word timing).
 
 Next: Phase 5E, live widgets and awareness.
+
+## Status after v0.14 — Phase 5E, glass, awareness and motion — 2026-09-24
+
+Shipped, as asked: a screen-capture dot, rebuilt Frosted and Clear glass (researched, bench-tested, then built), live GPU use, a left dock edge, the Space fix in the command bar, rolling numbers for volume, battery and timers, the compact lyric morph, the beat pulse, the liquid morph and the idle glance; plus, from the suggestions, the tilting highlight, the soft shadow, wallpaper tint, group headers, colour swatches and typo suggestions.
+
+Deviations, each deliberate:
+- **"Glass edges that bend the background like a real lens"** became light gathered along the edges. Windows gives apps the backdrop only as a brush that can't be offset or warped (a shifted copy renders black), so refraction isn't possible from an app.
+- **Screen capture** is detected through Windows' capture consent records; apps that capture by other means aren't seen.
+- **"Live widgets"**, the earlier name for this phase, is partly covered by the idle glance; weather and calendar widgets remain candidates.
+
+Found and fixed along the way: 0.13's vibrancy effect never ran (now it does), and an 85 MB memory regression from extra GPU devices was caught before release.

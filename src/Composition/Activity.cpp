@@ -31,8 +31,21 @@ void Renderer::waveform(const std::array<float,64>& heights,bool reduced){
         b.glide.to(target,now,reduced?0:.16);auto a=glideAnimation(device_.Get(),b.glide,now,1,0);b.baseScale->SetScaleY(a.Get());b.fillScale->SetScaleY(a.Get());}
     if(changed)commit();
 }
+// The cover swells with the bass: the lowest bands (50 to 130 Hz, kick drums and bass lines)
+// against their own average over the last half second, so a steady bass leaves it at rest
+// and only a hit swells it, by up to 4%.
+void Renderer::beat(const SpectrumFrame& f){
+    const double now=seconds(),dt=std::clamp(now-beatAt_,0.,.2);beatAt_=now;float bass=0;for(int b=0;b<4;++b)bass=std::max(bass,f.bands[size_t(b)]);
+    bassAverage_+=float((bass-bassAverage_)*(1-std::exp(-dt/.45)));if(!artPulseOn_)return;
+    const float hit=f.resting?0.f:std::clamp((bass-bassAverage_)*4.f,0.f,1.f);
+    artBeat_.to(1+.04*hit,now,.07);auto a=glideAnimation(device_.Get(),artBeat_,now,1,0);artPulse_->SetScaleX(a.Get());artPulse_->SetScaleY(a.Get());
+}
+// Off (paused, no cover, reduced motion): the cover settles back to its size.
+void Renderer::setArtPulse(bool on){
+    if(on==artPulseOn_)return;artPulseOn_=on;if(on)return;const double now=seconds();artBeat_.to(1,now,.12);auto a=glideAnimation(device_.Get(),artBeat_,now,1,0);artPulse_->SetScaleX(a.Get());artPulse_->SetScaleY(a.Get());
+}
 void Renderer::spectrum(const SpectrumFrame& frame){
-    if(barMode_<0||barCount_<=0)return;double now=seconds();const float lo=.15f,hi=barMode_==3?1.f:barMode_==1?.62f:.78f;
+    beat(frame);if(barMode_<0||barCount_<=0){if(artPulseOn_)commit();return;}double now=seconds();const float lo=.15f,hi=barMode_==3?1.f:barMode_==1?.62f:.78f;
     for(int i=0;i<barCount_;++i){int a=i*Spectrum::bandCount/barCount_,b=std::max(a+1,(i+1)*Spectrum::bandCount/barCount_);float v=0;for(int k=a;k<b;++k)v=std::max(v,frame.bands[k]);
         if(barMode_!=3)v=std::pow(v,.8f);float target=frame.resting?lo:lo+(hi-lo)*v;auto& bar=bars_[i];bar.glide.to(target,now,.055);auto anim=glideAnimation(device_.Get(),bar.glide,now,1,0);bar.scale->SetScaleY(anim.Get());}
     commit();

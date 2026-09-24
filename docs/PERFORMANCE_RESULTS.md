@@ -174,3 +174,15 @@ Final v0.7 code on Windows 11 (20 logical processors). Process user+kernel CPU o
 Spectrum analysis costs 19 µs per 1024-point step (about 0.2% of one core at 100 steps/s). The waveform rows use the real bar-animation path with generated band levels so no sound had to be played on the speakers; live loopback with real audio was exercised separately (bars followed a playing YouTube session) but its CPU was not isolated. Working set rises by ~18 MiB when the mixer, loopback and brightness workers are running.
 
 Four CTest suites pass: 11,682 core, 1,831 model, 4,502 phase (glass expressions, glides, spectrum, settings model, identity) and provider lifecycles including three start/stop cycles of the new workers. The Settings window end-to-end test passes 94 checks and the native interaction regression passes 12 stages. Raw data: `evidence/v0.7`.
+
+## v0.14 idle measurements
+
+Compact island, media off, measured for 30 s after a 3 s settle on the development PC (20 logical processors). Raw data: `evidence/v0.14`.
+
+| Scenario | CPU time | One-core equivalent | Private memory |
+|---|---:|---:|---:|
+| Idle glance off | 0.000 s | below counter resolution | 73.5 MB |
+| Idle glance on (date, CPU, GPU) | 0.094 s | 0.31% | 76.2 MB |
+| v0.13, same conditions | 0.031 s | 0.10% | 62.4 MB |
+
+The extra 11 MB over v0.13 is the soft shadow's window and compositor. Before release, a build that gave the glass and the shadow their own Direct3D devices measured 147 MB; both now share the renderer's device, and their surfaces are drawn on first use.

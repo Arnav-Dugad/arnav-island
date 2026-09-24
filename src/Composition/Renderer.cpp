@@ -3,7 +3,7 @@
 #include "Composition/DockGeometry.h"
 
 namespace nexus {
-void Renderer::initialize(HWND hwnd,float dpi) {
+void Renderer::initialize(HWND hwnd,float dpi,HWND shadow) {
     dpi_=dpi;scale_=dpi/96;
     UINT flags=D3D11_CREATE_DEVICE_BGRA_SUPPORT;
     HRESULT hr=D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,flags,nullptr,0,D3D11_SDK_VERSION,&d3d_,nullptr,nullptr);
@@ -11,7 +11,7 @@ void Renderer::initialize(HWND hwnd,float dpi) {
     check(d3d_.As(&dxgi_));check(DCompositionCreateDevice(dxgi_.Get(),__uuidof(IDCompositionDevice),reinterpret_cast<void**>(device_.GetAddressOf())));
     check(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,d2d_.GetAddressOf()));
     check(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(write_.GetAddressOf())));textParams_=sharpTextParams(write_.Get());
-    check(device_->CreateTargetForHwnd(hwnd,TRUE,&target_));glass_.initialize(hwnd,scale_,canvasWidth,canvasHeight);
+    check(device_->CreateTargetForHwnd(hwnd,TRUE,&target_));glass_.initialize(hwnd,scale_,canvasWidth,canvasHeight,false,d3d_.Get());if(shadow)shadow_.initialize(shadow,scale_,canvasWidth,canvasHeight,true,d3d_.Get());
     for(auto* p:{std::addressof(root_),std::addressof(body_),std::addressof(inner_),std::addressof(header_),std::addressof(content_),std::addressof(bar_),std::addressof(art_),std::addressof(wingLeft_),std::addressof(wingRight_),std::addressof(pulseVisual_),std::addressof(hoverVisual_)})check(device_->CreateVisual(p->GetAddressOf()));
     check(root_->AddVisual(wingLeft_.Get(),FALSE,nullptr));check(root_->AddVisual(wingRight_.Get(),FALSE,nullptr));check(device_->CreateVisual(&stage_));// Soft borders antialias every rounded clip and bitmap edge below (body corners, artwork, pills).
     check(stage_->SetBorderMode(DCOMPOSITION_BORDER_MODE_SOFT));check(stage_->AddVisual(root_.Get(),FALSE,nullptr));check(target_->SetRoot(stage_.Get()));check(device_->CreateEffectGroup(&stageEffect_));check(stage_->SetEffect(stageEffect_.Get()));check(root_->AddVisual(body_.Get(),FALSE,nullptr));
@@ -28,8 +28,12 @@ void Renderer::initialize(HWND hwnd,float dpi) {
     check(device_->CreateRectangleClip(&artClip_));check(artClip_->SetLeft(0.f));check(artClip_->SetTop(0.f));check(artClip_->SetRight(256*scale_));check(artClip_->SetBottom(256*scale_));
     check(artClip_->SetTopLeftRadiusX(32.f*scale_));check(artClip_->SetTopLeftRadiusY(32.f*scale_));check(artClip_->SetTopRightRadiusX(32.f*scale_));check(artClip_->SetTopRightRadiusY(32.f*scale_));check(artClip_->SetBottomLeftRadiusX(32.f*scale_));check(artClip_->SetBottomLeftRadiusY(32.f*scale_));check(artClip_->SetBottomRightRadiusX(32.f*scale_));check(artClip_->SetBottomRightRadiusY(32.f*scale_));check(art_->SetClip(artClip_.Get()));
     for(auto pair:{std::pair{std::addressof(headerEffect_),header_.Get()},std::pair{std::addressof(artEffect_),art_.Get()},std::pair{std::addressof(pulseEffect_),pulseVisual_.Get()},std::pair{std::addressof(hoverEffect_),hoverVisual_.Get()}}){check(device_->CreateEffectGroup(pair.first->GetAddressOf()));check(pair.second->SetEffect(pair.first->Get()));}
+    // (art_ gets a transform group below, so its size scale joins the beat pulse.)
     for(auto pair:{std::pair{std::addressof(artScale_),art_.Get()},std::pair{std::addressof(leftScale_),wingLeft_.Get()},std::pair{std::addressof(rightScale_),wingRight_.Get()},std::pair{std::addressof(hoverScale_),hoverVisual_.Get()}}){check(device_->CreateScaleTransform(pair.first->GetAddressOf()));check(pair.second->SetTransform(pair.first->Get()));}
     for(auto* p:{std::addressof(iconLayer_),std::addressof(artFrom_),std::addressof(artTo_),std::addressof(nav_),std::addressof(rings_),std::addressof(batteryDot_),std::addressof(timerDot_)})check(device_->CreateVisual(p->GetAddressOf()));
+    // The beat pulse scales the cover about its centre (the surface is 256 DIPs square), then its size scale applies.
+    {check(device_->CreateScaleTransform(&artPulse_));artPulse_->SetCenterX(128*scale_);artPulse_->SetCenterY(128*scale_);IDCompositionTransform* chain[]={artPulse_.Get(),artScale_.Get()};
+        ComPtr<IDCompositionTransform> group;check(device_->CreateTransformGroup(chain,2,&group));check(art_->SetTransform(group.Get()));}
     check(art_->AddVisual(artFrom_.Get(),FALSE,nullptr));check(art_->AddVisual(artTo_.Get(),FALSE,nullptr));
     check(body_->AddVisual(nav_.Get(),FALSE,nullptr));check(body_->AddVisual(iconLayer_.Get(),FALSE,nullptr));check(body_->AddVisual(rings_.Get(),FALSE,nullptr));check(rings_->AddVisual(batteryDot_.Get(),FALSE,nullptr));check(rings_->AddVisual(timerDot_.Get(),FALSE,nullptr));
     for(auto pair:{std::pair{std::addressof(iconEffect_),iconLayer_.Get()},std::pair{std::addressof(incomingEffect_),artTo_.Get()},std::pair{std::addressof(navEffect_),nav_.Get()},std::pair{std::addressof(ringsEffect_),rings_.Get()},std::pair{std::addressof(batteryDotEffect_),batteryDot_.Get()},std::pair{std::addressof(timerDotEffect_),timerDot_.Get()}}){check(device_->CreateEffectGroup(pair.first->GetAddressOf()));check(pair.second->SetEffect(pair.first->Get()));}
@@ -57,7 +61,7 @@ void Renderer::initialize(HWND hwnd,float dpi) {
     // Bands share the one content surface; hard borders keep their seams invisible.
     for(size_t k=0;k<bands_.size();++k){auto& b=bands_[k];check(device_->CreateVisual(&b.visual));check(device_->CreateEffectGroup(&b.effect));check(device_->CreateRectangleClip(&b.clip));
         b.visual->SetEffect(b.effect.Get());b.visual->SetBorderMode(DCOMPOSITION_BORDER_MODE_HARD);b.clip->SetLeft(0.f);b.clip->SetRight(std::ceil(380*scale_));
-        b.clip->SetTop(std::round(float(k)*48*scale_));b.clip->SetBottom(k+1==bands_.size()?std::ceil(284*scale_):std::round(float(k+1)*48*scale_));b.visual->SetClip(b.clip.Get());check(content_->AddVisual(b.visual.Get(),FALSE,nullptr));}
+        b.clip->SetTop(std::round(float(k)*48*scale_));b.clip->SetBottom(k+1==bands_.size()?std::ceil(340*scale_):std::round(float(k+1)*48*scale_));b.visual->SetClip(b.clip.Get());check(content_->AddVisual(b.visual.Get(),FALSE,nullptr));}
     check(content_->AddVisual(cardRing_.Get(),FALSE,nullptr));
     check(device_->CreateVisual(&sheen_));check(device_->CreateEffectGroup(&sheenEffect_));sheen_->SetEffect(sheenEffect_.Get());sheenEffect_->SetOpacity(0.f);check(body_->AddVisual(sheen_.Get(),TRUE,inner_.Get()));
     for(auto* v:{std::addressof(caret_),std::addressof(privacyBand_)})check(device_->CreateVisual(v->GetAddressOf()));
@@ -101,7 +105,7 @@ void Renderer::wings(float radius){
     const float along=float(wingAlong_),depth=float(wingDepth_);
     auto draw=[&](ComPtr<IDCompositionSurface>& target,bool right){
         // Local frame: x along the edge (0 at the outer end), y away from the edge.
-        auto p=[&](float x,float y){if(right)x=along+1-x;return edge_?D2D1::Point2F(depth-y,x):D2D1::Point2F(x,y);};
+        auto p=[&](float x,float y){if(right)x=along+1-x;return edge_==1?D2D1::Point2F(depth-y,x):edge_==2?D2D1::Point2F(y,x):D2D1::Point2F(x,y);};
         pixelSurface(target,edge_?wingDepth_:wingAlong_+1,edge_?wingAlong_+1:wingDepth_,[&](ID2D1RenderTarget* rt){
             ComPtr<ID2D1PathGeometry> path;check(d2d_->CreatePathGeometry(&path));ComPtr<ID2D1GeometrySink> sink;check(path->Open(&sink));
             sink->BeginFigure(p(0,0),D2D1_FIGURE_BEGIN_FILLED);sink->AddLine(p(along+1,0));sink->AddLine(p(along+1,depth));sink->AddLine(p(along,depth));
@@ -121,6 +125,10 @@ void Renderer::text(ID2D1RenderTarget* rt,const std::wstring& value,float x,floa
         for(auto [dx,dy]:{std::pair{-d,0.f},std::pair{d,0.f},std::pair{0.f,-d},std::pair{0.f,d}})rt->DrawText(value.c_str(),UINT32(value.size()),f.Get(),D2D1::RectF(box.left+dx,box.top+dy,box.right+dx,box.bottom+dy),halo.Get(),D2D1_DRAW_TEXT_OPTIONS_CLIP);}
     rt->DrawText(value.c_str(),UINT32(value.size()),f.Get(),box,b.Get(),D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
+ComPtr<IDCompositionAnimation> Renderer::ease(double start,float from,float to,double duration){
+    const double d=duration;const float span=to-from;ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(start)));
+    check(a->AddCubic(0,from,float(3*span/d),float(-3*span/(d*d)),float(span/(d*d*d))));check(a->End(d,to));return a;
+}
 // Ease-out cubic from `from` to 1 over 0.22 s, beginning at `start`.
 ComPtr<IDCompositionAnimation> Renderer::entrance(double start,float from){
     constexpr double d=.22;const float span=1-from;ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(start)));
@@ -134,7 +142,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     }
     // Glass keeps text colors but lets fills breathe; solid surfaces stay opaque.
     const bool glass=s.settings.glassy()&&glass_.available();
-    haloAlpha_=glass&&(s.settings.material==2||!s.blur)?(s.light?.3f:.26f):0.f;haloColor_=s.light?0xffffff:0x000000;
+    haloAlpha_=glass&&(s.settings.material==2||!s.blur)?(s.light?.40f:.48f):0.f;haloColor_=s.light?0xffffff:0x000000;
     sheenStrength_=s.reducedMotion?0.f:glass?(s.light?.55f:.3f):s.light?0.f:.09f;
     if(sheenStrength_>0&&sheenTone_!=0xffffff){sheenTone_=0xffffff;surface(sheenSurface_,260,260,[&](auto* rt){D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(0xffffff,.55f)},{.45f,D2D1::ColorF(0xffffff,.16f)},{1,D2D1::ColorF(0xffffff,0.f)}};ComPtr<ID2D1GradientStopCollection> c;check(rt->CreateGradientStopCollection(stops,3,&c));ComPtr<ID2D1RadialGradientBrush> b;check(rt->CreateRadialGradientBrush(D2D1::RadialGradientBrushProperties({130,130},{0,0},130,130),c.Get(),&b));rt->FillRectangle({0,0,260,260},b.Get());});sheen_->SetContent(sheenSurface_.Get());}
     const UINT32 bg=s.light?0xf7f7f9:0x090a0c,ink=s.light?0x202329:0xf1f3f7,muted=s.light?0x656b75:(glass?0xa3aab6:0x8e96a4),raised=glass?0xffffff:s.light?0xeceef2:0x14171d,line=glass?(s.light?0x000000:0xffffff):s.light?0xdde1e7:0x242a33;
@@ -144,7 +152,9 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     const Artwork* art=s.settings.albumAccents?s.playback.artwork.get():nullptr;const UINT32 accent2=art&&art->secondary?(s.light?mixColor(art->secondary,0x000000,.5):art->secondary):accent;
     bubbleColors_[0]=ink;bubbleColors_[1]=muted;bubbleColors_[2]=s.light?0xffffff:0x23272e;
     bool attached=!s.settings.floating();
-    GlassStyle style;style.visible=glass;style.light=s.light;style.blur=s.blur;style.material=s.settings.material;style.tint=s.settings.glassTint/100.f;style.accent=art?(art->ambient?art->ambient:art->accent):0;glass_.style(style);expanded_=s.expanded;live_=s.live;edge_=s.settings.edge;attached_=attached;iconMotion_=s.settings.animatedIcons&&!s.reducedMotion;
+    GlassStyle style;style.visible=glass;style.light=s.light;style.blur=s.blur;style.material=s.settings.material;style.tint=s.settings.glassTint/100.f;style.accent=art?(art->ambient?art->ambient:art->accent):0;style.wallpaper=s.platform.wallpaper;glass_.style(style);
+    // The soft shadow under the island: deeper under dark glass, lighter under light glass, faint under solid.
+    {GlassStyle shade;shade.visible=true;shade.shadow=!s.settings.shadow?0.f:glass?(s.light?.24f:.42f):(s.light?.20f:.30f);shadow_.style(shade);}expanded_=s.expanded;live_=s.live;edge_=s.settings.edge;attached_=attached;iconMotion_=s.settings.animatedIcons&&!s.reducedMotion;
     if(!headerOnly){targets.clear();iconCursor_=7;for(auto& i:icons_)i.used=false;}
     if(baseColor_!=bg||accentColor_!=accent||material_!=int(glass)||cachedEdge_!=edge_){
         baseColor_=bg;accentColor_=accent;material_=int(glass);cachedEdge_=edge_;
@@ -156,7 +166,10 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         surface(navSurface_,47,44,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink,s.light?.055f:.055f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,47,44},12,12),b.Get());});nav_->SetContent(navSurface_.Get());
     }
     wingLeft_->SetContent(attached&&!glass?leftSurface_.Get():nullptr);wingRight_->SetContent(attached&&!glass?rightSurface_.Get():nullptr);barEffect_->SetOpacity(s.page==Page::Overview&&s.expanded&&!s.live?1.f:0.f);
+    {const bool pulse=s.settings.artPulse&&!s.reducedMotion&&s.playback.playing&&bool(s.playback.artwork);
+        setArtPulse(pulse);}
     updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track,accent2);updateLyrics(s,ink,muted,accent);updateBubble(s);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateCard(s,track,accent,solidRaised,ink);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-3.f:30.f,stats?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||(shelf&&!(s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size())),s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
+    headerSpots_.clear();std::wstring sungLine;float sungX=0,sungW=0;
     surface(headerSurface_,600,150,[&](auto* rt){
         if(s.expanded)return;
         if(edge_){text(rt,s.battery>=0?std::to_wstring(s.battery)+L"%":L"—",0,82,64,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_CENTER);text(rt,s.charging?L"Charging":L"Battery",0,105,64,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER);return;}
@@ -164,26 +177,42 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         if(s.hud){
             // Level indicator: icon, compositor-driven bar (hudTrack_/hudFill_) and value.
             float x=std::max(236.f,width)/2-109;bool brightness=s.hud==2,app=s.hud==3;int level=app?s.appVolume:brightness?s.brightness:(s.muted?0:s.volume);
-            if(app&&(s.playback.appIcon||!s.playback.service.empty()))identity(rt,s.playback,x-1,7,20,solidRaised);else drawIcon(rt,d2d_.Get(),brightness?Icon::Brightness:level==0?Icon::Muted:Icon::Volume,x,8,18,ink);text(rt,level>=0?std::to_wstring(level):L"—",x+186,0,32,11.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_TRAILING,34);return;}
+            if(app&&(s.playback.appIcon||!s.playback.service.empty()))identity(rt,s.playback,x-1,7,20,solidRaised);else drawIcon(rt,d2d_.Get(),brightness?Icon::Brightness:level==0?Icon::Muted:Icon::Volume,x,8,18,ink);headerSpots_.push_back({1,level>=0?std::to_wstring(level):L"—",x+218,0,11.5f,DWRITE_FONT_WEIGHT_SEMI_BOLD,ink,34,true});return;}
         const bool bars=s.settings.waveform&&s.playback.playing&&s.waveform&&s.settings.compactMedia;
-        // Privacy dots: green camera, orange microphone, blue location (in that order, once each).
-        std::vector<UINT32> dots;for(auto c:{Capability::Camera,Capability::Microphone,Capability::Location})if(std::any_of(s.privacy.begin(),s.privacy.end(),[&](auto& u){return u.capability==c;}))dots.push_back(c==Capability::Camera?0x30d158:c==Capability::Microphone?0xff9f0a:0x0a84ff);
+        // Privacy dots: green camera, orange microphone, purple screen capture, blue location (in that order, once each).
+        std::vector<UINT32> dots;for(auto c:capabilityOrder)if(std::any_of(s.privacy.begin(),s.privacy.end(),[&](auto& u){return u.capability==c;}))dots.push_back(capabilityColour(c));
         auto drawDots=[&](float right){ComPtr<ID2D1SolidColorBrush> d;rt->CreateSolidColorBrush(D2D1::ColorF(0),&d);float x=right-float(dots.size())*9+4;for(auto color:dots){d->SetColor(D2D1::ColorF(color));rt->FillEllipse(D2D1::Ellipse({x+3,17},3.2f,3.2f),d.Get());x+=9;}};
         if(mini){if(!s.playback.artwork||!s.settings.compactMedia){drawIcon(rt,d2d_.Get(),s.focus.running?Icon::Focus:s.charging?Icon::Power:Icon::Music,14,10,14,muted);}if(!dots.empty()&&s.activity.empty()){drawDots(66);return;}if(!bars)text(rt,s.activity.empty()?L"···":s.activity.starts_with(L"Volume")?std::to_wstring(s.volume):s.activity==L"Muted"?L"—":L"•",42,0,26,10,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER,34);return;}
         bool hasArt=bool(s.playback.artwork)&&s.settings.compactMedia,logo=!hasArt&&s.settings.compactMedia&&s.settings.appIcons&&s.playback.available;if(logo)identity(rt,s.playback,13,7,20,solidRaised);float start=hasArt||logo?42.f:14.f,end=width-(ringsEnabled_?(ringCount_==2?64:40):10)-(bars?32:0);if(!dots.empty()){drawDots(end);end-=float(dots.size())*9+8;}
-        auto chip=[&](Icon glyph,const std::wstring& value,float span){if(end-start<span+78)return;end-=span;drawIcon(rt,d2d_.Get(),glyph,end+3,11,12,muted);text(rt,value,end+19,0,span-21,10,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);end-=7;};
+        // id: the value rolls as odometer `id` (-1: plain text).
+        auto chip=[&](Icon glyph,const std::wstring& value,float span,int id=-1){if(end-start<span+78)return;end-=span;drawIcon(rt,d2d_.Get(),glyph,end+3,11,12,muted);
+            if(id<0)text(rt,value,end+19,0,span-21,10,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);else headerSpots_.push_back({id,value,end+19,0,10,DWRITE_FONT_WEIGHT_MEDIUM,ink,34});end-=7;};
         if(s.settings.compactClock){SYSTEMTIME t{};GetLocalTime(&t);wchar_t value[12];swprintf(value,12,L"%02u:%02u",t.wHour,t.wMinute);chip(Icon::Clock,value,58);}
-        if(s.settings.compactVolume)chip(s.muted?Icon::Muted:Icon::Volume,std::to_wstring(s.volume),48);
-        if(s.settings.compactBattery&&s.battery>=0&&!ringsEnabled_)chip(s.charging?Icon::Power:Icon::Battery,std::to_wstring(s.battery)+L"%",56);
-        if(s.settings.compactTimer&&s.focus.running)chip(Icon::Focus,clockText(std::ceil(s.focus.displayed(seconds()))),64);
-        std::wstring label=!s.activity.empty()?s.activity:s.settings.compactMedia&&s.playback.available?s.playback.title:s.settings.compactTimer&&s.focus.running?clockText(std::ceil(s.focus.displayed(seconds()))):L"Ready";
+        if(s.settings.compactVolume)chip(s.muted?Icon::Muted:Icon::Volume,std::to_wstring(s.volume),48,6);
+        if(s.settings.compactBattery&&s.battery>=0&&!ringsEnabled_)chip(s.charging?Icon::Power:Icon::Battery,std::to_wstring(s.battery)+L"%",56,7);
+        if(s.settings.compactTimer&&s.focus.running)chip(Icon::Focus,clockText(std::ceil(s.focus.displayed(seconds()))),64,8);
+        const bool media=s.settings.compactMedia&&s.playback.available,timing=s.activity.empty()&&!media&&s.settings.compactTimer&&s.focus.running;
+        // Idle glance: with nothing else to show, CPU and GPU (where there is room) and today's date.
+        const bool glance=s.activity.empty()&&!media&&!s.focus.running&&s.settings.compactGlance;
+        if(glance){auto percent=[](double v){wchar_t b[16];swprintf(b,16,L"%.0f%%",v);return std::wstring(b);};
+            if(s.system.cpu>=0)chip(Icon::Processor,percent(s.system.cpu),52,10);if(s.system.gpu>=0)chip(Icon::Gauge,percent(s.system.gpu),52,11);}
+        std::wstring label=!s.activity.empty()?s.activity:media?s.playback.title:L"Ready";
+        // A running timer: its mode when the timer chip already shows the time, else the time itself, rolling.
+        const bool timerChip=std::any_of(headerSpots_.begin(),headerSpots_.end(),[](auto& p){return p.id==8;}),rolling=timing&&!timerChip;
+        if(timing)label=timerChip?(s.focus.mode==FocusClock::Mode::Break?L"Break":s.focus.mode==FocusClock::Mode::Stopwatch?L"Stopwatch":L"Focus"):clockText(std::ceil(s.focus.displayed(seconds())));
+        else if(glance){SYSTEMTIME t{};GetLocalTime(&t);wchar_t date[40];if(GetDateFormatEx(LOCALE_NAME_USER_DEFAULT,0,&t,L"ddd d MMM",date,40,nullptr))label=date;}
         const bool sung=s.activity.empty()&&s.settings.compactMedia&&s.settings.lyrics&&s.settings.lyricsCompact&&s.lyrics&&s.playback.playing&&s.lyricLine>=0&&size_t(s.lyricLine)<s.lyrics->size()&&!(*s.lyrics)[size_t(s.lyricLine)].text.empty();
         if(sung)label=(*s.lyrics)[size_t(s.lyricLine)].text;
-        text(rt,label,start,0,std::max(12.f,end-start),11.5f,sung?accent:ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);
-        if(label!=headerLabel_){if(restCompact_&&!s.expanded&&!s.reducedMotion&&!headerLabel_.empty()){headerEntrance_=seconds();auto a=entrance(headerEntrance_,.35f);headerEffect_->SetOpacity(a.Get());}headerLabel_=label;}
-    });header_->SetContent(headerSurface_.Get());if(headerOnly){commit();return;}
-    drawingContent_=true;iconRequests_.clear();caretTarget_=42;answerY_=-1;answerText_.clear();
-    surface(contentSurface_,380,284,[&](auto* rt){
+        // The sung line has its own layers (it morphs into the next); the timer rolls.
+        if(sung){sungLine=label;sungX=start;sungW=std::max(12.f,end-start);}
+        else if(rolling)headerSpots_.push_back({9,label,start,0,11.5f,DWRITE_FONT_WEIGHT_MEDIUM,ink,34});
+        else text(rt,label,start,0,std::max(12.f,end-start),11.5f,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);
+        // A new label eases in, except a line of lyrics after another or a tick of the timer, which move on their own.
+        const std::wstring labelKey=sung?L"\x1fsung":rolling?L"\x1ftimer":label;
+        if(labelKey!=headerLabel_){if(restCompact_&&!s.expanded&&!s.reducedMotion&&!headerLabel_.empty()){headerEntrance_=seconds();auto a=entrance(headerEntrance_,.35f);headerEffect_->SetOpacity(a.Get());}headerLabel_=labelKey;}
+    });header_->SetContent(headerSurface_.Get());placeOdometers(headerSpots_,{1,6,7,8,9,10,11},header_.Get(),s.reducedMotion);updateCompactLyric(sungLine,sungX,sungW,accent,s.reducedMotion);if(headerOnly){commit();return;}
+    drawingContent_=true;iconRequests_.clear();caretTarget_=42;answerY_=-1;answerText_.clear();contentSpots_.clear();
+    surface(contentSurface_,380,340,[&](auto* rt){
         const bool logoArt=s.settings.appIcons&&s.playback.available&&(!s.playback.service.empty()||s.playback.appIcon);
         ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink),&b);
         auto box=[&](float x,float y,float w,float h,UINT32 color,float radius=12){b->SetColor(D2D1::ColorF(color,color==raised?raisedAlpha:1.f));rt->FillRoundedRectangle(D2D1::RoundedRect({x,y,x+w,y+h},radius,radius),b.Get());};
@@ -215,37 +244,42 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 const std::pair<Icon,const wchar_t*> hints[]={{Icon::Moon,L"dark mode  \u00b7  bluetooth off  \u00b7  volume 40"},{Icon::Focus,L"focus 25  \u00b7  timer 10 min  \u00b7  empty recycle bin"},{Icon::Search,L"spotify  \u00b7  budget pdfs from last month  \u00b7  100 usd to eur"}};
                 for(int i=0;i<3;++i){float y=52+i*40.f;drawIcon(rt,d2d_.Get(),hints[i].first,14,y+10,16,muted);text(rt,hints[i].second,46,y,330,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,38);}
             }
-            for(int i=0;i<int(std::min<size_t>(size_t(rowsMax),c.results.size()));++i){const auto& r=c.results[i];float y=52+i*40.f;Action a=Action(int(Action::CommandResultBase)+i);targets.push_back({a,0,y,380,38,r.kind!=CommandKind::None});
+            // Rows, with a small header before each group when the results span several (Apps, Files, Actions…).
+            const auto rowsLaid=commandRows(c.results,size_t(rowsMax),!c.clips);
+            for(auto [hy,group]:rowsLaid.headers)text(rt,groupName(group),8,hy,200,9.5f,muted,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,18);
+            for(int i=0;i<int(rowsLaid.rows.size());++i){const auto& r=c.results[i];float y=rowsLaid.rows[size_t(i)];Action a=Action(int(Action::CommandResultBase)+i);targets.push_back({a,0,y,380,38,r.kind!=CommandKind::None});
                 const auto* icon=size_t(i)<c.icons.size()?c.icons[i].get():nullptr;
-                if(icon)drawPreview(rt,*icon,7,y+5,28,28);else{box(6,y+4,30,30,raised,15);drawIcon(rt,d2d_.Get(),r.kind==CommandKind::DarkMode&&r.value==0?Icon::Sun:glyph(r.kind),13,y+11,16,r.kind==CommandKind::None?muted:ink);}
+                // A colour code shows itself as a swatch.
+                if(r.kind==CommandKind::Colour){ComPtr<ID2D1SolidColorBrush> sw;rt->CreateSolidColorBrush(D2D1::ColorF(UINT32(r.value)),&sw);rt->FillEllipse(D2D1::Ellipse({21,y+19},14,14),sw.Get());sw->SetColor(D2D1::ColorF(ink,.25f));rt->DrawEllipse(D2D1::Ellipse({21,y+19},14,14),sw.Get(),1/scale_);}
+                else if(icon)drawPreview(rt,*icon,7,y+5,28,28);else{box(6,y+4,30,30,raised,15);drawIcon(rt,d2d_.Get(),r.kind==CommandKind::DarkMode&&r.value==0?Icon::Sun:glyph(r.kind),13,y+11,16,r.kind==CommandKind::None?muted:ink);}
                 const bool keycap=i==c.selected&&r.kind!=CommandKind::None;const wchar_t* cap=c.armed?L"Enter again":L"Enter";const float capWidth=keycap?measure(cap,9.5f,DWRITE_FONT_WEIGHT_SEMI_BOLD)+14:0;
                 // Rows of the empty bar say why they are there; the tag sits before the Enter keycap.
-                const wchar_t* tag=r.section==1?L"Pinned":r.section==2?L"Suggested":r.section==3?L"Recent":nullptr;const float tagWidth=tag?measure(tag,9.5f,DWRITE_FONT_WEIGHT_MEDIUM)+2:0;
+                const wchar_t* tag=!rowsLaid.headers.empty()?nullptr:r.section==1?L"Pinned":r.section==2?L"Suggested":r.section==3?L"Recent":nullptr;const float tagWidth=tag?measure(tag,9.5f,DWRITE_FONT_WEIGHT_MEDIUM)+2:0;
                 const float tagRight=keycap?372-capWidth-8:374;const float room=(tag?tagRight-tagWidth-10:tagRight)-46;
                 // An answer is drawn by its rolling-digit layer; matched letters are highlighted.
                 if(r.kind==CommandKind::Currency&&!r.answer.empty()){if(answerY_<0){answerY_=y-1;answerText_=r.answer;}}
                 else if(!r.marks.empty())markedText(rt,r.title,r.marks,46,y+2,room,12.5f,ink,accent);else text(rt,r.title,46,y+2,room,12.5f,r.kind==CommandKind::None?muted:ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
                 text(rt,r.detail,46,y+21,room,10,muted);if(tag)text(rt,tag,tagRight-tagWidth,y+10,tagWidth,9.5f,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_TRAILING,19);
                 if(keycap){box(372-capWidth,y+10,capWidth,19,s.light?0xffffff:0x2c323c,6);label(cap,372-capWidth,y+10,capWidth,19,9.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}}
-            const float footer=commandFooterY(c.results.empty()?(c.clips?1:3):int(std::min<size_t>(size_t(rowsMax),c.results.size())));
+            const float footer=c.results.empty()?commandFooterY(c.clips?1:3):rowsLaid.footer;
             if(!c.status.empty()){const bool workspace=size_t(c.selected)<c.results.size()&&c.results[size_t(c.selected)].kind==CommandKind::Workspace;drawIcon(rt,d2d_.Get(),c.error?Icon::Info:c.armed?(workspace?Icon::Workspace:Icon::Info):Icon::Check,2,footer+6,14,c.error?0xe5484d:accent);text(rt,c.status,22,footer,356,10.5f,c.error?0xe5484d:ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,26);}
             else{float x=0;
                 // The footer names what the keys do for the selected row.
                 const CommandResult* chosen=size_t(c.selected)<c.results.size()?&c.results[size_t(c.selected)]:nullptr;std::vector<std::pair<const wchar_t*,const wchar_t*>> hints;
                 if(c.clips)hints=c.paste?decltype(hints){{L"Enter",L"Paste"},{L"Shift+Enter",L"Copy only"},{L"Esc",L"Close"}}:decltype(hints){{L"Enter",L"Copy"},{L"\u2191 \u2193",L"Choose"},{L"Esc",L"Close"}};
                 else if(chosen&&chosen->kind==CommandKind::OpenFile)hints={{L"Enter",L"Open"},{L"Ctrl+Enter",L"Show in folder"},{L"Ctrl+C",L"Copy path"}};
-                else if(chosen&&chosen->kind==CommandKind::Currency)hints={{L"Enter",L"Copy"},{L"Esc",L"Close"}};
+                else if(chosen&&(chosen->kind==CommandKind::Currency||chosen->kind==CommandKind::Colour))hints={{L"Enter",L"Copy"},{L"Esc",L"Close"}};
                 else if(!ghost.empty())hints={{L"Enter",L"Run"},{L"Tab",L"Complete"},{L"Esc",L"Close"}};
                 else if(c.text.empty()&&chosen&&chosen->kind!=CommandKind::None)hints={{L"Enter",L"Run"},{L"Ctrl+P",L"Pin"},{L"Esc",L"Close"}};
                 else hints={{L"Enter",L"Run"},{L"\u2191 \u2193",L"Choose"},{L"Esc",L"Close"}};
                 for(auto [cap,what]:hints){float w=measure(cap,9,DWRITE_FONT_WEIGHT_SEMI_BOLD)+12;box(x,footer+4,w,18,raised,5);label(cap,x,footer+4,w,18,9,muted,DWRITE_FONT_WEIGHT_SEMI_BOLD);x+=w+6;float t=measure(what,10)+2;text(rt,what,x,footer,t,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,26);x+=t+16;}}
             return;
         }
-        if(s.card&&s.notice.kind>=5&&s.notice.kind<=7){
+        if(s.card&&((s.notice.kind>=5&&s.notice.kind<=7)||s.notice.kind==12)){
             // Privacy card: the app's own icon in a ring of the capability's colour.
-            const auto& n=s.notice;const wchar_t* what=n.kind==5?L"Camera in use":n.kind==6?L"Microphone in use":L"Location in use";
+            const auto& n=s.notice;const wchar_t* what=n.kind==5?L"Camera in use":n.kind==6?L"Microphone in use":n.kind==12?L"Screen being captured":L"Location in use";
             text(rt,what,72,6,196,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.app.empty()?std::wstring(L"An app"):n.app,72,30,196,11,muted);
-            const UINT32 color=n.kind==5?0x30d158:n.kind==6?0xff9f0a:0x0a84ff;box(292,10,40,40,raised,20);drawIcon(rt,d2d_.Get(),n.kind==5?Icon::Camera:n.kind==6?Icon::Microphone:Icon::Location,302,20,20,color);
+            const UINT32 color=n.kind==5?0x30d158:n.kind==6?0xff9f0a:n.kind==12?0xbf5af2:0x0a84ff;box(292,10,40,40,raised,20);drawIcon(rt,d2d_.Get(),n.kind==5?Icon::Camera:n.kind==6?Icon::Microphone:n.kind==12?Icon::Snip:Icon::Location,302,20,20,color);
             return;
         }
         if(s.card&&s.notice.kind==8){
@@ -306,8 +340,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             if(!s.playback.artwork){box(0,43,64,64,raised,15);if(logoArt)identity(rt,s.playback,12,55,40,solidRaised);else drawIcon(rt,d2d_.Get(),Icon::Music,19,62,26,muted);}
             // Title and artist sit as one block centred on the artwork (43..107), as does the play button.
             text(rt,s.playback.available?s.playback.title:L"A quieter place for everything",80,52,252,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.available?s.playback.artist:L"Play something. Find your rhythm.",80,77,252,11,muted);iconButton(Action::Play,s.playback.playing?Icon::Pause:Icon::Play,340,55,40,40,true,s.playback.canToggle);targets.push_back({Action::Media,0,38,328,74});
-            const Icon glyphs[]={Icon::Processor,Icon::Memory,Icon::Battery,Icon::Download,Icon::Upload,Icon::Disk,Icon::Clock};const wchar_t* names[]={L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime"};
-            for(int i=0;i<3;++i){int metric=s.settings.homeMetrics[i];float x=i*130.f;box(x,126,120,68,raised,13);drawIcon(rt,d2d_.Get(),glyphs[metric],x+12,137,14,muted);text(rt,names[metric],x+33,136,77,10,muted);std::wstring number;switch(metric){case 0:number=value(s.system.cpu)+ (s.system.cpu>=0?L"%":L"");break;case 1:number=s.system.ramTotalGiB?value(s.system.ramPercent)+L"%":L"—";break;case 2:number=s.battery>=0?std::to_wstring(s.battery)+L"%":L"—";break;case 3:number=s.system.networkAvailable?rateText(s.system.download):L"—";break;case 4:number=s.system.networkAvailable?rateText(s.system.upload):L"—";break;case 5:number=s.system.diskTotalGiB?value(s.system.diskFreeGiB)+L" GB":L"—";break;default:number=clockText(double(s.system.uptime));break;}text(rt,number,x+12,156,100,metric>=3?18:23,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}
+            const Icon glyphs[]={Icon::Processor,Icon::Memory,Icon::Battery,Icon::Download,Icon::Upload,Icon::Disk,Icon::Clock,Icon::Gauge};const wchar_t* names[]={L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime",L"GPU"};
+            for(int i=0;i<3;++i){int metric=s.settings.homeMetrics[i];float x=i*130.f;box(x,126,120,68,raised,13);drawIcon(rt,d2d_.Get(),glyphs[metric],x+12,137,14,muted);text(rt,names[metric],x+33,136,77,10,muted);std::wstring number;switch(metric){case 0:number=value(s.system.cpu)+ (s.system.cpu>=0?L"%":L"");break;case 1:number=s.system.ramTotalGiB?value(s.system.ramPercent)+L"%":L"—";break;case 2:number=s.battery>=0?std::to_wstring(s.battery)+L"%":L"—";break;case 3:number=s.system.networkAvailable?rateText(s.system.download):L"—";break;case 4:number=s.system.networkAvailable?rateText(s.system.upload):L"—";break;case 5:number=s.system.diskTotalGiB?value(s.system.diskFreeGiB)+L" GB":L"—";break;case 7:number=s.system.gpu<0?L"—":value(s.system.gpu)+L"%";break;default:number=clockText(double(s.system.uptime));break;}contentSpots_.push_back({3+i,number,x+12,156,metric>=3&&metric!=7?18.f:23.f,DWRITE_FONT_WEIGHT_SEMI_BOLD,ink});}
             iconButton(Action::Mute,s.muted?Icon::Muted:Icon::Volume,0,200,28,28);b->SetColor(D2D1::ColorF(line,lineAlpha));rt->DrawLine({38,214},{300,214},b.Get(),2);text(rt,s.muted?L"Muted":std::to_wstring(s.volume)+L"%",306,206,36,10.5f,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,16);iconButton(Action::Audio,Icon::Audio,346,200,34,28);targets.push_back({Action::VolumeSlider,38,201,262,26});
         }else if(s.page==Page::Media){
             bool video=s.settings.mediaLayout==2||(s.settings.mediaLayout==0&&s.playback.kind==MediaKind::Video);float tx=video?166.f:118.f,tw=380-tx;
@@ -346,13 +380,15 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             {int connected=int(std::count_if(s.devices.begin(),s.devices.end(),[](auto& d){return d.connected;}));text(rt,s.deviceFeedback.empty()?std::to_wstring(s.devices.size())+L" paired  ·  "+std::to_wstring(connected)+L" connected":s.deviceFeedback,160,210,220,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
         }else if(s.page==Page::System){
             auto stat=[&](Icon glyph,const wchar_t* name,const std::wstring& number,float x,float y,float w){drawIcon(rt,d2d_.Get(),glyph,x,y,14,muted);text(rt,name,x+22,y-1,w-22,10,muted);text(rt,number,x,y+20,w,22,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);};
-            stat(Icon::Processor,L"PROCESSOR",s.system.cpu<0?L"—":value(s.system.cpu)+L"%",0,42,180);stat(Icon::Memory,L"MEMORY / GB",s.system.ramTotalGiB?value(s.system.ramUsedGiB,1)+L" / "+value(s.system.ramTotalGiB,1):L"—",208,42,172);
+            stat(Icon::Processor,L"PROCESSOR",s.system.cpu<0?L"—":value(s.system.cpu)+L"%",0,42,112);stat(Icon::Gauge,L"GPU",s.system.gpu<0?L"—":value(s.system.gpu)+L"%",124,42,104);stat(Icon::Memory,L"MEMORY / GB",s.system.ramTotalGiB?value(s.system.ramUsedGiB,1)+L" / "+value(s.system.ramTotalGiB,1):L"—",240,42,140);
+            // The GPU line runs faintly under the processor line.
+            if(s.system.gpu>=0){b->SetColor(D2D1::ColorF(accent2,.45f));for(unsigned i=1;i<s.system.samples;++i){unsigned base=40-s.system.samples;rt->DrawLine({float((i-1)*380./39),125-s.system.gpuHistory[base+i-1]*.25f},{float(i*380./39),125-s.system.gpuHistory[base+i]*.25f},b.Get(),1.2f);}}
             b->SetColor(D2D1::ColorF(accent));for(unsigned i=1;i<s.system.samples;++i){unsigned base=40-s.system.samples;rt->DrawLine({float((i-1)*380./39),125-s.system.cpuHistory[base+i-1]*.25f},{float(i*380./39),125-s.system.cpuHistory[base+i]*.25f},b.Get(),1.5f);}hairline(0,132,380);
             stat(Icon::Download,L"DOWN",s.system.networkAvailable?rateText(s.system.download):L"—",0,147,120);stat(Icon::Upload,L"UP",s.system.networkAvailable?rateText(s.system.upload):L"—",132,147,120);stat(Icon::Disk,L"FREE",s.system.diskTotalGiB?value(s.system.diskFreeGiB)+L" GB":L"—",264,147,116);{std::wstring line=s.platform.product.empty()?std::to_wstring(s.system.logicalProcessors)+L" threads  ·  up "+clockText(double(s.system.uptime)):s.platform.product+(s.powerMode>=0?L"  ·  "+std::wstring(powerModeName(s.powerMode)):L"");const bool armoury=!s.platform.armoury.empty();text(rt,line,0,208,armoury?262.f:380.f,10,muted);if(armoury)button(Action::Armoury,L"Armoury Crate",270,201,110,25);}
         }else if(s.page==Page::Focus){
             button(Action::Timer25,L"Focus",0,36,120,28,s.focus.mode==FocusClock::Mode::Focus);button(Action::Timer5,L"Break",130,36,120,28,s.focus.mode==FocusClock::Mode::Break);button(Action::Stopwatch,L"Stopwatch",260,36,120,28,s.focus.mode==FocusClock::Mode::Stopwatch);
             double progress=s.focus.mode==FocusClock::Mode::Stopwatch?std::fmod(s.focus.elapsed(seconds()),60.)/60.:normalizedProgress(s.focus.displayed(seconds()),s.focus.duration);drawRing(rt,d2d_.Get(),63,130,38,3,progress,accent,line);drawIcon(rt,d2d_.Get(),Icon::Focus,50,117,26,accent);
-            text(rt,clockText(std::ceil(s.focus.displayed(seconds()))),124,91,252,42,ink,DWRITE_FONT_WEIGHT_LIGHT);text(rt,s.focus.finished?L"A moment well spent":s.focus.running?L"One thing at a time":L"A little space to begin",127,144,245,11,muted);iconButton(Action::TimerToggle,s.focus.running?Icon::Pause:Icon::Play,130,180,42,42,true);iconButton(Action::TimerReset,Icon::Reset,190,183,36,36);text(rt,s.focus.running?L"Pause session":L"Start session",238,193,142,10,muted);
+            contentSpots_.push_back({2,clockText(std::ceil(s.focus.displayed(seconds()))),124,91,42,DWRITE_FONT_WEIGHT_LIGHT,ink});text(rt,s.focus.finished?L"A moment well spent":s.focus.running?L"One thing at a time":L"A little space to begin",127,144,245,11,muted);iconButton(Action::TimerToggle,s.focus.running?Icon::Pause:Icon::Play,130,180,42,42,true);iconButton(Action::TimerReset,Icon::Reset,190,183,36,36);text(rt,s.focus.running?L"Pause session":L"Start session",238,193,142,10,muted);
         }else if(s.page==Page::Shelf){
             const bool detail=s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size();
             if(!detail)tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"}},s.shelfTab,30);
@@ -418,7 +454,9 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         const wchar_t* labels[]={L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio"};const Action actions[]={Action::Overview,Action::Media,Action::System,Action::Focus,Action::Settings,Action::Shelf,Action::Audio};const Icon glyphs[]={Icon::Home,Icon::Music,Icon::Stats,Icon::Focus,Icon::Settings,Icon::Shelf,Icon::Audio};
         for(int slot=0;slot<7;++slot){int p=s.settings.navigation[slot];float x=std::round((slot*navStep+4)*scale_)/scale_;bool selected=int(s.page)==p;targets.push_back({actions[p],x,navY,47,44});icon(actions[p],glyphs[p],x+14,navY+5,19,selected?ink:muted,p);label(labels[p],x,navY+26,47,16,9.5f,selected?ink:muted);if(selected){if(s.reducedMotion)navX.reset(x,seconds());else if(navX.target()!=x)navX.retarget(x,seconds(),MotionTokens::navigation);}}
         if(debug){b->SetColor(D2D1::ColorF(0xf98585));for(auto& target:targets)rt->DrawRectangle({target.x,target.y,target.x+target.width,target.y+target.height},b.Get());}
-    });drawingContent_=false;updateCaret(s,caretTarget_,accent);updateAnswer(s,ink);for(auto request:iconRequests_)icon(request.action,request.glyph,request.x,request.y,request.size,request.color,request.slot);for(auto& b:bands_)b.visual->SetContent(contentSurface_.Get());for(auto& item:icons_)if(!item.used)item.effect->SetOpacity(0.f);auto nx=animation(navX,seconds(),scale_,20*scale_);nav_->SetOffsetX(nx.Get());nav_->SetOffsetY((38+navY)*scale_);commit();
+    });drawingContent_=false;updateCaret(s,caretTarget_,accent);
+    if(answerY_>=0&&!answerText_.empty()&&s.command.active)contentSpots_.push_back({0,answerText_,46,answerY_,17,DWRITE_FONT_WEIGHT_SEMI_BOLD,ink,0,false,true});
+    placeOdometers(contentSpots_,{0,2,3,4,5},content_.Get(),s.reducedMotion);for(auto request:iconRequests_)icon(request.action,request.glyph,request.x,request.y,request.size,request.color,request.slot);for(auto& b:bands_)b.visual->SetContent(contentSurface_.Get());for(auto& item:icons_)if(!item.used)item.effect->SetOpacity(0.f);auto nx=animation(navX,seconds(),scale_,20*scale_);nav_->SetOffsetX(nx.Get());nav_->SetOffsetY((38+navY)*scale_);commit();
 }
 
 ComPtr<IDCompositionAnimation> Renderer::animation(const Spring& s,double now,float factor,float bias) {
@@ -435,12 +473,13 @@ void Renderer::animate(const MotionEngine& m,double now) {
     // At rest the body sits on whole physical pixels, so its edges meet the shoulders exactly.
     const bool rest=m.width.settled(now)&&m.height.settled(now)&&m.radius.settled(now);
     const float restW=std::round(float(m.width.target()*scale_)),restH=std::round(float(m.height.target()*scale_));
-    const float restX=std::round(float((edge_?canvasWidth-m.width.target():(canvasWidth-m.width.target())/2)*scale_)),restY=edge_?std::round(float((canvasHeight-m.height.target())*scale_/2)):0.f;
+    const float restX=std::round(float((edge_==1?canvasWidth-m.width.target():edge_==2?0.:(canvasWidth-m.width.target())/2)*scale_)),restY=edge_?std::round(float((canvasHeight-m.height.target())*scale_/2)):0.f;
     auto w=animation(m.width,now,scale_),h=animation(m.height,now,scale_),r=animation(m.radius,now,scale_);
     auto iw=animation(m.width,now,scale_,-2),ih=animation(m.height,now,scale_,-2),ir=animation(m.radius,now,scale_,-1);
     if(rest){check(clip_->SetRight(restW));check(clip_->SetBottom(restH));check(innerClip_->SetRight(restW-2));check(innerClip_->SetBottom(restH-2));}
     else{check(clip_->SetRight(w.Get()));check(clip_->SetBottom(h.Get()));check(innerClip_->SetRight(iw.Get()));check(innerClip_->SetBottom(ih.Get()));}
-    bool tl=!attached_||edge_,tr=!attached_,bl=true,br=!attached_||!edge_;
+    // The corners on the screen edge are square when attached (the shoulders take over there).
+    bool tl=!attached_||edge_==1,tr=!attached_||edge_==2,bl=!attached_||edge_!=2,br=!attached_||edge_!=1;
 
     auto corners=[&](IDCompositionRectangleClip* clip,IDCompositionAnimation* radius){
         if(tl){clip->SetTopLeftRadiusX(radius);clip->SetTopLeftRadiusY(radius);}else{clip->SetTopLeftRadiusX(0.f);clip->SetTopLeftRadiusY(0.f);}
@@ -448,7 +487,7 @@ void Renderer::animate(const MotionEngine& m,double now) {
         if(bl){clip->SetBottomLeftRadiusX(radius);clip->SetBottomLeftRadiusY(radius);}else{clip->SetBottomLeftRadiusX(0.f);clip->SetBottomLeftRadiusY(0.f);}
         if(br){clip->SetBottomRightRadiusX(radius);clip->SetBottomRightRadiusY(radius);}else{clip->SetBottomRightRadiusX(0.f);clip->SetBottomRightRadiusY(0.f);}
     };corners(clip_.Get(),r.Get());corners(innerClip_.Get(),ir.Get());
-    auto x=animation(m.width,now,edge_?-scale_:-scale_/2,canvasWidth*scale_/(edge_?1:2));if(m.width.settled(now))check(body_->SetOffsetX(restX));else check(body_->SetOffsetX(x.Get()));
+    auto x=animation(m.width,now,edge_==1?-scale_:-scale_/2,canvasWidth*scale_/(edge_==1?1:2));if(m.width.settled(now)||edge_==2)check(body_->SetOffsetX(restX));else check(body_->SetOffsetX(x.Get()));
     if(edge_){auto y=animation(m.height,now,-scale_/2,canvasHeight*scale_/2);if(m.height.settled(now))check(body_->SetOffsetY(restY));else check(body_->SetOffsetY(y.Get()));}else check(body_->SetOffsetY(0.f));
     auto dx=animation(m.dragX,now,scale_),dy=animation(m.dragY,now,scale_);check(root_->SetOffsetX(dx.Get()));check(root_->SetOffsetY(dy.Get()));
     // Shoulders: redrawn whenever the target radius changes; scaled only while it animates.
@@ -457,8 +496,9 @@ void Renderer::animate(const MotionEngine& m,double now) {
     auto shoulder=animation(m.radius,now,1.f/wingRadius_);for(auto p:{leftScale_.Get(),rightScale_.Get()}){if(m.radius.settled(now)){check(p->SetScaleX(1.f));check(p->SetScaleY(1.f));}else{check(p->SetScaleX(shoulder.Get()));check(p->SetScaleY(shoulder.Get()));}}
     if(edge_){
         // Anchored at the screen edge; the inner end of each wing meets the body's top or bottom.
-        leftScale_->SetCenterX(depth);leftScale_->SetCenterY(along);rightScale_->SetCenterX(depth);rightScale_->SetCenterY(1.f);
-        wingLeft_->SetOffsetX(canvasWidth*scale_-depth);wingRight_->SetOffsetX(canvasWidth*scale_-depth);
+        const float anchorX=edge_==2?0.f:depth,wingX=edge_==2?0.f:canvasWidth*scale_-depth;
+        leftScale_->SetCenterX(anchorX);leftScale_->SetCenterY(along);rightScale_->SetCenterX(anchorX);rightScale_->SetCenterY(1.f);
+        wingLeft_->SetOffsetX(wingX);wingRight_->SetOffsetX(wingX);
         if(m.height.settled(now)){wingLeft_->SetOffsetY(restY-along);wingRight_->SetOffsetY(restY+restH-1);}
         else{auto ly=animation(m.height,now,-scale_/2,canvasHeight*scale_/2-along),ry=animation(m.height,now,scale_/2,canvasHeight*scale_/2-1);wingLeft_->SetOffsetY(ly.Get());wingRight_->SetOffsetY(ry.Get());}
         header_->SetOffsetX(expanded_?std::round(20*scale_):0.f);}
@@ -480,8 +520,8 @@ void Renderer::animate(const MotionEngine& m,double now) {
     auto nx=animation(navX,now,scale_,20*scale_);nav_->SetOffsetX(nx.Get());nav_->SetOffsetY((38+navY)*scale_);
     auto rx=animation(m.width,now,edge_&&!expanded_?0.f:scale_,edge_&&!expanded_?8*scale_:-58*scale_);rings_->SetOffsetX(rx.Get());rings_->SetOffsetY(edge_&&!expanded_?38*scale_:0.f);
     auto ba=animation(batteryAngle,now),ta=animation(timerAngle,now);batteryRotation_->SetAngle(ba.Get());timerRotation_->SetAngle(ta.Get());
-    auto pulse=animation(m.pulse,now);pulseEffect_->SetOpacity(pulse.Get());glass_.animate(m,now,edge_,attached_);
-    {auto slide=animation(m.slide,now,edge_?74*scale_:-44*scale_);if(edge_){stage_->SetOffsetX(slide.Get());stage_->SetOffsetY(0.f);}else{stage_->SetOffsetY(slide.Get());stage_->SetOffsetX(0.f);}
+    auto pulse=animation(m.pulse,now);pulseEffect_->SetOpacity(pulse.Get());glass_.animate(m,now,edge_,attached_);shadow_.animate(m,now,edge_,attached_);
+    {auto slide=animation(m.slide,now,edge_==1?74*scale_:edge_==2?-74*scale_:-44*scale_);if(edge_){stage_->SetOffsetX(slide.Get());stage_->SetOffsetY(0.f);}else{stage_->SetOffsetY(slide.Get());stage_->SetOffsetX(0.f);}
         ComPtr<IDCompositionAnimation> fade;check(device_->CreateAnimation(&fade));check(fade->SetAbsoluteBeginTime(ticks(now)));double duration=0;auto curve=approximateCurve([&](double t){return m.stageOpacity(t);},[&](double t){return m.slide.settled(t);},now,duration);
         for(auto& c:curve)check(fade->AddCubic(c.time,float(c.p),float(c.v),float(c.quadratic),float(c.cubic)));check(fade->End(duration,float(m.stageOpacity(now+10).position)));stageEffect_->SetOpacity(fade.Get());}
     if(m.card)cardIconEffect_->SetOpacity(opacity.Get());

@@ -73,7 +73,7 @@ class Renderer {
     ComPtr<IDCompositionEffectGroup> contentEffect_,barEffect_,headerEffect_,artEffect_,pulseEffect_,hoverEffect_;
     ComPtr<IDCompositionSurface> baseSurface_,innerSurface_,headerSurface_,contentSurface_,barSurface_,artSurface_,leftSurface_,rightSurface_,pulseSurface_,hoverSurface_;
     ComPtr<IDCompositionScaleTransform> artScale_,leftScale_,rightScale_,hoverScale_;
-    int cachedEdge_=-1,edge_=0;bool attached_=true,expanded_=false,live_=false;UINT32 baseColor_=0,accentColor_=0;int material_=-1;GlassBackdrop glass_;std::shared_ptr<const Artwork> artwork_;
+    int cachedEdge_=-1,edge_=0;bool attached_=true,expanded_=false,live_=false;UINT32 baseColor_=0,accentColor_=0;int material_=-1;GlassBackdrop glass_,shadow_;std::shared_ptr<const Artwork> artwork_;
         struct IconVisual {ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionSurface> surface;ComPtr<IDCompositionScaleTransform> scale;ComPtr<IDCompositionEffectGroup> effect;Spring x{0},y{0},lift{0},zoom{1};Action action=Action::None;int key=-1;float drawnSize=0,baseY=0;bool used=false;};
     struct IconRequest{Action action;Icon glyph;float x,y,size;UINT32 color;int slot;};std::vector<IconRequest> iconRequests_;bool drawingContent_=false;
     std::array<IconVisual,64> icons_;size_t iconCursor_=7;bool iconMotion_=true;Action hoverAction_=Action::None;bool pressing_=false;
@@ -133,9 +133,26 @@ class Renderer {
     void timeLyrics(const ContentSnapshot&,double now);
     // Phase 5D, command bar v2: matched letters in titles, and answers whose digits roll into place.
     void markedText(ID2D1RenderTarget*,const std::wstring&,const MatchMarks&,float x,float y,float w,float size,UINT32 color,UINT32 highlight);
-    struct AnswerColumn{ComPtr<IDCompositionVisual> column,strip;ComPtr<IDCompositionRectangleClip> clip;Spring roll{10};int digit=-1;};
-    ComPtr<IDCompositionVisual> answer_;ComPtr<IDCompositionEffectGroup> answerEffect_;std::array<AnswerColumn,20> answerColumns_;ComPtr<IDCompositionSurface> answerDigits_;std::map<wchar_t,ComPtr<IDCompositionSurface>> answerGlyphs_;
-    UINT32 answerInk_=1;float answerDigitWidth_=0,answerY_=-1;std::wstring answerText_,answerShown_;void updateAnswer(const ContentSnapshot&,UINT32 ink);
+    // Phase 5E, rolling numbers. Where a number is drawn, its place is recorded as a spot and
+    // an odometer shows it instead: one column per character, digits as windows onto a strip
+    // of tabular 0-9 (three times over) that springs to the new digit.
+    // Spot ids: 0 currency answer, 1 level indicator, 2 focus clock, 3-5 Home statistics,
+    // 6-8 compact volume, battery and timer, 9 the compact timer label, 10-11 the idle glance CPU and GPU.
+    // box: the height the text is centred in (0: top-aligned).
+    struct OdometerSpot{int id;std::wstring text;float x,y,size;DWRITE_FONT_WEIGHT weight;UINT32 ink;float box=0;bool trailing=false,spin=false;};
+    struct OdometerColumn{ComPtr<IDCompositionVisual> column,strip;ComPtr<IDCompositionRectangleClip> clip;Spring roll{10};int digit=-1;};
+    struct Odometer{ComPtr<IDCompositionVisual> root;ComPtr<IDCompositionEffectGroup> effect;std::vector<OdometerColumn> columns;ComPtr<IDCompositionSurface> digits;std::map<wchar_t,ComPtr<IDCompositionSurface>> glyphs;
+        float size=0,cell=0,top=0,line=0;int weight=0;UINT32 ink=1;float halo=-1;std::wstring shown;float x=0,y=0,box=0;bool trailing=false;};
+    std::array<Odometer,12> odometers_;std::vector<OdometerSpot> contentSpots_,headerSpots_;float answerY_=-1;std::wstring answerText_;double cascadeStart_=-10;
+    void odometer(Odometer&,IDCompositionVisual* parent,const OdometerSpot*,bool reduced);void placeOdometers(const std::vector<OdometerSpot>&,std::initializer_list<int> ids,IDCompositionVisual* parent,bool reduced);
+    // The fade and rise of content band k in a cascade that began at `start`.
+    void bandCascade(double start,size_t k,ComPtr<IDCompositionAnimation>& fade,ComPtr<IDCompositionAnimation>& rise);
+    // The sung line in the compact island: two layers, so a new line rises in as the last one lifts away.
+    struct CompactLyric{ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionSurface> surface;ComPtr<IDCompositionEffectGroup> effect;};
+    std::array<CompactLyric,2> compactLyric_;ComPtr<IDCompositionVisual> compactLyricHost_;ComPtr<IDCompositionRectangleClip> compactLyricClip_;int compactFront_=0;std::wstring compactLyricShown_,compactLyricKey_;
+    void updateCompactLyric(const std::wstring& line,float x,float w,UINT32 ink,bool reduced);
+    // Ease-out cubic from `from` to `to` over `duration`, beginning at `start`.
+    ComPtr<IDCompositionAnimation> ease(double start,float from,float to,double duration);
     void ensureNowPlaying();void updateLyrics(const ContentSnapshot&,UINT32 ink,UINT32 muted,UINT32 accent);void updateBubble(const ContentSnapshot&);
     // Word-wrapped text, at most `lines` lines (shrinking once if needed), with an optional soft glow.
     void wrappedText(ID2D1RenderTarget*,const std::wstring&,float x,float y,float w,float h,float size,UINT32 color,DWRITE_FONT_WEIGHT,UINT32 glow=0,int lines=2);
@@ -153,7 +170,8 @@ public:
     std::vector<HitTarget> targets;
     Action hit(float x,float y)const;
     unsigned commits=0,redraws=0; bool software=false;
-    void initialize(HWND,float);
+    // shadow: the click-through window under the island that shows its soft drop shadow (optional).
+    void initialize(HWND,float,HWND shadow=nullptr);
     void redraw(const ContentSnapshot&,bool debug=false,bool headerOnly=false);
     // Heights 0..1 per waveform bar, -1 for stretches not heard yet.
     void waveform(const std::array<float,64>& heights,bool reduced);
@@ -171,7 +189,9 @@ public:
     void animate(const MotionEngine&,double);
     void iconFeedback(Action,bool pressed,bool enabled);
     bool glassAvailable()const{return glass_.available();}GlassStyle glassStyle()const{return glass_.current();}UINT32 accentColor()const{return accentColor_;}
-    void spectrum(const SpectrumFrame&);void energize(bool reduced,bool charging);void meters(const std::vector<MixerEntry>&,int offset,bool visible);
+    void spectrum(const SpectrumFrame&);
+    // Phase 5E: the artwork beat pulse (a scale about the cover's centre, before its size scale).
+    ComPtr<IDCompositionScaleTransform> artPulse_;Glide artBeat_{1,0,1,0,0};float bassAverage_=0;double beatAt_=0;bool artPulseOn_=false;void beat(const SpectrumFrame&);void setArtPulse(bool on);void energize(bool reduced,bool charging);void meters(const std::vector<MixerEntry>&,int offset,bool visible);
     // The Media page shows lyric lines instead of title and artist.
     static bool lyricsPanel(const ContentSnapshot&);
     // The seek bubble alone, while the pointer moves over the timeline.

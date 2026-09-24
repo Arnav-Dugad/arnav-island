@@ -1,94 +1,82 @@
-# Arnav Island v0.13 — development report
+# Arnav Island v0.14 — development report
 
 ## What changed
 
-**Glass in the island's own shape.**
-- **One piece of glass.** The Windows.UI.Composition layer is split into:
-  - a body whose screen-side corners run past the edge
-  - two concave shoulders, clipped by real path geometry: a Direct2D figure handed to composition through the documented `IGeometrySource2DInterop`
-- **No seams.** Every part carries its own copy of the backdrop, tint, depth and sheen layers, all sized to one shared frame, so gradients continue across the joins. All edges are computed with `Round()` inside the compositor expressions, so the joins sit on whole pixels in every frame. See-through glass never shows a seam.
-- **Motion.** Shoulders are built at the target radius and scaled about their anchor while the radius springs, exactly like the Solid wings.
-- **Vibrancy.** Direct2D's colour-matrix effect is described to composition through `IGraphicsEffectD2D1Interop`, so saturation (1.75 dark, 1.65 light) runs on the GPU over the host backdrop brush. If an older Windows rejects the effect, the plain blur remains.
-- **Edge.** A specular rim and a two-step inner glow stroke the body geometry and the shoulder curves:
-  - absolute-mapped gradients start at each shoulder's join
-  - an inset clip hands the body's rim over to the curve at exactly the shoulder's depth
-- **Settings.** Glass no longer floats by default, and `Settings::gap()` is gone.
+**The glass material.**
+- **Research first.** Apple's materials are not only blur. They add vibrancy (saturation), remap the backdrop's luminosity into a narrow band, add a fine grain, light the edges and cast a soft shadow. Each was prototyped on a test bench: a generated, photo-like backdrop shown full screen, with the island grabbed live over it.
+- **The material matrix.** One Direct2D colour-matrix effect runs over the host backdrop brush:
+  - saturation 1.8 (dark) or 1.55 (light)
+  - a luminosity gain of 0.34 (dark) or 0.74 (light), less as the tint rises
+  - an offset that leans with the wallpaper's brightness
+- **Edge light.** Strips along the free edges (14 px) run the same backdrop through a brighter, more saturated matrix. Mask brushes with linear gradients fade them to nothing inside.
+- **Grain.** A 7% two-tone noise texture, drawn once into a composition drawing surface with Direct2D.
+- **Moving highlight.** The rim and glow gradients rotate about their centres. The angle is an expression of the drag and of how far the width and height still are from their targets, clamped to ±26°, so it tilts while the island moves and levels when it settles.
+- **Soft shadow.** A separate window sits under the island: layered, transparent and without a redirection bitmap, so it never takes a click. It holds one sprite, a rounded rectangle blurred with Direct2D's Gaussian blur and laid out as a nine-grid, and follows the island's size and shape.
+- **Clear glass.** The dark tint base went from 0.40 to 0.46, and the text halo from 0.34 to 0.48 (0.40 in light mode).
 
-**Lyrics scroller.**
-- **Layers.**
-  - Neighbouring lines share one layer.
-  - The sung line has its own layer.
-  - The line it replaces is a fading "ghost" (its lit surface, swapped rather than redrawn).
-- **One spring for a line change.** It carries the scroll, the new line's growth from 13 to 17 px and the ghost's shrink and fade.
-- **The fill.** A lit copy of the line is revealed by per-row rectangle clips animated in the compositor. The fill moves at about 14 characters a second and finishes before the next timestamp, so the CPU does nothing between lines.
-- **Gaps.** Instrumental gaps (and the intro) show three dots whose opacities ramp across the gap.
-- **Tapping.** Visible lines are hit targets that seek to the line's start.
+**Awareness.**
+- **Screen capture.** The capability consent store's `graphicsCaptureProgrammatic` and `graphicsCaptureWithoutBorder` records are read alongside camera, microphone and location. An active capture gives a purple dot (the order is camera, microphone, screen, location) and a card (kind 12).
+- **GPU.** A PDH query reads `GPU Engine(*)\Utilization Percentage`:
+  - collected only while the Stats page, Home or the idle glance shows it
+  - each engine's load is summed across processes (instances are keyed from `luid_`), and the busiest engine is the GPU's load
+  - `gpuBusy` is a pure function with tests
 
-**Command bar v2.**
-- **Files.** A Windows Search OLE DB session (`Search.CollatorDSO`) runs on the command worker.
-  - Typed filters become SQL: full-text prefixes for words, `LIKE` with escaping for anything else, extension, `System.Kind`, UTC date bounds and a known-folder scope.
-  - Build output (`.pyc`, `node_modules`, `.git` …) is excluded.
-  - Results are ranked by name match, how often and how recently you opened the file (halving weekly), and file age.
-  - If the index can't be reached, a bounded 0.4 s scan of the user folder takes over, and the index is retried after a minute.
-  - Command rows appear first; file rows follow when found.
-- **System actions.**
-  - Radios use `Windows.Devices.Radios` from a short-lived multithreaded apartment. On this PC an unpackaged app is *Allowed* to use them.
-  - The theme writes the two Personalize values and broadcasts `ImmersiveColorSet`.
-  - The recycle bin uses `SHQueryRecycleBin` / `SHEmptyRecycleBin`.
-  - Sleep uses `SetSuspendState`.
-  - Restart and shut down use `ExitWindowsEx`, with the shutdown privilege switched on first. They use hybrid shutdown, as the Start menu does.
-  - Rows are built from the live state, and anything hard to undo is armed by the first Enter.
-- **Command memory.** Kept in `commands.nexus` on this PC: up to 40 entries and 6 pins. Toggles re-read their current state when shown again.
-- **Currency.**
-  - Queries must match a strict grammar, so ordinary words are never taken as currency.
-  - Conversion goes through the ECB's per-euro rates, with the daily XML cached for 12 hours.
-  - The answer's digits are columns over a strip of tabular figures. They spin into place (leftmost first) and roll only when they change.
-- **Typing aids.** Matched letters are drawn with DirectWrite drawing effects. The ghost completion comes from the top row, and Tab accepts it. A command's name that isn't finished yet previews that command.
+**Motion.**
+- **Odometers.** The currency answer's rolling digits became a general odometer:
+  - Where a number is drawn, its place is recorded as a *spot*, and the odometer draws it in retained columns instead.
+  - There are twelve spots: the answer, the level indicator, the focus clock, three Home statistics, the compact volume, battery and timer chips, the compact timer label, and the glance's CPU and GPU.
+  - `digitRoll` re-bases a column into the middle turn of its 30-digit strip and picks the nearest copy of the new digit, so a countdown rolls one step and a spring's overshoot never leaves the strip.
+  - Cells are whole pixels, so digits at rest sit on the pixel grid. Numbers that appear during a content cascade join their band's fade and rise.
+- **Compact lyrics.** Two layers inside a clip the size of the label. A new line rises 9 DIPs and fades in while the old one lifts and fades, on compositor-timed ease-out curves.
+- **Beat pulse.** The bass (the 50–130 Hz bands) is compared with its own half-second average, so only hits swell the cover, by up to 4%.
+  - The scale about the cover's centre is composed before its size scale in a transform group.
+  - The loopback analyzer now also runs while the Home page shows a playing cover.
+- **Liquid morph.** On opening or closing, the corner radius gets a velocity kick on a softer spring, so the outline rounds out mid-morph.
 
-**Alignment audit.** Each page was captured and measured at 2× and 3×. Five fixes:
-- header titles centred on the header buttons (they sat 3.5 px low)
-- Home's title/artist block and play button centred on the artwork (4 px and 3 px)
-- the volume track, accent fill and icons on one line (1 px)
-- Media's time labels centred with the mode button (3 px)
+**Command bar.**
+- **Space.** Arrow keys and the pointer make the selected row the island's hovered action, and the island's generic "Space activates the hovered action" then ran it. The command bar now consumes Space's key-down, and the character arrives as usual.
+- **Rows.** `commandRows` lays out the rows with an 18-DIP header before each group when the shown results span several groups. The bar's height follows the layout.
+- **Colours.** `#rgb`, `#rrggbb`, `#rrggbbaa`, `colour …` and `rgb(r, g, b)` are parsed. The row draws a swatch and shows RGB and HSL, and Enter copies the hex.
+- **Typos.** When nothing matches, the closest app (whole name or first word) and the closest command phrase are offered, by optimal-string-alignment distance: none under four letters, one edit up to six, two beyond.
+
+**Left dock.** Edge 2 mirrors the right dock throughout: outline, body origin, shoulders, window position, auto-hide band, input region and edge reveal.
 
 ## Bugs found while testing
 
-- **Search results disappeared for some folders.** `System.ItemPathDisplay` returns display names ("Public Documents"), so the existence check rejected real files. The query now reads `System.ItemUrl`, which carries the true path. A probe proved the SQL was right, and counters found the step that dropped the rows.
-- **A comment swallowed code again.** An end-of-line `//` comment hid the odometer's column offset and clip calls. The source scan from v0.12, now run after every edit batch, caught it before any testing.
-- **Uneven answer digits.** Proportional figures left a gap after the comma, so the columns now use tabular figures and the answer's own glyph positions.
-- **Test runs could search real files.** QA runs are now confined to the Public folder, so no personal file can appear in a capture. The captures taken before the fix were deleted and never left this PC.
-- **The auto-hide UI stage assumed floating glass.** Attached glass sits under the top pixel, so the reveal there also opens the island, which is the same behaviour as Solid. The stage now lets the island settle before timing the tuck.
+- **v0.13's vibrancy never ran.** Composition requires every Direct2D effect property to be supplied, and 0.13 set only the matrix, so Windows rejected the effect (`E_INVALIDARG`) and the plain blur showed instead. Its report said the effect was working, which was wrong. Now all three properties are set, and an effect factory that is still compiling is accepted.
+- **Composition drop shadows render black on a desktop window target.** Every `LayerVisual` + `DropShadow` combination tried rendered as a black box. The shadow is now a pre-blurred nine-grid sprite.
+- **The shadow window caught clicks.** A hit test over the shadow returned the shadow window. It is now layered and transparent without `SetLayeredWindowAttributes`, and the same hit test passes through to the app beneath.
+- **An 85 MB memory regression, caught before release.** The glass and shadow layers each created their own Direct3D device for their drawn surfaces, and the grain was drawn even with the Solid material. Both now share the renderer's device and draw their surfaces on first use. Private memory at idle fell from 147 MB to 73.5 MB (v0.13 measures 62.4 MB under the same conditions).
+- **The compact header dimmed every second while a timer ran.** The label was the ticking time, and each change replayed the header's entrance. A running timer's label now rolls as an odometer, and the entrance plays only for a real change of label. This bug predates 0.14.
+- **The idle glance would have sampled while tucked away.** Auto-hide now re-evaluates the providers when the island tucks or reveals.
+- **The first Space test passed without the fix.** It didn't hover a row, so nothing could be run. The stage now types a query with a harmless timer row, highlights that row, and sends real `WM_KEYDOWN`/`WM_CHAR`/`WM_KEYUP` messages. With the fix removed, it fails at that stage.
 
 ## Verification
 
-- **Unit suites:** 4 of 4 pass, including **5,393 phase checks** (103 new). The new checks cover:
-  - ECB XML, the currency grammar (including 10 ordinary phrases that must not convert), conversion, rounding and grouping
-  - system rows for every live state
-  - matched-letter runs and ghost completion
-  - file specs, date ranges (week, month and year edges, leap years), SQL escaping of quotes and wildcards, item URLs, scan matching and ranking
-  - the command memory: order, pins, limits and the file round trip
-  - v11 → v12 settings
-- **Native UI test:** now **25 stages**. New stages:
-  - attached glass with shoulders (the input region's top row is wider than its middle by nearly four radii)
-  - lyric tap-to-seek on a made-up track
-  - ghost completion with Tab
-  - a live dark-mode row
-  - "lock" arming on the first Enter (the test never presses a second)
-- **Settings end-to-end:** 139 of 139.
-- **Real PC:**
-  - index queries answered in 22–100 ms
-  - radio state read, and set-to-current-state returned Allowed
-  - the ECB feed converted live (rate of 23 Sep)
-  - the recycle-bin row showed the true item count and size
-  - with Transparency effects switched on briefly, the blurred and saturated glass was captured, then the setting was restored
-- **Idle, tucked away:** 0.00 s CPU over 30 s, 60.5 MB private memory (`evidence/v0.13/idle-hidden.json`).
+- **Unit suites:** 4 of 4 pass.
+  - **Phase: 5,432 checks** (26 new): rolling-digit targets over every position and digit, GPU engine sums, colour parsing and HSL, edit distance, typo suggestions, row headers, screen-capture order, v12 → v13 settings and the left edge band.
+  - **Model: 2,061 checks** (222 new): the left dock's outline mirrors the right one point for point.
+- **Native UI test:** 28 stages. The three new ones type a space between words while a result is highlighted.
+- **Settings end-to-end:** 145 of 145, including the three new switches (it steps the dock edge between Top and Right; Left was checked by the unit suites and on the bench).
+- **Test bench:**
+  - Frosted and Clear, dark and light, on generated backdrops
+  - the left dock
+  - the soft shadow under Solid and glass
+  - the idle glance
+  - rolling digits caught mid-roll
+  - a lyric line caught mid-morph
+  - the cover's edge moving with a synthetic beat
+- **Idle (compact, media off, 30 s):**
+  - glance off: 0.000 s CPU, 73.5 MB private
+  - glance on: 0.094 s CPU (0.31% of one core), 76.2 MB
+  - raw data: `evidence/v0.14/idle-compact-glance-*.json`
 
-Screenshots in `evidence/v0.13` use a painted backdrop, the showcase track, sample lyric lines and sample files in the Public folder.
+Screenshots in `evidence/v0.14` use a painted backdrop, the showcase track and a sample file in the Public folder.
 
 ## Limits
 
-- Real blur needs Windows' Transparency effects; without them Frosted is a translucent frost.
-- LRCLIB lyrics are timed per line, so the fill moves at a singing pace, not word by word.
-- Windows has no public switch for airplane mode itself: the command turns every radio off or on. There is no documented API for night light or do not disturb.
-- Folders outside the Windows Search index are found only by the fallback scan, which covers the user folder.
-- Unsigned preview. No UI Automation tree for screen readers yet.
+- **No displacement lensing.** The host backdrop brush can't be offset, scaled or warped: a `Transform2D` over it renders black. The edges gather light instead of bending the background.
+- **Screen capture** is known only for apps that go through Windows' capture API and its consent records. Desktop-duplication or GDI capture is invisible to it.
+- **Real blur** still needs Windows' Transparency effects.
+- **Compact lyrics** are line-timed, as before.
+- **Unsigned preview.** There is no UI Automation tree for screen readers yet.

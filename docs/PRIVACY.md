@@ -104,3 +104,10 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **Currency conversion** (off by default) downloads the European Central Bank's public daily rates file, at most twice a day. The request contains nothing about you or what you converted; like any web request, it reveals your IP address to the ECB. The file is cached as `rates.xml`.
 - **System actions** (theme, radios, recycle bin, sleep, restart, shut down, lock) run only when you choose them, and the ones that are hard to undo ask for a second Enter first.
 - Public screenshots use the showcase track, sample lyric lines and sample files in the Public folder; test runs never search your own files.
+
+## v0.14 awareness
+
+- **The screen-capture dot** reads Windows' own capability consent records on this PC (the same place Windows keeps camera and microphone use). Nothing is captured or sent; only the app's name is shown.
+- **GPU use** is read from Windows' performance counters on this PC, once a second and only while it's shown.
+- **The beat pulse** uses the same loopback analysis as the waveform: each audio buffer is folded into band levels and discarded, and nothing is recorded, stored or sent. It runs only while a playing cover is shown.
+- **The idle glance** shows the date and your own CPU and GPU use; nothing is stored.

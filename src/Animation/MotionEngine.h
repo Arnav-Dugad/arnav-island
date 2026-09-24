@@ -126,6 +126,15 @@ struct Glide {
     void to(double value,double now,double duration){auto c=sample(now);p0=c.position;v0=c.velocity;p1=value;t0=now;span=duration;}
     CubicSegment segment()const{return {0,p0,v0,(3*(p1-p0)-2*v0*span)/(span*span),(2*(p0-p1)+v0*span)/(span*span*span)};}
 };
+// Rolling digits. A column shows a strip of 0-9 repeated three times; `position` is where
+// the strip stands, in digits. Every turn looks the same, so the column re-bases into the
+// middle turn and rolls to the nearest copy of the new digit: 9 to 0 is one step, not nine.
+// Targets stay within 5..25, so a spring's overshoot never runs off the strip.
+struct DigitRoll{double from,to;};
+inline DigitRoll digitRoll(double position,int digit){
+    const double base=position-10*std::floor(position/10)+10;double target=10.+digit;
+    for(double c:{double(digit),20.+digit})if(std::abs(c-base)<std::abs(target-base))target=c;return {base,target};
+}
 inline double rubberBand(double displacement,double limit=90) {
     return std::copysign(limit*(1-1/(std::abs(displacement)/limit+1)),displacement);
 }
@@ -167,10 +176,13 @@ struct MotionEngine {
         // Liquid morph: the growing dimension leads on a stiffer spring and the other follows
         // on a softer one with a touch more give, so the shape flows instead of scaling.
         const bool opening=g.height>height.target()+1,closing=g.height<height.target()-1;
-        const SpringSpec lead{s.mass,s.stiffness*1.3,s.damping*1.14},lag{s.mass,s.stiffness*.8,s.damping*.86};
+        const SpringSpec lead{s.mass,s.stiffness*1.3,s.damping*.98},lag{s.mass,s.stiffness*.8,s.damping*.86};
         width.retarget(g.width+(hover?4:0)-(pressed?5:0),now,opening?lead:closing?lag:s);
         height.retarget(g.height-(pressed?2:0),now,opening?lag:closing?lead:s);
-        radius.retarget(g.radius,now,s);
+        // The corners swell a little mid-morph (a kick on a softer spring), so the outline
+        // rounds like a drop of liquid before it settles into its new shape.
+        if(opening||closing){auto r=radius.sample(now);radius.reset(r.position,now,r.velocity+(opening?95:70));radius.retarget(g.radius,now,{s.mass,s.stiffness*.62,s.damping*.72});}
+        else radius.retarget(g.radius,now,s);
         reveal.retarget(state!=IslandState::Compact&&g.height>80?1:0,now,{1,320,36});
     }
 };

@@ -1,67 +1,52 @@
-# Arnav Island 0.13.0-preview.1 — Command bar v2, glass that meets the screen, new lyrics
+# Arnav Island 0.14.0-preview.1 — New glass, a screen-capture dot, live GPU, a left dock
 
-Phase 5D:
-- The command bar finds files and switches system settings.
-- Frosted and Clear glass take the island's full shape.
-- Lyrics are redesigned.
+Phase 5E:
+- Frosted and Clear glass are rebuilt as a real material.
+- The island tells you when an app is capturing your screen, and shows live GPU use.
+- It can dock on the left.
+- Numbers, lyrics and the artwork move with the music.
 
-## Glass that meets the screen
-- **The full shape.** Frosted and Clear glass now attach to the top of the screen with the same concave shoulders as Solid, as one continuous piece of glass. On the right edge, the shoulders run above and below. A vertical offset in Settings still floats the island.
-- **Vibrancy.** Frosted glass boosts the colour of the blurred desktop behind it, as Apple's materials do. The GPU applies it.
-- **A finished edge.** A fine specular rim and a soft inner glow follow the whole outline, curves included, so the pane looks thick.
-- **Real blur needs Windows' Transparency effects**, under Settings › Personalization › Colors. When they're off, Frosted uses a dense translucent frost instead.
+## Glass, rebuilt
+- **A real material.** Frosted glass now shapes the blurred backdrop the way Apple's materials do. It boosts the colour behind it, then remaps its brightness into a calm band, so text stays readable over any wallpaper and the glass still glows with what's behind it.
+- **Light along the edges.** Where the glass meets open space, a brighter band of the material catches the light, like the thick edge of a pane.
+- **A highlight that moves.** The specular rim and inner glow tilt as the island stretches and moves, like light on a sheet of glass.
+- **Fine grain.** A faint, even texture separates frosted glass from a flat tint and hides colour banding.
+- **A soft shadow.** A gentle shadow under the island lifts it off the desktop, on Solid and glass alike. It never catches clicks. You can turn it off in Settings › Appearance.
+- **Tinted to your wallpaper.** The glass leans lighter or darker to match your wallpaper.
+- **Clear glass is easier to read.** It has a slightly deeper tint and a stronger text halo.
+- **An honest fix:** version 0.13 said Frosted glass boosted colour, but Windows rejected that effect, so it never ran. This release fixes that and applies the material on the GPU.
 
-## Lyrics, redesigned
-- **A proper lyrics view.** It sits between the title and the controls:
-  - the line being sung is large and bold, and the lines around it are dimmed
-  - each new line springs up into place while the old one fades away
-- **A fill that follows the song.** It sweeps across the sung line row by row and is always complete before the next line begins.
-- **Instrumental breaks.** Three dots light up one by one across the gap.
-- **Tap a line to jump there.**
-- **Easier to read on see-through glass.**
+## Awareness
+- **A purple dot when an app is capturing your screen.** It sits with the green camera, orange microphone and blue location dots, and a card names the app. It covers apps that capture through Windows' screen-capture API, such as browsers sharing your screen and the Snipping Tool's recorder.
+- **Live GPU use:**
+  - on the Stats page, with a history line
+  - as a Home statistic you can choose
+  - in the idle glance
+- **An idle glance.** When nothing else is showing, the compact island shows today's date, plus CPU and GPU use where there's room. You can turn it off in Settings › Compact › Glance when idle.
 
-## Command bar v2
-- **Your files, as you type.** Results come from the Windows Search index.
-  - Say the type, date and folder in plain words: "budget pdfs from last week in downloads".
-  - **Enter** opens a file, **Ctrl+Enter** shows it in its folder, and **Ctrl+C** copies its path.
-  - Files you open often rise to the top.
-  - If the index is off, the bar does a quick scan of your user folder instead.
-- **System switches that know the current state:**
-  - dark or light mode
-  - Bluetooth and Wi-Fi
-  - airplane mode, which turns every radio off or back on
-  - empty the recycle bin (the row shows how many items and how much space)
-  - sleep, restart, shut down and lock
+## Motion
+- **Numbers roll.** Volume, battery, the focus timer, the Home statistics and the level indicator roll digit by digit, the short way round (9 → 0 is one step, as on a counter).
+- **Lyrics morph in the compact island.** Each new line rises into place as the last one lifts away.
+- **The artwork pulses to the beat.** The cover swells gently with the bass of what's playing (Settings › Media & sound).
+- **Liquid shape changes.** Corners swell a little as the island grows or shrinks, so it flows between shapes like a drop of liquid.
 
-  Each row says what will actually happen, for example "Turn Bluetooth off" while it's on. Anything hard to undo asks for a second Enter.
-- **The empty bar is useful:**
-  - your pinned commands (**Ctrl+P** pins one)
-  - suggestions such as *Pause* while music plays, *Unmute* when you're muted, or dark mode in the evening
-  - your recent commands
-- **Currency conversion (off until you turn it on).**
-  - Type "100 usd to inr", "$50 in €" or just "20 pounds".
-  - Rates are the European Central Bank's daily reference rates, fetched at most twice a day.
-  - Enter copies the amount, and the digits roll into place.
-- **Typing aids:**
-  - The letters that matched are highlighted.
-  - A faint completion follows the cursor, and **Tab** accepts it.
-  - While you type a command's name, the bar already shows what it will do.
-- **Context keys.** The keys at the bottom change with the selected row.
+## Command bar
+- **Space works.** Pressing Space between words used to run the highlighted result. It now types a space.
+- **Group headers.** When results mix kinds, small headers separate them: Apps, Files, Answer, Actions.
+- **Colour codes.** Type #3A7BD5, #39f or rgb(58, 123, 213) to see a swatch with its RGB and HSL values. Enter copies it.
+- **Did you mean…?** A misspelt app or command ("spotfy", "bluetoth") offers the closest match.
 
-## Polish
-- Page titles now sit on the same line as the header buttons.
-- Home: the title, artist and play button are centred on the artwork, and the volume track, its fill and its icons share one line.
-- Media: the time labels are centred with the mode button.
-- New icons: moon, Wi-Fi, plane and currency exchange.
+## Dock on the left
+Settings › Island › Dock edge now has **Left**, with the same shoulders, auto-hide and edge reveal as the right.
 
-## Settings (version 12)
-- **Remember recent commands** is on. The file stays on this PC, and turning the setting off deletes it.
-- **Currency conversion** is off.
+## Settings (version 13)
+New switches, all on by default:
+- **Soft shadow** (Appearance)
+- **Glance when idle** (Compact)
+- **Artwork pulses to the beat** (Media & sound)
 
-Existing preferences are kept.
-
-Windows 11 x64, unsigned preview.
-
----
-
-Previous release: [0.12.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.12.0-preview.1): snip, copy text and colour picker, Shelf quick actions, and clipboard v2.
+## Limits
+- **No true lens bending.** Windows gives apps the blurred backdrop only as a brush that can't be offset or warped (a shifted copy renders black), so the edges gather light instead of refracting the background.
+- **Screen capture detection** relies on Windows' capture consent records, so it misses apps that capture by other means, such as older desktop-duplication recorders.
+- **Real blur** still needs Windows' Transparency effects (Settings › Personalization › Colors).
+- **GPU use** comes from Windows' own GPU performance counters (the ones Task Manager uses). It is the busiest engine's load, summed across apps.

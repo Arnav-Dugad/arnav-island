@@ -66,3 +66,7 @@ declarations shipped with MinGW-w64 and Windows; the composition path and
 effect interop interfaces in `src/Composition/WinCompAbi.h` were written from
 Windows' installed metadata (IIDs read by reflection) and Microsoft's public
 documentation, and contain no third-party code.
+
+GPU use is read through Windows' Performance Data Helper (PDH) API, part of
+Windows. The v0.14 material, grain and shadow are drawn with Direct2D and
+Windows.UI.Composition; no third-party code or assets were added.

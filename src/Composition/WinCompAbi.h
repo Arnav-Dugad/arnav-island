@@ -139,6 +139,44 @@ struct GraphicsEffectD2D1Interop:IUnknown {
     virtual HRESULT STDMETHODCALLTYPE GetSourceCount(UINT*)=0;
 };
 
+// Phase 5E glass: masks, surfaces for grain, radial light.
+struct Compositor2:IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE CreateAmbientLight(IInspectable**)=0;virtual HRESULT STDMETHODCALLTYPE CreateAnimationGroup(IInspectable**)=0;
+    virtual HRESULT STDMETHODCALLTYPE CreateBackdropBrush(IInspectable**)=0;virtual HRESULT STDMETHODCALLTYPE CreateDistantLight(IInspectable**)=0;
+    virtual HRESULT STDMETHODCALLTYPE CreateDropShadow(IInspectable**)=0;virtual HRESULT STDMETHODCALLTYPE CreateImplicitAnimationCollection(IInspectable**)=0;
+    virtual HRESULT STDMETHODCALLTYPE CreateLayerVisual(IInspectable**)=0;virtual HRESULT STDMETHODCALLTYPE CreateMaskBrush(IInspectable**)=0;
+    virtual HRESULT STDMETHODCALLTYPE CreateNineGridBrush(IInspectable**)=0;
+};
+struct MaskBrush:IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE get_Mask(IInspectable**)=0;virtual HRESULT STDMETHODCALLTYPE put_Mask(IInspectable*)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_Source(IInspectable**)=0;virtual HRESULT STDMETHODCALLTYPE put_Source(IInspectable*)=0;
+};
+struct DropShadow:IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE get_BlurRadius(FLOAT*)=0;virtual HRESULT STDMETHODCALLTYPE put_BlurRadius(FLOAT)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_Color(Color*)=0;virtual HRESULT STDMETHODCALLTYPE put_Color(Color)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_Mask(IInspectable**)=0;virtual HRESULT STDMETHODCALLTYPE put_Mask(IInspectable*)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_Offset(Vector3*)=0;virtual HRESULT STDMETHODCALLTYPE put_Offset(Vector3)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_Opacity(FLOAT*)=0;virtual HRESULT STDMETHODCALLTYPE put_Opacity(FLOAT)=0;
+};
+struct NineGridBrush:IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE get_BottomInset(FLOAT*)=0;virtual HRESULT STDMETHODCALLTYPE put_BottomInset(FLOAT)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_BottomInsetScale(FLOAT*)=0;virtual HRESULT STDMETHODCALLTYPE put_BottomInsetScale(FLOAT)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_IsCenterHollow(boolean*)=0;virtual HRESULT STDMETHODCALLTYPE put_IsCenterHollow(boolean)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_LeftInset(FLOAT*)=0;virtual HRESULT STDMETHODCALLTYPE put_LeftInset(FLOAT)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_LeftInsetScale(FLOAT*)=0;virtual HRESULT STDMETHODCALLTYPE put_LeftInsetScale(FLOAT)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_RightInset(FLOAT*)=0;virtual HRESULT STDMETHODCALLTYPE put_RightInset(FLOAT)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_RightInsetScale(FLOAT*)=0;virtual HRESULT STDMETHODCALLTYPE put_RightInsetScale(FLOAT)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_Source(IInspectable**)=0;virtual HRESULT STDMETHODCALLTYPE put_Source(IInspectable*)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_TopInset(FLOAT*)=0;virtual HRESULT STDMETHODCALLTYPE put_TopInset(FLOAT)=0;
+};
+struct LayerVisual2:IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE get_Shadow(IInspectable**)=0;virtual HRESULT STDMETHODCALLTYPE put_Shadow(IInspectable*)=0;
+};
+struct DrawingSurfaceInterop:IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE BeginDraw(const RECT*,REFIID,void**,POINT*)=0;virtual HRESULT STDMETHODCALLTYPE EndDraw()=0;
+    virtual HRESULT STDMETHODCALLTYPE Resize(SIZE)=0;virtual HRESULT STDMETHODCALLTYPE Scroll(const RECT*,const RECT*,int,int)=0;
+    virtual HRESULT STDMETHODCALLTYPE ResumeDraw()=0;virtual HRESULT STDMETHODCALLTYPE SuspendDraw()=0;
+};
 class String {
     HSTRING value_=nullptr;
 public:
@@ -167,4 +205,10 @@ __CRT_UUID_DECL(nexus::wincomp::GeometrySource2DInterop,0x0657af73,0x53fd,0x47cf
 __CRT_UUID_DECL(nexus::wincomp::CompositionPathFactory,0x9c1e8c6a,0x0f33,0x4751,0x94,0x37,0xeb,0x3f,0xb9,0xd3,0xab,0x07)
 __CRT_UUID_DECL(nexus::wincomp::EffectSourceParameterFactory,0xb3d9f276,0xaba3,0x4724,0xac,0xf3,0xd0,0x39,0x74,0x64,0xdb,0x1c)
 __CRT_UUID_DECL(nexus::wincomp::GraphicsEffectD2D1Interop,0x2fc57384,0xa068,0x44d7,0xa3,0x31,0x30,0x98,0x2f,0xcf,0x71,0x77)
+__CRT_UUID_DECL(nexus::wincomp::Compositor2,0x735081dc,0x5e24,0x45da,0xa3,0x8f,0xe3,0x2c,0xc3,0x49,0xa9,0xa0)
+__CRT_UUID_DECL(nexus::wincomp::NineGridBrush,0xf25154e4,0xbc8c,0x4be7,0xb8,0x0f,0x86,0x85,0xb8,0x3c,0x01,0x86)
+__CRT_UUID_DECL(nexus::wincomp::DropShadow,0xcb977c07,0xa154,0x4851,0x85,0xe7,0xa8,0x92,0x4c,0x84,0xfa,0xd8)
+__CRT_UUID_DECL(nexus::wincomp::LayerVisual2,0x98f9aeeb,0x6f23,0x49f1,0x90,0xb1,0x1f,0x59,0xa1,0x4f,0xbc,0xe3)
+__CRT_UUID_DECL(nexus::wincomp::MaskBrush,0x522cf09e,0xbe6b,0x4f41,0xbe,0x49,0xf9,0x22,0x6d,0x47,0x1b,0x4a)
+__CRT_UUID_DECL(nexus::wincomp::DrawingSurfaceInterop,0xfd04e6e3,0xfe0c,0x4c3c,0xab,0x19,0xa0,0x76,0x01,0xa5,0x76,0xee)
 __CRT_UUID_DECL(nexus::wincomp::KeyFrameAnimation,0x126e7f22,0x3ae9,0x4540,0x9a,0x8a,0xde,0xae,0x8a,0x4a,0x4a,0x84)

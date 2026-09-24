@@ -109,3 +109,16 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Empty bar | Pinned (Ctrl+P, up to 6), suggested (media, mute, microphone, timer, dark mode by time of day) and recent commands | Kept in `commands.nexus` on this PC |
 | Currency | Opt-in; ECB daily rates cached 12 h; strict grammar; rolling digits; Enter copies | About 30 currencies (those the ECB publishes); rates are the previous working day's |
 | Typing aids | Matched letters highlighted, ghost completion with Tab, a command preview while its name is typed, per-row footer keys | — |
+
+| v0.14 feature | Implemented | Limits |
+|---|---|---|
+| Glass material | Colour matrix over the host backdrop (saturation 1.8 dark / 1.55 light, luminosity gain and offset leaning with the wallpaper), edge light on free edges, 7% grain, rim and glow that tilt with motion (±26°) | Real blur needs Windows Transparency effects; the backdrop can't be displaced, so there is no true lens refraction |
+| Soft shadow | Pre-blurred nine-grid in a click-through window under the island, Solid and glass, all edges | Shadow strength is fixed per theme and material |
+| Screen capture dot | Consent-store `graphicsCaptureProgrammatic` / `graphicsCaptureWithoutBorder` records; purple dot and a card | Only apps using Windows' capture API; desktop duplication and GDI capture are not reported |
+| GPU use | PDH `GPU Engine(*)\Utilization Percentage`, busiest engine summed over processes; Stats with history, Home statistic, idle glance | Sampled once a second only while shown; no temperature, clock or memory |
+| Idle glance | Date, CPU and GPU in the compact island when nothing else is showing and there is room | Not in Mini Pill or on side docks; 0.31% of one core while shown |
+| Rolling numbers | Odometer columns for the currency answer, level indicator, focus clock, Home statistics, compact volume, battery and timer | Digits roll; letters and symbols change in place |
+| Compact lyric morph | Two layers: the new line rises in as the old one lifts away | Line-timed, like the lyrics themselves |
+| Beat pulse | Bass (50-130 Hz) against its half-second average; up to 4% | Needs the loopback analyzer, which runs only while the cover is shown and playing |
+| Command bar | Space types; group headers; colour swatches (hex, short hex, rgb()); "Did you mean" for apps and commands | Typos are guessed only when nothing matched, and only for four letters or more |
+| Left dock | Mirror of the right dock: shoulders, auto-hide band, input region, reveal | — |

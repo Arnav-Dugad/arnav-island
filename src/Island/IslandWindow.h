@@ -66,7 +66,7 @@ class IslandWindow {
     void clipResults();void clipSearch(bool picker);void pasteClip(size_t row,bool copyOnly);void syncCaptureHotkeys();bool captureMessage(UINT,WPARAM,LPARAM,LRESULT&);
     void qaBackdrop();int qaOverlay_=-1;std::vector<uint64_t> ids_;int captureHotkeys_=-1;std::wstring captureTaken_;bool jobRunning_=false,pinsLoaded_=false,pinnedShelfWas_=false;bool showHeadphoneCard(const AudioDevice& output,const std::wstring& fromId,const std::wstring& fromName);
     bool edgeHold_=false;bool pointerOffEdge();double swipeAccumulator_=0,swipeTime_=0;bool mediaReachable_=false;
-    void updateSessions();void switchSession(int delta,bool absolute=false);void updateProviders();void levelIndicator();void setMixerAt(LPARAM);bool systemRequested_=false,contentDirty_=true;Action pressedAction_=Action::None;
+    void updateSessions();void switchSession(int delta,bool absolute=false);void updateProviders();void levelIndicator();void setMixerAt(LPARAM);long glanceShown_=-2;bool systemRequested_=false,contentDirty_=true;Action pressedAction_=Action::None;
     void setVolumeAt(LPARAM);void scrubAt(LPARAM,bool begin=false);void endScrub(bool commit);void requestPreviews(const std::vector<ShelfItem>& incoming={});void perform(Action);Action hit(LPARAM);void refresh();void clockTimer();
     std::unique_ptr<ShelfPreviews> previews_;RouteConfirmation route_;std::wstring routeName_;ComPtr<ShelfDropTarget> dropTarget_;bool visibilityAudit_=false,testing_=false,positioning_=false,motionStudy_=false;unsigned motionStudyStep_=0;
     void feedback(Action,float x=0,float y=0,bool press=false);void applySettings(bool rebuild=false,bool reposition=false);void dragShelf(size_t);
@@ -90,6 +90,8 @@ class IslandWindow {
     void finishBenchmark();
 public:
     int run(HINSTANCE,const std::wstring& command);
+    // Phase 5E: the shadow window follows the island (same rectangle, just beneath it, same visibility).
+    HWND shadow_=nullptr;void syncShadow();
     ~IslandWindow();
 };
 }

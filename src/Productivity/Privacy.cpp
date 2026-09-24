@@ -31,7 +31,8 @@ std::wstring describe(const std::wstring& path){
 }
 std::vector<ConsentRecord> PrivacyProvider::records(){
     std::vector<ConsentRecord> out;
-    for(auto [capability,name]:{std::pair{Capability::Microphone,L"microphone"},std::pair{Capability::Camera,L"webcam"},std::pair{Capability::Location,L"location"}}){
+    // Screen capture is recorded under two keys: with and without the yellow capture border.
+    for(auto [capability,name]:{std::pair{Capability::Microphone,L"microphone"},std::pair{Capability::Camera,L"webcam"},std::pair{Capability::Location,L"location"},std::pair{Capability::ScreenCapture,L"graphicsCaptureProgrammatic"},std::pair{Capability::ScreenCapture,L"graphicsCaptureWithoutBorder"}}){
         HKEY key=nullptr;if(RegOpenKeyExW(HKEY_CURRENT_USER,(std::wstring(storeKey)+L"\\"+name).c_str(),0,KEY_READ,&key)!=ERROR_SUCCESS)continue;
         readApps(key,capability,true,out);HKEY classic=nullptr;if(RegOpenKeyExW(key,L"NonPackaged",0,KEY_READ,&classic)==ERROR_SUCCESS){readApps(classic,capability,false,out);RegCloseKey(classic);}
         RegCloseKey(key);}
@@ -46,8 +47,8 @@ std::vector<PrivacyUse> PrivacyProvider::current(){
             else{auto path=consentPath(r->key);app=describe(path);icon=shellIcon(path,48);}
             it=names.emplace(r->key,std::pair{app,icon}).first;}
         u.app=it->second.first;u.icon=it->second.second;out.push_back(std::move(u));}
-    // Camera first, then microphone, then location; newest first within each.
-    std::stable_sort(out.begin(),out.end(),[](auto& a,auto& b){auto rank=[](Capability c){return c==Capability::Camera?0:c==Capability::Microphone?1:2;};return rank(a.capability)<rank(b.capability)||(a.capability==b.capability&&a.since>b.since);});
+    // Camera first, then microphone, screen capture and location; newest first within each.
+    std::stable_sort(out.begin(),out.end(),[](auto& a,auto& b){auto rank=[](Capability c){return c==Capability::Camera?0:c==Capability::Microphone?1:c==Capability::ScreenCapture?2:3;};return rank(a.capability)<rank(b.capability)||(a.capability==b.capability&&a.since>b.since);});
     return out;
 }
 PrivacyProvider::PrivacyProvider(HWND w):window_(w),stop_(CreateEventW(nullptr,TRUE,FALSE,nullptr)){if(!stop_)throw std::runtime_error("Privacy stop event failed");worker_=std::thread([this]{run();});}

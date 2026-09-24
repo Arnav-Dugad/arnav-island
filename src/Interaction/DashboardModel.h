@@ -14,6 +14,8 @@ inline bool inRange(Action a,Action base,Action end){return int(a)>=int(base)&&i
 // Command bar layout: input 42, then 40 per row, then the key hints.
 inline float commandFooterY(int rows){return 52+40.f*float(rows)+2;}
 inline double commandIslandHeight(int rows){return 16+commandFooterY(rows)+26+12;}
+// The bar's height for a footer at `footer` (rows plus any group headers).
+inline double commandIslandHeightAt(float footer){return 16+footer+26+12;}
 struct HitTarget { Action action;float x,y,width,height;bool enabled=true;
     bool contains(float px,float py)const{return enabled&&px>=x&&px<x+width&&py>=y&&py<y+height;}
 };

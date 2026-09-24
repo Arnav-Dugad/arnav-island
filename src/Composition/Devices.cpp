@@ -33,8 +33,8 @@ void Renderer::updateTabs(const ContentSnapshot& s,float x,float y,int count,int
 void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UINT32 raised,UINT32 ink){
     bool shown=s.card&&s.notice.kind;double now=seconds();cardIconEffect_->SetOpacity(shown?1.f:0.f);
     // Capture cards (9-11) have no level ring.
-    if(!shown||s.notice.kind>=9){cardRing_->SetContent(nullptr);cardRingKey_=-1;}
-    else{const bool privacy=s.notice.kind>=5&&s.notice.kind<=7,power=s.notice.kind==3||s.notice.kind==4;const int percent=privacy?100:power?s.battery:s.notice.device.battery;const UINT32 color=privacy?(s.notice.kind==5?0x30d158:s.notice.kind==6?0xff9f0a:0x0a84ff):s.notice.kind==3?0x5fd98a:accent;
+    if(!shown||(s.notice.kind>=9&&s.notice.kind!=12)){cardRing_->SetContent(nullptr);cardRingKey_=-1;}
+    else{const bool privacy=(s.notice.kind>=5&&s.notice.kind<=7)||s.notice.kind==12,power=s.notice.kind==3||s.notice.kind==4;const int percent=privacy?100:power?s.battery:s.notice.device.battery;const UINT32 color=privacy?(s.notice.kind==5?0x30d158:s.notice.kind==6?0xff9f0a:s.notice.kind==12?0xbf5af2:0x0a84ff):s.notice.kind==3?0x5fd98a:accent;
         int ringKey=int((s.notice.kind*101+percent+1)^int(color%100003)^int(track%9973));
         if(ringKey!=cardRingKey_){cardRingKey_=ringKey;surface(cardRingSurface_,72,72,[&](auto* rt){drawRing(rt,d2d_.Get(),36,36,31,3,percent>=0?percent/100.:0,color,track);});cardRing_->SetContent(cardRingSurface_.Get());}}
     // Energy sweep sits on the ring of whichever surface shows power.
@@ -47,8 +47,8 @@ void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UI
             if(s.notice.kind==9){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(s.notice.colour),&b);rt->FillEllipse(D2D1::Ellipse({28,28},23,23),b.Get());b->SetColor(D2D1::ColorF(ink,.22f));rt->DrawEllipse(D2D1::Ellipse({28,28},23.5f,23.5f),b.Get(),1.5f);return;}
             if(s.notice.kind==10){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),Icon::Text,16,16,24,accent);return;}
             if(s.notice.kind==11){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({4,4,52,52},12,12),b.Get());if(s.notice.icon)drawPreview(rt,*s.notice.icon,6,6,44,44);else drawIcon(rt,d2d_.Get(),Icon::Snip,16,16,24,accent);return;}
-            if(s.notice.kind>=5&&s.notice.kind<=7){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());
-                if(s.notice.icon)drawPreview(rt,*s.notice.icon,12,12,32,32);else drawIcon(rt,d2d_.Get(),s.notice.kind==5?Icon::Camera:s.notice.kind==6?Icon::Microphone:Icon::Location,16,16,24,ink);}
+            if((s.notice.kind>=5&&s.notice.kind<=7)||s.notice.kind==12){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());
+                if(s.notice.icon)drawPreview(rt,*s.notice.icon,12,12,32,32);else drawIcon(rt,d2d_.Get(),s.notice.kind==5?Icon::Camera:s.notice.kind==6?Icon::Microphone:s.notice.kind==12?Icon::Snip:Icon::Location,16,16,24,ink);}
             else if(s.notice.kind==3||s.notice.kind==4){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(s.notice.kind==3?0x3fcf7a:raised,s.notice.kind==3?1.f:.9f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),s.notice.kind==3?Icon::Bolt:Icon::Battery,14,14,28,s.notice.kind==3?0x0b1f12:ink);}
             else deviceBadge(rt,s.notice.device,4,4,48,raised,ink);});cardIcon_->SetContent(cardIconSurface_.Get());
         if(s.reducedMotion)cardPop_.reset(1,now);else{cardPop_.reset(.55,now);cardPop_.retarget(1,now,{.8,420,20});}
@@ -88,26 +88,31 @@ void Renderer::updateCaret(const ContentSnapshot& s,float x,UINT32 accent){
 // microphone or location.
 void Renderer::updatePrivacyBand(const ContentSnapshot& s,UINT32 ink,UINT32 muted,UINT32 raised){
     privacyVisible_=s.expanded&&!s.live&&!s.privacy.empty();if(!privacyVisible_){privacyEffect_->SetOpacity(0.f);return;}
-    std::vector<Capability> caps;for(auto c:{Capability::Camera,Capability::Microphone,Capability::Location})if(std::any_of(s.privacy.begin(),s.privacy.end(),[&](auto& u){return u.capability==c;}))caps.push_back(c);
+    std::vector<Capability> caps;for(auto c:capabilityOrder)if(std::any_of(s.privacy.begin(),s.privacy.end(),[&](auto& u){return u.capability==c;}))caps.push_back(c);
     std::wstring what;for(auto c:caps){if(!what.empty())what+=L" and ";what+=capabilityName(c);}
     std::wstring line=what+L"  \u00b7  "+s.privacy.front().app;{std::vector<std::wstring> apps;for(auto& u:s.privacy)if(std::find(apps.begin(),apps.end(),u.key)==apps.end())apps.push_back(u.key);if(apps.size()>1)line+=L" +"+std::to_wstring(apps.size()-1);}
     std::wstring key=line+std::to_wstring(ink)+std::to_wstring(raised);if(key==privacyKey_)return;privacyKey_=key;
     const float textWidth=std::min(300.f,measure(line,10.5f,DWRITE_FONT_WEIGHT_MEDIUM)),pill=textWidth+22+float(caps.size())*9,x=(380-pill)/2;
     surface(privacySurface_,380,24,[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.9f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({x,0,x+pill,24},12,12),b.Get());
-        float dx=x+11;for(auto c:caps){b->SetColor(D2D1::ColorF(c==Capability::Camera?0x30d158:c==Capability::Microphone?0xff9f0a:0x0a84ff));rt->FillEllipse(D2D1::Ellipse({dx+3,12},3.2f,3.2f),b.Get());dx+=9;}
+        float dx=x+11;for(auto c:caps){b->SetColor(D2D1::ColorF(capabilityColour(c)));rt->FillEllipse(D2D1::Ellipse({dx+3,12},3.2f,3.2f),b.Get());dx+=9;}
         text(rt,line,dx+3,0,textWidth+2,10.5f,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,24);(void)muted;});
     privacyBand_->SetContent(privacySurface_.Get());
 }
 // Rows cascade in: each band of the content rises 6 DIPs and brightens, 28 ms after
 // the one above it, on compositor time.
-void Renderer::cascade(double start){
+void Renderer::bandCascade(double start,size_t k,ComPtr<IDCompositionAnimation>& fade,ComPtr<IDCompositionAnimation>& rise){
     // Every band's animation begins now and holds its starting value until its turn,
     // so no row shows early and then blinks.
     auto build=[&](double delay,float from,float to,double duration){ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(start)));
         const float span=to-from;const double d=duration;if(delay>0)check(a->AddCubic(0,from,0,0,0));
         check(a->AddCubic(delay,from,float(3*span/d),float(-3*span/(d*d)),float(span/(d*d*d))));check(a->End(delay+d,to));return a;};
-    for(size_t k=0;k<bands_.size();++k){const double delay=double(k)*.028;auto fade=build(delay,.15f,1.f,.22),rise=build(delay,6*scale_,0.f,.26);
-        bands_[k].effect->SetOpacity(fade.Get());bands_[k].visual->SetOffsetY(rise.Get());}
+    const double delay=double(k)*.028;fade=build(delay,.15f,1.f,.22);rise=build(delay,6*scale_,0.f,.26);
+}
+void Renderer::cascade(double start){
+    cascadeStart_=start;
+    for(size_t k=0;k<bands_.size();++k){ComPtr<IDCompositionAnimation> fade,rise;bandCascade(start,k,fade,rise);bands_[k].effect->SetOpacity(fade.Get());bands_[k].visual->SetOffsetY(rise.Get());}
+    // Rolling numbers on the content cascade with the band they sit in.
+    for(int id:{0,2,3,4,5}){auto& o=odometers_[size_t(id)];if(!o.root||o.shown.empty())continue;ComPtr<IDCompositionAnimation> fade,rise;bandCascade(start,size_t(std::clamp(int(o.top/48),0,int(bands_.size())-1)),fade,rise);o.effect->SetOpacity(fade.Get());o.root->SetOffsetY(rise.Get());}
     commit();
 }
 // A soft light that follows the pointer: brightest on glass, a whisper on dark solid,

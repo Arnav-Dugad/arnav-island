@@ -42,6 +42,26 @@ void Renderer::drawLyric(ID2D1RenderTarget* rt,IDWriteTextLayout* layout,float x
     if(haloAlpha_>0){ComPtr<ID2D1SolidColorBrush> halo;check(rt->CreateSolidColorBrush(D2D1::ColorF(haloColor_,haloAlpha_*std::min(1.f,alpha*1.8f)),&halo));const float d=.6f/scale_;for(auto [dx,dy]:{std::pair{-d,0.f},std::pair{d,0.f},std::pair{0.f,-d},std::pair{0.f,d}})rt->DrawTextLayout({at.x+dx,at.y+dy},layout,halo.Get());}
     ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(color,alpha),&b));rt->DrawTextLayout(at,layout,b.Get());
 }
+// The compact island's sung line. A new line rises 9 DIPs into place and fades in while the
+// one before it lifts away and fades, inside a clip the size of the label, so one line
+// flows into the next instead of blinking.
+void Renderer::updateCompactLyric(const std::wstring& line,float x,float w,UINT32 ink,bool reduced){
+    if(!compactLyricHost_){check(device_->CreateVisual(&compactLyricHost_));check(device_->CreateRectangleClip(&compactLyricClip_));compactLyricHost_->SetClip(compactLyricClip_.Get());check(header_->AddVisual(compactLyricHost_.Get(),TRUE,nullptr));
+        for(auto& l:compactLyric_){check(device_->CreateVisual(&l.visual));check(device_->CreateEffectGroup(&l.effect));l.visual->SetEffect(l.effect.Get());check(compactLyricHost_->AddVisual(l.visual.Get(),FALSE,nullptr));}}
+    if(line.empty()){if(!compactLyricShown_.empty()){compactLyricShown_.clear();compactLyricKey_.clear();for(auto& l:compactLyric_)l.visual->SetContent(nullptr);}return;}
+    // The clip is the label's box, with a DIP either side for the halo.
+    compactLyricHost_->SetOffsetX(std::round((x-1)*scale_));compactLyricClip_->SetLeft(0.f);compactLyricClip_->SetTop(std::floor(3*scale_));compactLyricClip_->SetRight(std::ceil((w+2)*scale_));compactLyricClip_->SetBottom(std::ceil(31*scale_));
+    const std::wstring key=line+L"\x1f"+std::to_wstring(ink)+L"."+std::to_wstring(int(w))+L"."+std::to_wstring(int(haloAlpha_*100));
+    if(key==compactLyricKey_)return;
+    const bool morph=!reduced&&!compactLyricShown_.empty()&&compactLyricShown_!=line;
+    if(morph)compactFront_^=1;
+    auto& in=compactLyric_[size_t(compactFront_)];auto& out=compactLyric_[size_t(compactFront_^1)];
+    in.surface.Reset();surface(in.surface,int(std::ceil(w))+3,34,[&](auto* rt){text(rt,line,1,0,w,11.5f,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);});in.visual->SetContent(in.surface.Get());
+    if(morph){const double t=seconds();auto rise=ease(t,9*scale_,0.f,.36),show=ease(t,0.f,1.f,.3),lift=ease(t,0.f,-9*scale_,.3),hide=ease(t,1.f,0.f,.2);
+        in.visual->SetOffsetY(rise.Get());in.effect->SetOpacity(show.Get());out.visual->SetOffsetY(lift.Get());out.effect->SetOpacity(hide.Get());}
+    else{in.visual->SetOffsetY(0.f);in.effect->SetOpacity(1.f);out.visual->SetContent(nullptr);}
+    compactLyricShown_=line;compactLyricKey_=key;
+}
 // The sung line sits in the middle of the scroller, earlier lines above it and later ones below.
 void Renderer::updateLyrics(const ContentSnapshot& s,UINT32 ink,UINT32 muted,UINT32 accent){
     ensureNowPlaying();const double now=seconds();(void)muted;(void)accent;

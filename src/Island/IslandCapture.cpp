@@ -278,7 +278,7 @@ void IslandWindow::qaBackdrop(){
         registered=RegisterClassW(&wc)!=0;}
     MONITORINFO mi{sizeof(mi)};GetMonitorInfoW(MonitorFromWindow(window_,MONITOR_DEFAULTTOPRIMARY),&mi);const RECT& r=mi.rcMonitor;
     HWND backdrop=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_TOPMOST|WS_EX_NOACTIVATE,L"ArnavIsland.QABackdrop",L"QA backdrop",WS_POPUP,r.left,r.top,r.right-r.left,r.bottom-r.top,nullptr,nullptr,instance_,nullptr);
-    ShowWindow(backdrop,SW_SHOWNOACTIVATE);UpdateWindow(backdrop);SetWindowPos(window_,HWND_TOPMOST,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
+    ShowWindow(backdrop,SW_SHOWNOACTIVATE);UpdateWindow(backdrop);SetWindowPos(window_,HWND_TOPMOST,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);syncShadow();
     // The overlay freezes the screen next: wait until Windows has composed the backdrop.
     DwmFlush();DwmFlush();
 }

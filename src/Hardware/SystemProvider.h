@@ -11,6 +11,8 @@ struct SystemSnapshot {
     double diskUsedPercent=-1,diskFreeGiB=0,diskTotalGiB=0;
     bool networkAvailable=false;uint64_t uptime=0;unsigned logicalProcessors=0;
     std::array<float,40> cpuHistory{},downloadHistory{};unsigned samples=0;
+    // GPU busy percentage (-1 when the counters are unavailable) and its history.
+    double gpu=-1;std::array<float,40> gpuHistory{};
 };
 class SystemProvider {
     HWND window_;HANDLE stop_,wake_;std::thread worker_;std::atomic<bool> active_{false};std::mutex mutex_;SystemSnapshot current_;

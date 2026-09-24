@@ -1,0 +1,10 @@
+{
+    "scenario":  "v0.14 compact idle, media off, glance 1",
+    "wall_seconds":  30,
+    "cpu_seconds":  0.094,
+    "cpu_percent_of_one_core":  0.31,
+    "logical_processors":  20,
+    "working_set_mb":  97.2,
+    "private_mb":  76.2,
+    "threads":  22
+}

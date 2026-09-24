@@ -15,9 +15,10 @@ struct AutoHide {
     }
 };
 // Pointer on the docked edge within the island's band. Top dock: the top pixel
-// rows; right dock: the rightmost columns. Coordinates are physical pixels.
+// rows; right dock: the rightmost columns; left dock: the leftmost. Coordinates are physical pixels.
 inline bool atIslandEdge(long x,long y,long left,long top,long right,long bottom,int edge,double center,double halfSpan,int thickness=2){
     if(edge==0)return y>=top&&y<top+thickness&&x>=left&&x<right&&std::abs(x-center)<=halfSpan;
+    if(edge==2)return x>=left&&x<left+thickness&&y>=top&&y<bottom&&std::abs(y-center)<=halfSpan;
     return x<right&&x>=right-thickness&&y>=top&&y<bottom&&std::abs(y-center)<=halfSpan;
 }
 }

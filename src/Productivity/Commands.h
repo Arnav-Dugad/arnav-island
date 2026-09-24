@@ -14,7 +14,9 @@ namespace nexus {
 // command: every result is one of these kinds, shown before it runs.
 enum class CommandKind { None,Volume,VolumeStep,Mute,Unmute,Play,Pause,Next,Previous,Timer,Stopwatch,StopTimer,OpenApp,SearchFiles,OpenSettings,Workspace,SaveWorkspace,DeleteWorkspace,Clipboard,ClearClipboard,Lock,MicMute,MicUnmute,MicToggle,Snip,CopyText,PickColour,ClipPaste,
     // Phase 5D: system actions (value 1 = on / dark, 0 = off / light, -1 = toggle), files and answers.
-    DarkMode,Bluetooth,WiFi,Airplane,EmptyBin,Sleep,Restart,ShutDown,OpenFile,Currency };
+    DarkMode,Bluetooth,WiFi,Airplane,EmptyBin,Sleep,Restart,ShutDown,OpenFile,Currency,
+    // Phase 5E: a colour code, previewed as a swatch; value holds 0xRRGGBB.
+    Colour };
 struct InstalledApp {std::wstring name,id;};
 struct CommandResult {
     CommandKind kind=CommandKind::None;std::wstring title,detail,target;int value=0;
@@ -65,6 +67,49 @@ inline std::wstring ghostSuffix(const std::wstring& typed,const std::wstring& co
 inline std::wstring byteText(unsigned long long bytes){
     const wchar_t* units[]={L"bytes",L"KB",L"MB",L"GB",L"TB"};double v=double(bytes);int u=0;while(v>=1000&&u<4){v/=1024;++u;}
     wchar_t b[32];if(u==0)swprintf(b,32,L"%llu %ls",bytes,bytes==1?L"byte":L"bytes");else swprintf(b,32,v<10?L"%.1f %ls":L"%.0f %ls",v,units[u]);return b;
+}
+// Optimal string alignment distance (Damerau-Levenshtein with one transposition), for typo suggestions.
+inline size_t editDistance(const std::wstring& a,const std::wstring& b){
+    const size_t n=a.size(),m=b.size();std::vector<std::vector<size_t>> d(n+1,std::vector<size_t>(m+1));
+    for(size_t i=0;i<=n;++i)d[i][0]=i;for(size_t j=0;j<=m;++j)d[0][j]=j;
+    for(size_t i=1;i<=n;++i)for(size_t j=1;j<=m;++j){const size_t cost=a[i-1]==b[j-1]?0:1;d[i][j]=std::min({d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+cost});
+        if(i>1&&j>1&&a[i-1]==b[j-2]&&a[i-2]==b[j-1])d[i][j]=std::min(d[i][j],d[i-2][j-2]+1);}
+    return d[n][m];
+}
+// How far a typo may be: nothing under four letters, one edit up to six, then two.
+inline size_t typoAllowance(size_t length){return length<4?0:length<=6?1:2;}
+// "#3A7BD5", "#39f", "3a7bd5" after "colour", "rgb(58, 123, 213)" -> 0xRRGGBB.
+inline std::optional<uint32_t> parseColourCode(const std::wstring& typed){
+    auto t=lowered(trimmed(typed));for(auto prefix:{L"colour ",L"color "})if(t.starts_with(prefix)){t=trimmed(t.substr(wcslen(prefix)));if(!t.empty()&&t[0]!=L'#'&&!t.starts_with(L"rgb"))t=L"#"+t;}
+    auto hex=[](wchar_t c)->int{return c>=L'0'&&c<=L'9'?c-L'0':c>=L'a'&&c<=L'f'?c-L'a'+10:-1;};
+    if(t.size()>1&&t[0]==L'#'){const auto h=t.substr(1);for(wchar_t c:h)if(hex(c)<0)return std::nullopt;
+        if(h.size()==3){uint32_t v=0;for(wchar_t c:h)v=(v<<8)|uint32_t(hex(c)*17);return v;}
+        if(h.size()==6||h.size()==8){uint32_t v=0;for(size_t i=0;i<6;++i)v=(v<<4)|uint32_t(hex(h[i]));return v;}return std::nullopt;}
+    if(t.starts_with(L"rgb(")&&t.ends_with(L")")){std::wstring inner=t.substr(4,t.size()-5);for(auto& c:inner)if(c==L',')c=L' ';const auto parts=words(inner);if(parts.size()!=3)return std::nullopt;
+        uint32_t v=0;for(auto& p:parts){auto n=wholeNumber(p);if(!n||*n>255)return std::nullopt;v=(v<<8)|uint32_t(*n);}return v;}
+    return std::nullopt;
+}
+inline std::wstring colourHex(uint32_t v){wchar_t b[8];swprintf(b,8,L"#%06X",v&0xffffff);return b;}
+inline std::wstring colourDetail(uint32_t v){
+    const int r=int(v>>16)&255,g=int(v>>8)&255,b=int(v)&255;const double R=r/255.,G=g/255.,B=b/255.,hi=std::max({R,G,B}),lo=std::min({R,G,B}),l=(hi+lo)/2,d=hi-lo;
+    double h=0,s=0;if(d>1e-9){s=d/(1-std::abs(2*l-1));h=hi==R?std::fmod((G-B)/d,6.):hi==G?(B-R)/d+2:(R-G)/d+4;h*=60;if(h<0)h+=360;}
+    wchar_t buf[96];swprintf(buf,96,L"rgb(%d, %d, %d)  \u00b7  hsl(%d, %d%%, %d%%)",r,g,b,int(std::lround(h))%360,int(std::lround(s*100)),int(std::lround(l*100)));return buf;
+}
+// Result groups, for the small headers between them: 0 none, 1 apps, 2 files, 3 answer, 4 actions,
+// and the empty bar's 11 pinned, 12 suggested, 13 recent.
+inline int resultGroup(const CommandResult& r){
+    if(r.section)return 10+r.section;switch(r.kind){case CommandKind::None:return 0;case CommandKind::OpenApp:return 1;case CommandKind::OpenFile:return 2;case CommandKind::Currency:case CommandKind::Colour:return 3;default:return 4;}
+}
+inline const wchar_t* groupName(int g){switch(g){case 1:return L"Apps";case 2:return L"Files";case 3:return L"Answer";case 4:return L"Actions";case 11:return L"Pinned";case 12:return L"Suggested";case 13:return L"Recent";default:return L"";}}
+// Row positions in the bar: 40 DIPs a row from y 52, and an 18 DIP header before each
+// group when the rows shown span more than one group.
+struct CommandRows {std::vector<float> rows;std::vector<std::pair<float,int>> headers;float footer=0;};
+inline CommandRows commandRows(const std::vector<CommandResult>& results,size_t maxRows,bool grouped=true){
+    CommandRows out;const size_t n=std::min(maxRows,results.size());std::vector<int> seen;
+    for(size_t i=0;i<n;++i){const int g=resultGroup(results[i]);if(g&&std::find(seen.begin(),seen.end(),g)==seen.end())seen.push_back(g);}
+    const bool headers=grouped&&seen.size()>1;float y=52;int previous=-1;
+    for(size_t i=0;i<n;++i){const int g=resultGroup(results[i]);if(headers&&g&&g!=previous){out.headers.push_back({y,g});y+=18;}out.rows.push_back(y);y+=40;previous=g;}
+    out.footer=y+2;return out;
 }
 // How well an installed app's name matches what was typed (0 = no match).
 inline int appScore(const std::wstring& name,const std::wstring& typed){
@@ -234,12 +279,25 @@ inline std::vector<CommandResult> parseCommand(const std::wstring& typed,const s
     if(first==L"find"||first==L"search"||first==L"files"||first==L"file"){auto rest=after(1);if(rest.empty()){add(CommandKind::None,L"Search your files",L"For example “find budget pdfs from last month”");return out;}
         auto q=fileQuery(rest);if(q.aqs.empty()){add(CommandKind::None,L"Search your files",L"Add a word to look for");return out;}
         add(CommandKind::SearchFiles,L"Find "+q.description,L"File Explorer search in your user folder",0,searchUri(q.aqs,scope));return out;}
+    // A colour code previews itself.
+    if(auto colour=parseColourCode(text)){CommandResult r;r.kind=CommandKind::Colour;r.value=int(*colour);r.title=colourHex(*colour);r.answer=r.title;r.detail=colourDetail(*colour);r.target=r.title;out.push_back(std::move(r));return out;}
     // Apps.
     std::wstring appText=text;bool explicitOpen=false;for(auto verb:{L"open ",L"launch ",L"start ",L"run "})if(t.starts_with(verb)){appText=trimmed(text.substr(wcslen(verb)));explicitOpen=true;break;}
     for(auto& a:matchApps(apps,appText)){CommandResult r;r.kind=CommandKind::OpenApp;r.title=L"Open "+a.name;r.detail=L"App";r.target=a.id;r.appId=a.id;r.marks=shiftedMarks(matchMarks(a.name,appText),5);
         // Tab completes the app's name when what is typed is the start of it.
         if(lowered(a.name).starts_with(lowered(appText))&&a.name.size()>appText.size())r.completion=text+a.name.substr(appText.size());
         out.push_back(std::move(r));}
+    // Did you mean…? The closest app name or command within a small edit distance.
+    if(out.empty()){
+        const auto typedApp=lowered(trimmed(appText));const size_t allowance=typoAllowance(typedApp.size());
+        if(allowance){const InstalledApp* best=nullptr;size_t bestDistance=allowance+1;
+            for(auto& a:apps){auto name=lowered(a.name);if(name.starts_with(L"uninstall"))continue;const auto first=words(name);
+                size_t d=editDistance(typedApp,name);if(!first.empty())d=std::min(d,editDistance(typedApp,first[0]));if(d<bestDistance||(d==bestDistance&&best&&a.name.size()<best->name.size())){bestDistance=d;best=&a;}}
+            if(best){CommandResult r;r.kind=CommandKind::OpenApp;r.title=L"Open "+best->name;r.detail=L"Did you mean "+best->name+L"?";r.target=best->id;r.appId=best->id;out.push_back(std::move(r));}
+            if(!explicitOpen){std::wstring phrase;size_t phraseDistance=allowance+1;for(auto p:commandPhrases){const std::wstring w=trimmed(std::wstring(p));const size_t d=editDistance(t,w);if(d<phraseDistance){phraseDistance=d;phrase=w;}}
+                if(!phrase.empty()&&phrase!=t){auto fixed=parseCommand(phrase,apps,workspaces,scope,env);if(!fixed.empty()&&fixed[0].kind!=CommandKind::None){fixed[0].detail=L"Did you mean \u201c"+phrase+L"\u201d?";fixed[0].completion=phrase;out.insert(out.begin(),fixed[0]);}}}
+        }
+    }
     if(out.empty())add(CommandKind::None,explicitOpen?L"No installed app by that name":L"Nothing to do yet",explicitOpen?L"Only apps in the Start menu can be opened":L"Try “open spotify”, “volume 30”, “focus 25” or “find notes pdf”");
     return out;
 }

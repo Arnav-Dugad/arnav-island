@@ -10,7 +10,8 @@
 #include <vector>
 namespace nexus {
 constexpr UINT PrivacyMessage=WM_APP+30;
-enum class Capability { Microphone,Camera,Location };
+// ScreenCapture: an app capturing the screen through Windows' capture API (Phase 5E).
+enum class Capability { Microphone,Camera,Location,ScreenCapture };
 // One app's use of a capability, as Windows' capability access manager records
 // it (the records behind Settings > Privacy "Recent activity" and Windows' own
 // in-use icons). Start and stop are FILETIMEs; a stop of 0 means still in use.
@@ -27,9 +28,12 @@ inline bool inUse(const ConsentRecord& r,const std::set<std::wstring>& paths,con
     std::wstring key=r.packaged?r.key:consentPath(r.key);for(auto& c:key)c=wchar_t(towlower(c));
     return r.packaged?families.contains(key):paths.contains(key);
 }
-inline const wchar_t* capabilityName(Capability c){return c==Capability::Camera?L"Camera":c==Capability::Microphone?L"Microphone":L"Location";}
-// Watches HKCU\...\CapabilityAccessManager\ConsentStore for microphone, camera
-// and location use. Read-only; nothing is logged or stored.
+inline const wchar_t* capabilityName(Capability c){return c==Capability::Camera?L"Camera":c==Capability::Microphone?L"Microphone":c==Capability::ScreenCapture?L"Screen capture":L"Location";}
+// The dot colours: green camera, orange microphone, purple screen capture, blue location.
+inline uint32_t capabilityColour(Capability c){return c==Capability::Camera?0x30d158:c==Capability::Microphone?0xff9f0a:c==Capability::ScreenCapture?0xbf5af2:0x0a84ff;}
+inline constexpr Capability capabilityOrder[]={Capability::Camera,Capability::Microphone,Capability::ScreenCapture,Capability::Location};
+// Watches HKCU\...\CapabilityAccessManager\ConsentStore for microphone, camera,
+// location and screen-capture use. Read-only; nothing is logged or stored.
 class PrivacyProvider {
     HWND window_;HANDLE stop_;std::thread worker_;std::mutex mutex_;std::vector<PrivacyUse> uses_;void run();
 public:
