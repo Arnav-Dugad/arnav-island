@@ -13,7 +13,7 @@ std::string narrow(const std::wstring& w){std::string s;for(wchar_t c:w)s+=c<128
 }
 SettingsContext IslandWindow::settingsContext(){
     SettingsContext c;int monitors=0;EnumDisplayMonitors(nullptr,nullptr,countMonitor,reinterpret_cast<LPARAM>(&monitors));c.monitors=std::max(1,monitors);
-    c.blur=GlassBackdrop::effectsEnabled();c.armoury=!content_.platform.armoury.empty();c.glassAvailable=renderer_&&renderer_->glassAvailable();c.labStats=labStats();c.wallpaper=content_.platform.wallpaper;c.shortcutTaken=settings_.commandShortcut!=0&&!hotkey_&&!testing_;c.version=appVersion;return c;
+    c.blur=GlassBackdrop::effectsEnabled();c.armoury=!content_.platform.armoury.empty();c.glassAvailable=renderer_&&renderer_->glassAvailable();c.labStats=labStats();c.wallpaper=content_.platform.wallpaper;c.captureTaken=captureTaken_;c.shortcutTaken=settings_.commandShortcut!=0&&!hotkey_&&!testing_;c.version=appVersion;return c;
 }
 void IslandWindow::openSettings(int section){
     if(!settingsWindow_)settingsWindow_=std::make_unique<SettingsWindow>(window_);
@@ -87,7 +87,7 @@ void IslandWindow::settingsAction(SettingAction action,int argument){
     case SettingAction::PowerSettings:ShellExecuteW(nullptr,L"open",L"ms-settings:powersleep",nullptr,nullptr,SW_SHOWNORMAL);break;
     case SettingAction::OpenArmoury:if(!content_.platform.armoury.empty())ShellExecuteW(nullptr,L"open",(L"shell:AppsFolder\\"+content_.platform.armoury).c_str(),nullptr,nullptr,SW_SHOWNORMAL);break;
     case SettingAction::PrivacySettings:ShellExecuteW(nullptr,L"open",L"ms-settings:privacy",nullptr,nullptr,SW_SHOWNORMAL);break;
-    case SettingAction::ClearClipboard:clearClips();break;
+    case SettingAction::ClearClipboard:clips_.forget();clipViews();savePinnedClips();store_.log("Info","clipboard_forgotten");refresh();break;
     case SettingAction::ClearWorkspaces:{workspaces_=WorkspaceStore{};saveWorkspaces();store_.log("Info","workspaces_cleared");break;}
     case SettingAction::OpenCommand:openCommand();break;
     case SettingAction::ClearLyrics:clearLyrics();break;

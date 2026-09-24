@@ -1,4 +1,4 @@
-# Feature status — v0.11 preview
+# Feature status — v0.12 preview
 
 | Area | Implemented | Limits |
 |---|---|---|
@@ -87,3 +87,14 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Headphone card | Default output change to an endpoint whose Windows form factor is headphones, headset or handset (name used only when none is reported); paired Bluetooth device's logo and battery when the names match; *Switch back* to the previous output | Not shown for switches made from the island (4 s window) or while the island is open; *Switch back* needs direct output switching |
 | App volume | Wheel over the compact logo or artwork changes the mixer session whose app name matches the playing session (exact, then contained name); level bar with the app's icon | A browser's volume covers all of its tabs; apps whose audio session name differs from their media identity are not matched |
 | Microphone | Mute for the default communications and console capture endpoints together; Audio page button, command words, and an on-island note on any change | Apps that mute inside themselves (a call's own mute button) are not reflected |
+
+| v0.12 feature | Implemented | Limits |
+|---|---|---|
+| Capture overlay | Frozen view of all monitors (island excluded with `WDA_EXCLUDEFROMCAPTURE`), dim, drag or click-a-window/screen, size label, colour loupe, Esc as a temporary hotkey, right-click cancel | Protected content (DRM video) appears black, as in any screenshot; windows are picked by their frame bounds |
+| Snip | PNG in Pictures › Screenshots, DIB on the clipboard, Shelf item with thumbnail, card with Open Shelf | Saved at the screen's physical resolution |
+| Copy text | Windows.Media.Ocr in the profile languages, on a worker; small regions enlarged up to 3x; line breaks kept | Only languages Windows has recognition packs for (here en-US, en-GB, ar-SA); handwriting and stylised text read poorly |
+| Colour picker | 11 x 11 loupe, HEX (Shift: RGB), one-pixel arrow nudges | Reads the frozen screenshot, so colours are as displayed |
+| Shelf item actions | Open, Open with, In folder, Copy path; images: Copy text, To PNG / To JPG, Half size; Zip; Remove | No WebP output (Windows ships no WebP encoder); outputs go beside the original, or to Documents |
+| ZIP | Built-in deflate (LZ77 + fixed Huffman, stored fallback), CRC-32, UTF-8 names, DOS dates, folders recursed | No ZIP64 (4 GB), fixed Huffman compresses less than dynamic; symlinked folders are followed as normal folders |
+| Pinned Shelf | Opt-in `shelf.nexus`: file paths and dropped text, missing files skipped, 32 items | Files moved while the island is closed drop off the Shelf |
+| Clipboard v2 | Search (every word), up to 12 pins never evicted and saved with DPAPI, secret masking, Alt+Shift+V picker that pastes into the previous app | Picker appears in the island, not at the text cursor; kept copies are plain text |

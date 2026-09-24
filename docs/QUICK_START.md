@@ -104,3 +104,11 @@ Larger requested integrations are tracked honestly in DELIVERY_PHASES.md in the 
 **Microphone.** Audio page → the microphone button (red when muted), or type "mute mic", "unmute mic" or "mic" in the command bar.
 
 **Headphones.** When Windows switches to headphones, a card offers *Switch back*. Settings → Devices & power → *Headphone switch card* turns it off.
+
+## v0.12 capture and Shelf
+
+**Snip** (Alt+Shift+S), **copy text** (Alt+Shift+T) and **pick a colour** (Alt+Shift+C). Drag a region, or click a window or screen; Esc or right-click cancels. In colour mode, click to copy HEX, hold Shift for RGB, and use the arrow keys for one-pixel moves. The same tools are the three buttons at the bottom of the Shelf, and the command-bar words "snip", "copy text" and "pick colour". Snips are saved in Pictures › Screenshots.
+
+**Shelf actions.** Click a Shelf item for Open, Open with, In folder, Copy path, and for images Copy text, To PNG/To JPG and Half size. Zip turns a file or folder into an archive beside it; the Zip button in the Shelf footer zips everything on the Shelf. Settings → Privacy & productivity → *Keep the Shelf after restarts* remembers the Shelf.
+
+**Clipboard.** Alt+Shift+V opens your copies in the command bar: type to filter, Enter pastes into the app you were in, Shift+Enter only copies. On the Shelf's Clipboard tab, the pin keeps a copy at the top (and across restarts) and the search button finds older ones. Copies that look like passwords or codes stay dotted until you point at them. The shortcuts can be turned off in Settings → Privacy & productivity.

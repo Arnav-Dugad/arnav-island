@@ -12,6 +12,8 @@ class ClipboardWatcher {
 public:
     enum class Read { Captured,Skipped,Busy };
     ~ClipboardWatcher(){stop();}
+    // The island owns what it copies (captures, recognised text, colours) even with history off.
+    void attach(HWND window){window_=window;}
     void start(HWND window){window_=window;if(!listening_)listening_=AddClipboardFormatListener(window)!=FALSE;}
     void stop(){if(listening_&&window_)RemoveClipboardFormatListener(window_);listening_=false;}
     bool listening()const{return listening_;}

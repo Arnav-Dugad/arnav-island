@@ -109,3 +109,17 @@ Deviations from the plan, each deliberate:
 - **Microphone mute covers both default microphone roles**, communications and console, so calls and recorders agree.
 
 Next: Phase 5C, capture and Shelf superpowers.
+
+## Status after v0.12 — Phase 5C, capture and Shelf — 2026-09-24
+
+Shipped: snip to Shelf, copy text from anything (on-device recognition), colour picker, Shelf quick actions (open, open with, show in folder, copy path, copy text, PNG/JPG conversion, half size, zip), the opt-in pinned Shelf, and clipboard v2 (search, pins, picker with paste, hidden secrets).
+
+Deviations from the plan, each deliberate:
+- **No WebP conversion.** Windows has a WebP decoder but no encoder; images convert to PNG or JPG.
+- **The clipboard picker is Alt+Shift+V, in the island.** Ctrl+Shift+V is already "paste without formatting" in browsers, Office and terminals, so taking it globally would break those apps. The picker opens in the command bar rather than at the text cursor.
+- **"Paste as plain text"** is how history always pastes: copies are kept as plain text. Shift+Enter in the picker copies without pasting.
+- **Pinned copies survive restarts** (encrypted with the Windows account key), unlike the rest of the history, which stays memory-only.
+
+Also delivered: a polish pass (Home date, mixer button, Shelf chevrons), a local crash report, and two fixes found by testing — a release-only crash class in hand-declared Windows interfaces (fixed for text recognition and for Bluetooth audio connect) and drag-and-drop registration hidden by a comment during development.
+
+Next: Phase 5D, command bar v2.

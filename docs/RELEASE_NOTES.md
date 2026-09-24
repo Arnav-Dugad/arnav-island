@@ -1,41 +1,45 @@
-# Arnav Island 0.11.0-preview.1 — Now Playing Pro
+# Arnav Island 0.12.0-preview.1 — Capture and Shelf superpowers
 
-Phase 5B: lyrics, artwork colours, better seeking, a headphone card and audio controls.
+Phase 5C: capture the screen, read text from it, pick colours, do more with Shelf files, and a smarter clipboard.
 
-## Synced lyrics (off until you turn them on)
-- Turn on **Settings → Media & sound → Synced lyrics**. The line being sung appears:
-  - in the compact island, in the accent colour
-  - on the Live card
-  - on the Media page, which shows the previous, current and next lines. The current line glows softly on dark islands, and each new line rises into place.
-- Lyrics come from **LRCLIB**, a free lyrics library that needs no account or key. **Only the song title and artist are sent.** The island picks the version whose length matches your track, so a live or extended cut never scrolls out of step.
-- Each song is looked up once. Its lyrics, or the fact that none were found, are saved on your PC. Settings → Media & sound → Saved lyrics → **Clear** removes them.
-- The lyrics button next to the page title switches the Media page between lyrics and the usual title and artist.
-- Titles from YouTube and other sites, such as "Artist - Song (Official Video)", are cleaned up before searching. Songs with no synced lyrics simply show the normal layout.
+## Snip, copy text, pick a colour
+- **Alt+Shift+S: snip.** The screen freezes and dims, with the island left out of the picture. Drag a region, or click a window or a whole screen. The snip is saved as a PNG in *Pictures › Screenshots*, added to the Shelf and copied, and a card shows it with an *Open Shelf* button.
+- **Alt+Shift+T: copy text from anything.** Drag over text on screen; Windows' own on-device text recognition reads it and the text is copied, keeping its line breaks. Nothing leaves your PC.
+- **Alt+Shift+C: colour picker.** A magnifier shows the pixels around the pointer. Click to copy the colour as HEX, or hold Shift for `rgb(...)`. The arrow keys nudge one pixel.
+- A size label follows your selection, and the corners carry your accent colour. Esc or right-click cancels.
+- The same tools are buttons at the bottom of the Shelf, and command-bar words: "snip", "copy text" and "pick colour".
 
-## Colours from the artwork
-- The island reads a small palette from the cover: a main colour, a second colour and the picture's overall tone.
-- The played part of the timeline and the waveform run from the main colour to the second. The background glow and the glass tint take the overall tone.
-- **The light island now uses the artwork's colour too**, as a deep shade, instead of always the same green.
+## Shelf quick actions
+- **Click a Shelf item** to open it: a preview, its type, size and dimensions, and actions:
+  - **Open**, **Open with**, **In folder**, **Copy path**
+  - for images: **Copy text** (on-device recognition), **To PNG / To JPG** and **Half size**, saved next to the original
+  - **Zip** a file or folder, or zip the whole Shelf from its footer. The archive is compressed, keeps Unicode names, and opens in File Explorer and other ZIP tools.
+  - **Remove**
+- Converted and zipped files join the Shelf automatically.
 
-## Smarter seeking
-- **Hover the timeline** to see the time under the pointer, and the lyric sung there when lyrics are on.
-- **Detents:** while dragging, the playhead snaps to even time marks (every 10 s on a normal song) and to the start of lyric lines, with a small tick. Pull away from the bar for fine control, as before.
-- **Double-click the artwork** on the Media page to skip 10 s: left half back, right half forward. Keep clicking to go further. With the pointer on the timeline, ← and → also skip 10 s.
-- Windows doesn't tell apps about chapters, so there are no chapter detents. Lyric lines take their place.
+## Keep the Shelf (off until you turn it on)
+- Settings → Privacy & productivity → *Keep the Shelf after restarts*. It remembers **links** to your Shelf files and any dropped text, never copies of the files. Files that have been deleted are skipped.
 
-## Headphone card
-- When **Windows moves your sound to headphones** (for example, earbuds connecting), a card shows where the sound went and where it came from, with a **Switch back** button.
-- The card doesn't appear when you pick the output on the island yourself. Turn it off in Settings → Devices & power → *Headphone switch card*.
+## Clipboard v2
+- **Search your copies:** the search button on the Shelf's Clipboard tab, or type "clip " in the command bar. Every word you type must match.
+- **Alt+Shift+V: the clipboard picker.** It lists your last copies in the command bar. Type to filter; **Enter pastes** into the app you were in, and **Shift+Enter** only copies. Copies are kept as plain text, so pasting from history never brings formatting.
+- **Pin** a copy with the pin on its row. Pinned copies stay at the top and are never pushed out. Up to 12 are kept, and they survive restarts, **encrypted for your Windows account**.
+- **Passwords and codes stay hidden:** copies that look like a password, one-time code or API key show as dots until you point at them.
+- The Shelf's *Clear* keeps pins; Settings' *Clear clipboard history*, or turning history off, removes everything.
 
-## Audio controls
-- **Per-app volume from the compact island:** scroll over the playing app's logo or artwork to change that app's volume, without touching the system volume. The level bar shows the app's own icon.
-- **Microphone mute:** the Audio page has a microphone button, which turns red when muted. It mutes your default microphone for calls and recording alike. The command bar understands "mute mic", "unmute mic" and "mic". The island briefly says "Microphone off" or "Microphone on" when the state changes, including changes made elsewhere in Windows.
+## Polish
+- Home shows today's date in your own date format where the old heading was.
+- The *Windows volume mixer* button's arrow now sits inside the button.
+- Shelf rows show a chevron, and the Shelf's empty state mentions snipping.
 
 ## Fixed
-- In Settings on the light theme, the Wallpaper accent showed as orange. It now uses a deep shade of the wallpaper colour.
+- **Bluetooth audio Connect/Disconnect:** the interface behind the buttons was declared in a way that let the compiler's optimiser treat calls through it as unreachable in release builds. It is now declared safely, the same way as the new text recognition, which had the same problem during development and crashed until fixed.
 
-Windows 11 x64, unsigned preview. Settings move to version 10; existing preferences are kept.
+## New in the background
+- If the island ever crashes, it writes `crash.txt` next to its logs: the error code and code offsets only, no content, file names or personal data.
+
+Windows 11 x64, unsigned preview. Settings move to version 11; existing preferences are kept.
 
 ---
 
-Previous release: [0.10.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.10.0-preview.1): glass materials, the Animation Lab in Settings and the waveform timeline.
+Previous release: [0.11.0-preview.1](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.11.0-preview.1): synced lyrics, artwork colours, smarter seeking, the headphone card and audio controls.

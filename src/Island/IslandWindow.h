@@ -23,6 +23,9 @@
 #include "Productivity/CommandService.h"
 #include "Media/LyricsService.h"
 #include "Audio/AudioRoute.h"
+#include "Capture/CaptureOverlay.h"
+#include "Capture/Ocr.h"
+#include "FileShelf/ShelfStore.h"
 #include <map>
 #include <memory>
 #include <thread>
@@ -54,7 +57,12 @@ class IslandWindow {
     // skips, seek detents, the app under the compact logo, and the headphone switch card.
     std::unique_ptr<LyricsService> lyrics_;std::wstring lyricsKey_;void syncLyrics();void tickLyrics(bool redraw=true);void clearLyrics();
     double skipClickTime_=0,lastDetent_=-1;Action skipClickAction_=Action::None;POINT skipClickPoint_{};void seekBy(double delta);
-    void appVolumeWheel(int delta);std::wstring switchBackId_,lastRouteName_;double routeRequestAt_=-10;bool qaMicMuted_=false,micKnown_=false;bool showHeadphoneCard(const AudioDevice& output,const std::wstring& fromId,const std::wstring& fromName);
+    void appVolumeWheel(int delta);std::wstring switchBackId_,lastRouteName_;double routeRequestAt_=-10;bool qaMicMuted_=false,micKnown_=false;
+    // Phase 5C: capture (snip, text, colour), Shelf item actions, the pinned Shelf, pinned copies and the clipboard picker.
+    void startCapture(CaptureMode mode);void captureDone(CaptureResult* r);void captureCard(int kind,std::wstring title,std::wstring detail,std::shared_ptr<const Artwork> icon={},uint32_t colour=0);void copyText(const std::wstring& text,bool keep=true);
+    void openShelfItem(int index);void shelfAction(Action a);void shelfChanged();void loadShelfFile();void savePinnedClips();void loadPinnedClips();
+    void clipResults();void clipSearch(bool picker);void pasteClip(size_t row,bool copyOnly);void syncCaptureHotkeys();bool captureMessage(UINT,WPARAM,LPARAM,LRESULT&);
+    void qaBackdrop();int qaOverlay_=-1;std::vector<uint64_t> ids_;int captureHotkeys_=-1;std::wstring captureTaken_;bool jobRunning_=false,pinsLoaded_=false,pinnedShelfWas_=false;bool showHeadphoneCard(const AudioDevice& output,const std::wstring& fromId,const std::wstring& fromName);
     bool edgeHold_=false;bool pointerOffEdge();double swipeAccumulator_=0,swipeTime_=0;bool mediaReachable_=false;
     void updateSessions();void switchSession(int delta,bool absolute=false);void updateProviders();void levelIndicator();void setMixerAt(LPARAM);bool systemRequested_=false,contentDirty_=true;Action pressedAction_=Action::None;
     void setVolumeAt(LPARAM);void scrubAt(LPARAM,bool begin=false);void endScrub(bool commit);void requestPreviews(const std::vector<ShelfItem>& incoming={});void perform(Action);Action hit(LPARAM);void refresh();void clockTimer();

@@ -82,6 +82,7 @@ std::wstring SettingsUi::detail(const SettingItem& i)const{
     if(i.action==SettingAction::TransparencySettings)return context_.blur?L"On — Frosted glass blurs what is behind the island":L"Off — Frosted glass uses a translucent frost; turn on for real blur";
     if(i.key=="material"&&!context_.glassAvailable)return L"Glass needs Windows 11 composition support";
     if(i.key=="commandShortcut"&&context_.shortcutTaken)return L"Another app already uses this shortcut \u2014 choose another";
+    if(i.key=="captureShortcuts"&&!context_.captureTaken.empty()&&s_.captureShortcuts)return L"Another app already uses "+context_.captureTaken+L"; the rest work";
     return i.detail;
 }
 IDWriteTextFormat* SettingsUi::format(float size,DWRITE_FONT_WEIGHT weight){

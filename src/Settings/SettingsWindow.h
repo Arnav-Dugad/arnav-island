@@ -11,7 +11,7 @@ namespace nexus {
 // SettingsAction carries a SettingAction in wParam.
 constexpr UINT SettingsChangedMessage=WM_APP+60,SettingsActionMessage=WM_APP+61;
 // labStats: the Animation Lab's live readout (display rate, frames in the last transition, process figures).
-struct SettingsContext {int monitors=1;bool blur=true,glassAvailable=true,armoury=false,shortcutTaken=false;uint32_t wallpaper=0;std::wstring version,labStats;};
+struct SettingsContext {int monitors=1;bool blur=true,glassAvailable=true,armoury=false,shortcutTaken=false;uint32_t wallpaper=0;std::wstring version,labStats,captureTaken;};
 // A standalone preferences window on its own UI thread. Every edit is posted to
 // the island immediately, so the island restyles while you drag or toggle.
 class SettingsUi;

@@ -3,7 +3,7 @@
 #include <d2d1.h>
 #include <cmath>
 namespace nexus {
-enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous,Next,Pin,Close,Plus,Minus,Muted,Volume,Battery,Processor,Memory,Download,Upload,Disk,Clock,File,Text,Check,Chevron,ArrowLeft,ArrowRight,Reset,Sun,Spark,Power,Link,Island,Info,Sliders,ArrowUp,ArrowDown,Brightness,Apps,Earbuds,Speaker,Phone,Keyboard,Mouse,Gamepad,Watch,Bluetooth,Bolt,Heart,Gauge,Shield,Camera,Microphone,Location,Clipboard,Search,Lock,Image,Workspace,MicOff,Lyrics};
+enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous,Next,Pin,Close,Plus,Minus,Muted,Volume,Battery,Processor,Memory,Download,Upload,Disk,Clock,File,Text,Check,Chevron,ArrowLeft,ArrowRight,Reset,Sun,Spark,Power,Link,Island,Info,Sliders,ArrowUp,ArrowDown,Brightness,Apps,Earbuds,Speaker,Phone,Keyboard,Mouse,Gamepad,Watch,Bluetooth,Bolt,Heart,Gauge,Shield,Camera,Microphone,Location,Clipboard,Search,Lock,Image,Workspace,MicOff,Lyrics,Snip,Eyedropper,Folder,Copy,Archive,Resize,Convert,Trash,External};
 // Original 24-unit optical grid. Rounded stroke ends are consistent at every DPI.
 inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float x,float y,float size,UINT32 color,float opacity=1){
     D2D1_MATRIX_3X2_F saved;rt->GetTransform(&saved);rt->SetTransform(D2D1::Matrix3x2F::Scale(size/24,size/24)*D2D1::Matrix3x2F::Translation(x,y)*saved);
@@ -71,6 +71,16 @@ inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float
     case Icon::MicOff:rect(9,2.5f,15,14,3);path({{5.5f,11},{6.5f,15},{9,17.6f},{12,18.5f},{15,17.6f},{17.5f,15},{18.5f,11}});line(12,18.5f,12,21.5f);line(8.5f,21.5f,15.5f,21.5f);line(3.5f,3,20.5f,21);break;
     // Lines of text beside a note: lyrics.
     case Icon::Lyrics:line(3.5f,6,13,6);line(3.5f,11,11,11);line(3.5f,16,9,16);path({{16,18},{16,5},{21,6.5f}});rt->FillEllipse(D2D1::Ellipse({13.8f,18.4f},2.6f,2.1f),brush.Get());break;
+    // Phase 5C: capture and Shelf actions.
+    case Icon::Snip:path({{3,8.5f},{3,3},{8.5f,3}});path({{15.5f,3},{21,3},{21,8.5f}});path({{21,15.5f},{21,21},{15.5f,21}});path({{8.5f,21},{3,21},{3,15.5f}});dot(12,12,1.6f);break;
+    case Icon::Eyedropper:line(4.5f,19.5f,12.5f,11.5f);line(10,9,15,14);line(12.5f,11.5f,17.5f,6.5f);circle(18.6f,5.4f,2.4f);break;
+    case Icon::Folder:path({{3,6},{9.5f,6},{11.5f,8.5f},{21,8.5f},{21,19},{3,19}},true);break;
+    case Icon::Copy:rect(8.5f,8.5f,20,20,2.5f);path({{15.5f,8.5f},{15.5f,4},{4,4},{4,15.5f},{8.5f,15.5f}});break;
+    case Icon::Archive:rect(4,3.5f,20,20.5f,2.5f);line(12,3.5f,12,5.5f);line(12,7.5f,12,9.5f);line(12,11.5f,12,13);rect(10.2f,13,13.8f,17,1);break;
+    case Icon::Resize:rect(3.5f,11,12.5f,20,2);path({{13.5f,3.5f},{20.5f,3.5f},{20.5f,10.5f}});line(20.5f,3.5f,14.5f,9.5f);break;
+    case Icon::Convert:line(4.5f,8.5f,18,8.5f);path({{14.5f,5},{18,8.5f},{14.5f,12}});line(19.5f,15.5f,6,15.5f);path({{9.5f,12},{6,15.5f},{9.5f,19}});break;
+    case Icon::External:path({{13.5f,4},{20,4},{20,10.5f}});line(20,4,11.5f,12.5f);path({{17,14},{17,19},{5,19},{5,7},{10,7}});break;
+    case Icon::Trash:line(4,6.5f,20,6.5f);path({{9,6.5f},{9.6f,4},{14.4f,4},{15,6.5f}});path({{6,6.5f},{7,20},{17,20},{18,6.5f}});line(10,10,10,16.5f);line(14,10,14,16.5f);break;
     case Icon::Workspace:rect(3,3.5f,10.5f,10.5f,2);rect(13.5f,3.5f,21,10.5f,2);rect(3,13.5f,10.5f,20.5f,2);rect(13.5f,13.5f,21,20.5f,2);break;
     case Icon::Bolt:path({{13,2},{5,13},{11,13},{10,22},{19,10},{13,10},{13,2}},true,true);break;
     case Icon::Heart:path({{12,20},{4,12},{3.2f,8},{5,5},{8.5f,4.5f},{12,8},{15.5f,4.5f},{19,5},{20.8f,8},{20,12},{12,20}},true);break;

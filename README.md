@@ -1,19 +1,18 @@
-# Arnav Island 0.11 — Now Playing Pro
+# Arnav Island 0.12 — capture and Shelf superpowers
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.11.0-preview.1)
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.12.0-preview.1)
 
-![Media page showing synced lyrics](docs/evidence/v0.11/lyrics-dark.png)
+![Copying text from the screen](docs/evidence/v0.12/overlay-text.png)
 
-- **Synced lyrics** (opt-in): the line being sung in the compact island, on the Live card and on the Media page, from LRCLIB. Only the song title and artist are sent, and lyrics are saved on your PC.
-- **Colours from the artwork**: the timeline and waveform run from the cover's main colour to its second, the glow takes its overall tone, and the light island finally follows the artwork too.
-- **Smarter seeking**: a time bubble (with the lyric at that point), detents at 10 s marks and lyric lines, double-click the artwork to skip 10 s, arrow keys on the timeline.
-- **Headphone card**: when Windows moves your sound to headphones, the island says so and offers *Switch back*.
-- **Audio controls**: scroll over the playing app's logo to change just that app's volume; mute your microphone from the Audio page or by typing "mute mic".
-- Carried forward: Frosted and Clear glass, the Animation Lab in Settings, the waveform timeline, command bar, workspaces, clipboard history, privacy dots, edge reveal, Bluetooth and battery cards, per-app mixer, focus timer, file shelf and 180 brand marks.
+- **Snip, copy text, pick a colour**: Alt+Shift+S, Alt+Shift+T and Alt+Shift+C freeze the screen (without the island) for a region, a window or a pixel. Snips land on the Shelf and the clipboard; text is read on your PC by Windows' own recognition; colours copy as HEX or RGB.
+- **Shelf quick actions**: open, open with, show in folder, copy path, copy text from images, convert to PNG or JPG, half size, and ZIP a file, folder or the whole Shelf.
+- **Clipboard v2**: search your copies, pin favourites (saved encrypted), paste from the Alt+Shift+V picker, and passwords stay hidden until you point at them.
+- **Keep the Shelf** across restarts (opt-in; links only, never copies).
+- Carried forward: synced lyrics, artwork colours, smart seeking, headphone card, per-app volume, glass materials, Animation Lab, waveform timeline, command bar, workspaces, privacy dots, edge reveal, device and battery cards, mixer, focus timer and 180 brand marks.
 
-![Seek bubble with the lyric at that time](docs/evidence/v0.11/seek-bubble.png)
+![A Shelf item and its actions](docs/evidence/v0.12/shelf-item.png)
 
 No account, subscription, browser engine, driver or administrator access is required. Extract the ZIP and run ArnavIsland.exe. The only feature that goes online is synced lyrics, and it is off until you turn it on.
 
@@ -21,6 +20,6 @@ No account, subscription, browser engine, driver or administrator access is requ
 
 ## Build
 
-MinGW-w64 GCC 16 and CMake: `scripts/build.ps1 -Test` builds the app and runs the unit suites; `scripts/package.ps1` makes the release ZIP. Backend: Win32, DirectComposition, Direct2D/DirectWrite, Windows.UI.Composition for the glass backdrop, and WinHTTP for the optional lyrics lookup. Unavailable values are shown as unavailable, never invented.
+MinGW-w64 GCC 16 and CMake: `scripts/build.ps1 -Test` builds the app and runs the unit suites; `scripts/package.ps1` makes the release ZIP. Backend: Win32, DirectComposition, Direct2D/DirectWrite, Windows.UI.Composition for glass, Windows.Media.Ocr for text recognition, WIC for images and WinHTTP for the optional lyrics lookup. Unavailable values are shown as unavailable, never invented.
 
-![Headphone switch card](docs/evidence/v0.11/headphone-card.png)
+![The clipboard picker](docs/evidence/v0.12/clipboard-picker.png)

@@ -45,15 +45,20 @@ struct ContentSnapshot {
     std::vector<BluetoothDevice> devices;std::wstring deviceFeedback;PlatformInfo platform;
     // Notice kinds 5-7: camera, microphone and location use (app and icon below).
     // Kind 8: sound moved to headphones (device = the output, app = the previous output, switchBack offered).
-    struct Notice{int kind=0;BluetoothDevice device;std::wstring app;std::shared_ptr<const Artwork> icon;bool switchBack=false;} notice;
+    // Kinds 9-11: a colour was picked, text was copied from the screen, a snip went to the Shelf (detail and colour describe it).
+    struct Notice{int kind=0;BluetoothDevice device;std::wstring app;std::shared_ptr<const Artwork> icon;bool switchBack=false;std::wstring detail;uint32_t colour=0;} notice;
     // Phase 4: clipboard history on the Shelf, privacy indicators and the command bar.
-    int shelfTab=0,clipOffset=0;bool clipsPaused=false;std::wstring clipStatus;double clipStatusUntil=0;struct Clip{uint64_t id=0;int kind=0;std::wstring preview,meta;std::shared_ptr<const Artwork> thumbnail,icon;};std::vector<Clip> clips;
+    int shelfTab=0,clipOffset=0;bool clipsPaused=false;std::wstring clipStatus;double clipStatusUntil=0;struct Clip{uint64_t id=0;int kind=0;std::wstring preview,meta;std::shared_ptr<const Artwork> thumbnail,icon;bool pinned=false,secret=false;};std::vector<Clip> clips;
+    // Phase 5C: one Shelf item opened for its actions, and what it is.
+    int shelfDetail=-1;bool shelfBusy=false;std::wstring shelfStatus;double shelfStatusUntil=0;
+    struct ShelfInfo{std::wstring kind,size,folder,extension;bool image=false,directory=false;int width=0,height=0;} shelfInfo;
     std::vector<PrivacyUse> privacy;
     // Phase 5B: synced lyrics of the current track (state is LyricsService::State), the seek
     // preview, detent pulses, the volume of the app under the compact logo, and the microphone.
     std::shared_ptr<const std::vector<LyricLine>> lyrics;int lyricsState=0,lyricLine=-1;bool lyricsView=true;
     float seekHover=-1;unsigned detentPulse=0;int appVolume=-1;std::wstring appVolumeName;bool micMuted=false,micAvailable=false;
-    struct Command{bool active=false,armed=false,error=false;std::wstring text,status;size_t caret=0;int selected=0;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;} command;
+    // Clipboard mode ("clip ..." or Alt+Shift+V) lists copies and shows more rows.
+    struct Command{bool clips=false,paste=false;bool active=false,armed=false,error=false;std::wstring text,status;size_t caret=0;int selected=0;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;} command;
 };
 
 class Renderer {

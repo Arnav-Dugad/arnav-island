@@ -9,6 +9,13 @@
 #include <functiondiscoverykeys_devpkey.h>
 #include <map>
 namespace nexus {
+// IKsControl, declared here with external linkage: inside an anonymous namespace GCC would see no
+// implementation of it in this file and, at -O2 and above, treat calls through it as unreachable.
+namespace ksabi {
+struct KsIdentifier{GUID set;ULONG id,flags;};
+struct KsControl:IUnknown{virtual HRESULT STDMETHODCALLTYPE KsProperty(KsIdentifier*,ULONG,void*,ULONG,ULONG*)=0;virtual HRESULT STDMETHODCALLTYPE KsMethod(KsIdentifier*,ULONG,void*,ULONG,ULONG*)=0;virtual HRESULT STDMETHODCALLTYPE KsEvent(KsIdentifier*,ULONG,void*,ULONG,ULONG*)=0;};
+}
+using namespace ksabi;
 namespace {
 constexpr GUID bluetoothClass{0xe0cbf06c,0xcd8b,0x4647,{0xbb,0x8a,0x26,0x3b,0x43,0xf0,0xf9,0x74}};
 constexpr GUID hciEvent{0xfc240062,0x1541,0x49be,{0xb4,0x63,0x84,0xc4,0xdc,0xd7,0xbf,0x7f}};
@@ -19,8 +26,6 @@ constexpr DEVPROPKEY batteryKey{{0x104ea319,0x6ee2,0x4701,{0xbd,0x47,0x8d,0xdb,0
 constexpr DEVPROPKEY classOfDevice{{0x2bd67d8b,0x8beb,0x48d5,{0x87,0xe0,0x6c,0xda,0x34,0x28,0x04,0x0a}},10};
 // Bluetooth audio one-shot connection property set (KSPROPSETID_BtAudio).
 constexpr GUID btAudio{0x7fa06c40,0xb8f6,0x4c7e,{0x85,0x56,0xe8,0xc3,0x3a,0x12,0xe5,0x4d}};
-struct KsIdentifier{GUID set;ULONG id,flags;};
-struct KsControl:IUnknown{virtual HRESULT STDMETHODCALLTYPE KsProperty(KsIdentifier*,ULONG,void*,ULONG,ULONG*)=0;virtual HRESULT STDMETHODCALLTYPE KsMethod(KsIdentifier*,ULONG,void*,ULONG,ULONG*)=0;virtual HRESULT STDMETHODCALLTYPE KsEvent(KsIdentifier*,ULONG,void*,ULONG,ULONG*)=0;};
 std::wstring upper(std::wstring s){for(auto& c:s)c=wchar_t(std::towupper(c));return s;}
 template<class T> bool property(HDEVINFO set,SP_DEVINFO_DATA& d,const DEVPROPKEY& key,T& out){DEVPROPTYPE type=0;return SetupDiGetDevicePropertyW(set,&d,&key,&type,reinterpret_cast<BYTE*>(&out),sizeof(T),nullptr,0)!=FALSE;}
 std::wstring stringProperty(HDEVINFO set,SP_DEVINFO_DATA& d,const DEVPROPKEY& key){wchar_t text[256]{};DEVPROPTYPE type=0;if(!SetupDiGetDevicePropertyW(set,&d,&key,&type,reinterpret_cast<BYTE*>(text),sizeof(text)-sizeof(wchar_t),nullptr,0)||type!=DEVPROP_TYPE_STRING)return {};return text;}

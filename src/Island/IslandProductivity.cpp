@@ -16,8 +16,11 @@ std::wstring copiedLabel(const ClipEntry& e){
 // Providers follow preferences: clipboard listening only when history is on,
 // the privacy watcher only when a privacy feature is on, the shortcut on demand.
 void IslandWindow::syncProductivity(){
-    if(settings_.clipboardHistory&&!testing_)clipboard_.start(window_);
-    else{clipboard_.stop();if(!clips_.entries().empty()||!content_.clips.empty()){clips_.clear();clipViews();}}
+    if(settings_.clipboardHistory&&!testing_){clipboard_.start(window_);if(!pinsLoaded_){pinsLoaded_=true;loadPinnedClips();}}
+    // Turning history off forgets everything, pinned copies included.
+    else{clipboard_.stop();pinsLoaded_=false;if(!clips_.entries().empty()||!content_.clips.empty()){clips_.forget();clipViews();}savePinnedClips();}
+    if(settings_.pinnedShelf!=pinnedShelfWas_){pinnedShelfWas_=settings_.pinnedShelf;if(settings_.pinnedShelf&&content_.shelf.empty())loadShelfFile();shelfChanged();}
+    syncCaptureHotkeys();
     const bool privacy=(settings_.privacyDots||settings_.privacyCards)&&!testing_;
     if(privacy&&!privacy_)privacy_=std::make_unique<PrivacyProvider>(window_);
     else if(!privacy&&privacy_){privacy_.reset();privacyUses_.clear();content_.privacy.clear();}
@@ -51,7 +54,9 @@ void IslandWindow::onClipboard(){
 }
 void IslandWindow::clipViews(){
     const double now=seconds();content_.clips.clear();content_.clipsPaused=clips_.paused;
-    for(auto& e:clips_.entries()){ContentSnapshot::Clip c;c.id=e.id;c.kind=int(e.kind);c.icon=e.sourceIcon;c.thumbnail=e.thumbnail;
+    // Pinned copies first, then the newest.
+    std::vector<const ClipEntry*> order;for(auto& e:clips_.entries())if(e.pinned)order.push_back(&e);for(auto& e:clips_.entries())if(!e.pinned)order.push_back(&e);
+    for(auto* p:order){const auto& e=*p;ContentSnapshot::Clip c;c.id=e.id;c.kind=int(e.kind);c.icon=e.sourceIcon;c.thumbnail=e.thumbnail;c.pinned=e.pinned;c.secret=e.kind==ClipEntry::Kind::Text&&looksSecret(e.text);
         switch(e.kind){
         case ClipEntry::Kind::Image:c.preview=L"Image  ·  "+std::to_wstring(e.imageWidth)+L" × "+std::to_wstring(e.imageHeight);break;
         case ClipEntry::Kind::Files:{auto& f=e.files.front();auto slash=f.find_last_of(L"\\/");c.preview=slash==std::wstring::npos?f:f.substr(slash+1);if(e.files.size()>1)c.preview+=L" and "+std::to_wstring(e.files.size()-1)+L" more";break;}
@@ -60,8 +65,9 @@ void IslandWindow::clipViews(){
     content_.clipOffset=std::clamp(content_.clipOffset,0,std::max(0,int(content_.clips.size())-4));
 }
 void IslandWindow::clearClips(){clips_.clear();clipViews();store_.log("Info","clipboard_cleared");refresh();}
+// `index` is a row of the Shelf list (pinned first), matched to its copy by id.
 void IslandWindow::copyClip(size_t index){
-    if(index>=clips_.entries().size())return;ClipEntry e=clips_.entries()[index];
+    if(index>=content_.clips.size())return;const ClipEntry* found=clips_.find(content_.clips[index].id);if(!found)return;ClipEntry e=*found;
     if(!clipboard_.copy(e)){content_.clipStatus=L"The clipboard is busy; try again";content_.clipStatusUntil=seconds()+2.5;refresh();return;}
     clips_.add(std::move(e),seconds());content_.clipOffset=0;clipViews();content_.clipStatus=L"Copied again";content_.clipStatusUntil=seconds()+2.5;
     motion_.pulse.reset(motion_.reduced?.12:.5,seconds());motion_.pulse.retarget(0,seconds(),{1,70,16});refresh();animate();
@@ -98,9 +104,9 @@ void IslandWindow::closeCommand(bool restoreFocus){
     transition(IslandState::Compact);feedback(Action::None);
     HWND back=commandReturn_;commandReturn_=nullptr;if(restoreFocus&&back&&IsWindow(back))SetForegroundWindow(back);
 }
-void IslandWindow::commandQuery(){if(commands_)commands_->query(content_.command.text,workspaces_.names());}
+void IslandWindow::commandQuery(){if(content_.command.clips){clipResults();return;}if(commands_)commands_->query(content_.command.text,workspaces_.names());}
 void IslandWindow::commandResults(){
-    if(!commands_||!content_.command.active)return;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;
+    if(!commands_||!content_.command.active||content_.command.clips)return;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;
     auto seq=commands_->results(results,icons);if(seq<commandSeq_)return;commandSeq_=seq;
     auto& c=content_.command;bool same=results.size()==c.results.size();for(size_t i=0;same&&i<results.size();++i)same=results[i].title==c.results[i].title;
     c.results=std::move(results);c.icons=std::move(icons);if(!same){c.selected=0;c.armed=false;}c.selected=std::clamp(c.selected,0,std::max(0,int(std::min<size_t>(3,c.results.size()))-1));
@@ -109,14 +115,17 @@ void IslandWindow::commandResults(){
     refresh();commandSelect(c.selected);
 }
 void IslandWindow::commandSelect(int index){
-    auto& c=content_.command;int rows=int(std::min<size_t>(3,c.results.size()));if(rows==0){content_.hovered=Action::None;feedback(Action::None);return;}
+    auto& c=content_.command;int rows=int(std::min<size_t>(c.clips?5:3,c.results.size()));if(rows==0){content_.hovered=Action::None;feedback(Action::None);return;}
     c.selected=std::clamp(index,0,rows-1);content_.hovered=Action(int(Action::CommandResultBase)+c.selected);feedback(content_.hovered);
 }
 // A short horizontal shake: nothing to run.
 void IslandWindow::commandShake(){if(motion_.reduced)return;double now=seconds();motion_.dragX.reset(0,now,-420);motion_.dragX.retarget(0,now,{1,900,16});animate();}
 void IslandWindow::commandChar(wchar_t ch){
     auto& c=content_.command;if(!c.active||ch<0x20||ch==0x7f||c.text.size()>=160)return;
-    c.text.insert(c.caret,1,ch);++c.caret;c.armed=false;c.status.clear();commandQuery();refresh();
+    c.text.insert(c.caret,1,ch);++c.caret;c.armed=false;c.status.clear();
+    // "clip " switches to searching the clipboard history.
+    if(!c.clips&&c.text==L"clip "){c.clips=true;c.paste=true;c.text.clear();c.caret=0;c.selected=0;}
+    commandQuery();refresh();
 }
 // Returns true when the key was used by the command bar.
 bool IslandWindow::commandKey(WPARAM key){
@@ -133,7 +142,7 @@ bool IslandWindow::commandKey(WPARAM key){
     case VK_RIGHT:c.caret=ctrl?wordRight(c.caret):std::min(c.text.size(),c.caret+1);break;
     case VK_HOME:c.caret=0;break;
     case VK_END:c.caret=c.text.size();break;
-    case VK_BACK:if(c.caret){size_t from=ctrl?wordLeft(c.caret):c.caret-1;c.text.erase(from,c.caret-from);c.caret=from;edited=true;}break;
+    case VK_BACK:if(c.clips&&c.text.empty()){c.clips=false;c.paste=false;c.selected=0;commandQuery();refresh();return true;}if(c.caret){size_t from=ctrl?wordLeft(c.caret):c.caret-1;c.text.erase(from,c.caret-from);c.caret=from;edited=true;}break;
     case VK_DELETE:if(c.caret<c.text.size()){size_t to=ctrl?wordRight(c.caret):c.caret+1;c.text.erase(c.caret,to-c.caret);edited=true;}break;
     case 'V':if(!ctrl)return false;{std::wstring pasted;if(OpenClipboard(window_)){if(HANDLE h=GetClipboardData(CF_UNICODETEXT))if(auto* t=static_cast<const wchar_t*>(GlobalLock(h))){pasted=t;GlobalUnlock(h);}CloseClipboard();}
         auto end=pasted.find_first_of(L"\r\n");if(end!=std::wstring::npos)pasted.resize(end);for(auto& ch:pasted)if(ch==L'\t')ch=L' ';pasted=pasted.substr(0,160-std::min<size_t>(160,c.text.size()));
@@ -162,6 +171,8 @@ void IslandWindow::runCommand(size_t index){
     case CommandKind::VolumeStep:if(audio_)audio_->setVolume(audio_->value+r.value);done();return;
     case CommandKind::Mute:if(audio_&&!audio_->muted)audio_->toggleMute();done();return;
     case CommandKind::Unmute:if(audio_&&audio_->muted)audio_->toggleMute();done();return;
+    case CommandKind::ClipPaste:pasteClip(index,(GetKeyState(VK_SHIFT)&0x8000)!=0);return;
+    case CommandKind::Snip:case CommandKind::CopyText:case CommandKind::PickColour:store_.log("Info","command_run");startCapture(r.kind==CommandKind::Snip?CaptureMode::Snip:r.kind==CommandKind::CopyText?CaptureMode::Text:CaptureMode::Colour);return;
     case CommandKind::MicMute:case CommandKind::MicUnmute:case CommandKind::MicToggle:{if(!audio_||!audio_->micAvailable){commandStatus(L"No microphone is connected",true,false);return;}
         const bool muted=audio_->micMuted;if(r.kind==CommandKind::MicToggle||(r.kind==CommandKind::MicMute)!=muted)audio_->toggleMic();done();return;}
     case CommandKind::Play:case CommandKind::Pause:{bool want=r.kind==CommandKind::Play;if(media_&&content_.playback.canToggle&&content_.playback.playing!=want)media_->control(1,content_.playback.source,content_.playback.id);done();return;}

@@ -156,7 +156,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         surface(navSurface_,47,44,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink,s.light?.055f:.055f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,47,44},12,12),b.Get());});nav_->SetContent(navSurface_.Get());
     }
     wingLeft_->SetContent(attached&&!glass?leftSurface_.Get():nullptr);wingRight_->SetContent(attached&&!glass?rightSurface_.Get():nullptr);barEffect_->SetOpacity(s.page==Page::Overview&&s.expanded&&!s.live?1.f:0.f);
-    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track,accent2);updateLyrics(s,ink,muted,accent);updateBubble(s);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateCard(s,track,accent,solidRaised,ink);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-2.f:30.f,stats?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||shelf,s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
+    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track,accent2);updateLyrics(s,ink,muted,accent);updateBubble(s);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateCard(s,track,accent,solidRaised,ink);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-2.f:30.f,stats?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||(shelf&&!(s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size())),s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
     surface(headerSurface_,600,150,[&](auto* rt){
         if(s.expanded)return;
         if(edge_){text(rt,s.battery>=0?std::to_wstring(s.battery)+L"%":L"—",0,82,64,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_CENTER);text(rt,s.charging?L"Charging":L"Battery",0,105,64,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER);return;}
@@ -193,30 +193,31 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         auto iconButton=[&](Action a,Icon glyph,float x,float y,float w=32,float h=32,bool primary=false,bool enabled=true){targets.push_back({a,x,y,w,h,enabled});if(primary)box(x,y,w,h,!enabled?raised:s.light?0x252b33:0xe8ecf2,h/2);icon(a,glyph,x+(w-18)/2,y+(h-18)/2,18,!enabled?muted:primary?(s.light?0xffffff:0x161b22):ink);};
         auto value=[](double v,int precision=0){if(v<0)return std::wstring(L"—");wchar_t buf[48];swprintf(buf,48,precision?L"%.1f":L"%.0f",v);return std::wstring(buf);};
         if(s.card&&s.command.active){
-            const auto& c=s.command;box(0,0,380,42,raised,14);drawIcon(rt,d2d_.Get(),Icon::Search,14,12,18,c.text.empty()?muted:ink);
+            const auto& c=s.command;const int rowsMax=c.clips?5:3;box(0,0,380,42,raised,14);drawIcon(rt,d2d_.Get(),c.clips?Icon::Clipboard:Icon::Search,14,12,18,c.text.empty()?muted:ink);
             // The typed line scrolls left when it is wider than the field, keeping the caret visible.
             const float field=320;float width=measure(c.text,14),before=measure(c.text.substr(0,std::min(c.caret,c.text.size())),14),shift=std::max(0.f,std::min(width-field,before-field+8));
-            if(c.text.empty())text(rt,L"Type a command, app or search",46,0,field,14,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);
+            if(c.text.empty())text(rt,c.clips?L"Search your copies":L"Type a command, app or search",46,0,field,14,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);
             else{rt->PushAxisAlignedClip(D2D1::RectF(42,0,42+field+4,42),D2D1_ANTIALIAS_MODE_ALIASED);text(rt,c.text,42-shift,0,width+40,14,ink,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);rt->PopAxisAlignedClip();}
             caretTarget_=42+before-shift;
             auto glyph=[](CommandKind k){switch(k){case CommandKind::Volume:case CommandKind::VolumeStep:case CommandKind::Unmute:return Icon::Volume;case CommandKind::Mute:return Icon::Muted;case CommandKind::Play:return Icon::Play;case CommandKind::Pause:return Icon::Pause;
                 case CommandKind::Next:return Icon::Next;case CommandKind::Previous:return Icon::Previous;case CommandKind::Timer:return Icon::Focus;case CommandKind::Stopwatch:return Icon::Clock;case CommandKind::StopTimer:return Icon::Reset;case CommandKind::OpenApp:return Icon::Apps;
                 case CommandKind::SearchFiles:return Icon::Search;case CommandKind::OpenSettings:return Icon::Settings;case CommandKind::Workspace:case CommandKind::SaveWorkspace:case CommandKind::DeleteWorkspace:return Icon::Workspace;
-                case CommandKind::Clipboard:case CommandKind::ClearClipboard:return Icon::Clipboard;case CommandKind::Lock:return Icon::Lock;case CommandKind::MicMute:return Icon::MicOff;case CommandKind::MicUnmute:case CommandKind::MicToggle:return Icon::Microphone;default:return Icon::Info;}};
-            if(c.results.empty()){
+                case CommandKind::Clipboard:case CommandKind::ClearClipboard:return Icon::Clipboard;case CommandKind::Lock:return Icon::Lock;case CommandKind::MicMute:return Icon::MicOff;case CommandKind::Snip:return Icon::Snip;case CommandKind::CopyText:return Icon::Text;case CommandKind::PickColour:return Icon::Eyedropper;case CommandKind::ClipPaste:return Icon::Clipboard;case CommandKind::MicUnmute:case CommandKind::MicToggle:return Icon::Microphone;default:return Icon::Info;}};
+            if(c.results.empty()&&c.clips){drawIcon(rt,d2d_.Get(),Icon::Clipboard,14,62,16,muted);text(rt,s.settings.clipboardHistory?(c.text.empty()?L"Nothing copied yet":L"No copies match"):L"Turn on clipboard history to search your copies",46,52,330,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,38);}
+            else if(c.results.empty()){
                 // Nothing typed yet: a few things to try.
                 const std::pair<Icon,const wchar_t*> hints[]={{Icon::Volume,L"volume 40  \u00b7  mute  \u00b7  next"},{Icon::Focus,L"focus 25  \u00b7  timer 10 min  \u00b7  stopwatch"},{Icon::Search,L"open spotify  \u00b7  find budget pdfs from last month"}};
                 for(int i=0;i<3;++i){float y=52+i*40.f;drawIcon(rt,d2d_.Get(),hints[i].first,14,y+10,16,muted);text(rt,hints[i].second,46,y,330,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,38);}
             }
-            for(int i=0;i<int(std::min<size_t>(3,c.results.size()));++i){const auto& r=c.results[i];float y=52+i*40.f;Action a=Action(int(Action::CommandResultBase)+i);targets.push_back({a,0,y,380,38,r.kind!=CommandKind::None});
+            for(int i=0;i<int(std::min<size_t>(size_t(rowsMax),c.results.size()));++i){const auto& r=c.results[i];float y=52+i*40.f;Action a=Action(int(Action::CommandResultBase)+i);targets.push_back({a,0,y,380,38,r.kind!=CommandKind::None});
                 const auto* icon=size_t(i)<c.icons.size()?c.icons[i].get():nullptr;
                 if(icon)drawPreview(rt,*icon,7,y+5,28,28);else{box(6,y+4,30,30,raised,15);drawIcon(rt,d2d_.Get(),glyph(r.kind),13,y+11,16,r.kind==CommandKind::None?muted:ink);}
                 const bool keycap=i==c.selected&&r.kind!=CommandKind::None;const wchar_t* cap=c.armed?L"Enter again":L"Enter";const float capWidth=keycap?measure(cap,9.5f,DWRITE_FONT_WEIGHT_SEMI_BOLD)+14:0;const float room=(keycap?372-capWidth-8:374)-46;
                 text(rt,r.title,46,y+2,room,12.5f,r.kind==CommandKind::None?muted:ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,r.detail,46,y+21,room,10,muted);
                 if(keycap){box(372-capWidth,y+10,capWidth,19,s.light?0xffffff:0x2c323c,6);label(cap,372-capWidth,y+10,capWidth,19,9.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}}
-            const float footer=commandFooterY(c.results.empty()?3:int(std::min<size_t>(3,c.results.size())));
+            const float footer=commandFooterY(c.results.empty()?(c.clips?1:3):int(std::min<size_t>(size_t(rowsMax),c.results.size())));
             if(!c.status.empty()){drawIcon(rt,d2d_.Get(),c.error?Icon::Info:c.armed?Icon::Workspace:Icon::Check,2,footer+6,14,c.error?0xe5484d:accent);text(rt,c.status,22,footer,356,10.5f,c.error?0xe5484d:ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,26);}
-            else{float x=0;for(auto [cap,what]:{std::pair{L"Enter",L"Run"},std::pair{L"\u2191 \u2193",L"Choose"},std::pair{L"Esc",L"Close"}}){float w=measure(cap,9,DWRITE_FONT_WEIGHT_SEMI_BOLD)+12;box(x,footer+4,w,18,raised,5);label(cap,x,footer+4,w,18,9,muted,DWRITE_FONT_WEIGHT_SEMI_BOLD);x+=w+6;float t=measure(what,10)+2;text(rt,what,x,footer,t,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,26);x+=t+16;}}
+            else{float x=0;const std::initializer_list<std::pair<const wchar_t*,const wchar_t*>> hints=c.clips?(c.paste?std::initializer_list<std::pair<const wchar_t*,const wchar_t*>>{{L"Enter",L"Paste"},{L"Shift+Enter",L"Copy only"},{L"Esc",L"Close"}}:std::initializer_list<std::pair<const wchar_t*,const wchar_t*>>{{L"Enter",L"Copy"},{L"\u2191 \u2193",L"Choose"},{L"Esc",L"Close"}}):std::initializer_list<std::pair<const wchar_t*,const wchar_t*>>{{L"Enter",L"Run"},{L"\u2191 \u2193",L"Choose"},{L"Esc",L"Close"}};for(auto [cap,what]:hints){float w=measure(cap,9,DWRITE_FONT_WEIGHT_SEMI_BOLD)+12;box(x,footer+4,w,18,raised,5);label(cap,x,footer+4,w,18,9,muted,DWRITE_FONT_WEIGHT_SEMI_BOLD);x+=w+6;float t=measure(what,10)+2;text(rt,what,x,footer,t,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,26);x+=t+16;}}
             return;
         }
         if(s.card&&s.notice.kind>=5&&s.notice.kind<=7){
@@ -231,6 +232,13 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             const auto& n=s.notice;const float room=n.switchBack?168.f:256.f;text(rt,n.device.name,72,6,room,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
             text(rt,n.app.empty()?std::wstring(L"Sound is playing here now"):L"Moved from "+n.app,72,30,room,11,muted);
             if(n.switchBack)button(Action::SwitchBack,L"Switch back",250,14,86,28,true);
+            return;
+        }
+        if(s.card&&s.notice.kind>=9&&s.notice.kind<=11){
+            // Capture results: what was copied or saved, in one line each.
+            const auto& n=s.notice;const bool shelf=n.kind==11;const float room=shelf?172.f:256.f;
+            text(rt,n.app,72,6,room,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,room,11,muted);
+            if(shelf)button(Action::Shelf,L"Open Shelf",252,14,84,28,true);
             return;
         }
         if(s.card&&s.notice.kind){
@@ -264,6 +272,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         if(s.page==Page::System){}
         else if(panel){const float w=std::min(titleRoom,measure(s.playback.title,16,DWRITE_FONT_WEIGHT_SEMI_BOLD)+4);text(rt,s.playback.title,0,0,w,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,24);if(titleRoom-w>40)text(rt,s.playback.artist,w+8,0,titleRoom-w-8,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,24);}
         else if(*titles[int(s.page)])text(rt,titles[int(s.page)],0,0,titleRoom,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+        // Home carries today's date in the user's own format ("Thursday, 24 September").
+        else if(s.page==Page::Overview){SYSTEMTIME t{};GetLocalTime(&t);wchar_t day[80]{};if(GetDateFormatEx(LOCALE_NAME_USER_DEFAULT,0,&t,L"dddd, d MMMM",day,80,nullptr))text(rt,day,0,0,280,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}
         if(lyricsButton){const float x=chips?344-float(chips)*28-30:318.f;targets.push_back({Action::LyricsToggle,x,-4,28,28});if(s.lyricsView)box(x,-4,28,28,s.light?0x262c34:0xe8ecf2,14);icon(Action::LyricsToggle,Icon::Lyrics,x+5,1,18,s.lyricsView?(s.light?0xf8f8fa:0x171b22):ink);}
         if(s.page==Page::Audio&&s.micAvailable){targets.push_back({Action::MicMute,318,-4,28,28});if(s.micMuted)box(318,-4,28,28,s.light?0xfde2e1:0x3a1d1f,14);icon(Action::MicMute,s.micMuted?Icon::MicOff:Icon::Microphone,323,1,18,s.micMuted?0xe5484d:ink);}
         iconButton(Action::Close,Icon::Close,352,-4,28,28);if(s.page==Page::Overview)iconButton(Action::CommandOpen,Icon::Search,318,-4,28,28);
@@ -322,21 +332,46 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             double progress=s.focus.mode==FocusClock::Mode::Stopwatch?std::fmod(s.focus.elapsed(seconds()),60.)/60.:normalizedProgress(s.focus.displayed(seconds()),s.focus.duration);drawRing(rt,d2d_.Get(),63,130,38,3,progress,accent,line);drawIcon(rt,d2d_.Get(),Icon::Focus,50,117,26,accent);
             text(rt,clockText(std::ceil(s.focus.displayed(seconds()))),124,91,252,42,ink,DWRITE_FONT_WEIGHT_LIGHT);text(rt,s.focus.finished?L"A moment well spent":s.focus.running?L"One thing at a time":L"A little space to begin",127,144,245,11,muted);iconButton(Action::TimerToggle,s.focus.running?Icon::Pause:Icon::Play,130,180,42,42,true);iconButton(Action::TimerReset,Icon::Reset,190,183,36,36);text(rt,s.focus.running?L"Pause session":L"Start session",238,193,142,10,muted);
         }else if(s.page==Page::Shelf){
-            tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"}},s.shelfTab,30);
-            const bool status=!s.clipStatus.empty()&&seconds()<s.clipStatusUntil;
-            if(s.shelfTab==0){
-                if(s.shelf.empty()){box(0,62,380,130,raised,18);icon(Action::None,Icon::Shelf,172,76,36,accent);label(s.dropHover?L"Release to keep it close":L"A place to keep things close",20,118,340,28,15,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);label(L"Drop files or text. Drag them back out.",20,148,340,22,11,muted);}else for(size_t i=s.shelfOffset;i<std::min(size_t(s.shelfOffset+4),s.shelf.size());++i){float y=62+float(i-s.shelfOffset)*36;auto& item=s.shelf[i];Action a=Action(int(Action::ShelfItemBase)+int(i));targets.push_back({a,0,y,380,32});box(0,y,380,32,raised,9);if(item.preview)drawPreview(rt,*item.preview,6,y+3,32,26);else icon(a,item.kind==ShelfItem::Kind::File?Icon::File:Icon::Text,14,y+8,16,muted);text(rt,item.label,46,y+7,326,11,ink);}
-                text(rt,std::to_wstring(s.shelf.size())+L" items  \u00b7  Copy only",0,208,260,10,muted);button(Action::ShelfClear,L"Clear",316,201,64,25,false,!s.shelf.empty());
+            const bool detail=s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size();
+            if(!detail)tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"}},s.shelfTab,30);
+            const bool status=!s.clipStatus.empty()&&seconds()<s.clipStatusUntil,shelfNote=!s.shelfStatus.empty()&&(s.shelfBusy||seconds()<s.shelfStatusUntil);
+            // An icon and a label in one raised button.
+            auto action=[&](Action a,Icon glyph,const wchar_t* name,float x,float y,float w,bool enabled=true){targets.push_back({a,x,y,w,30,enabled});box(x,y,w,30,raised,9);drawIcon(rt,d2d_.Get(),glyph,x+10,y+8,14,enabled?ink:muted,enabled?1.f:.5f);text(rt,name,x+29,y,w-33,10.5f,enabled?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,30);};
+            if(detail){
+                const auto& item=s.shelf[size_t(s.shelfDetail)];const auto& info=s.shelfInfo;const bool file=item.kind==ShelfItem::Kind::File;
+                iconButton(Action::ShelfBack,Icon::ArrowLeft,-4,26,32,30);text(rt,item.label,32,26,348,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,30);
+                box(0,66,72,72,raised,14);if(item.preview)drawPreview(rt,*item.preview,6,72,60,60);else drawIcon(rt,d2d_.Get(),!file?Icon::Text:info.directory?Icon::Folder:Icon::File,22,88,28,muted);
+                std::wstring first=!file?std::to_wstring(item.value.size())+L" characters of text":info.kind+(info.size.empty()?L"":L"  \u00b7  "+info.size)+(info.width>0?L"  \u00b7  "+std::to_wstring(info.width)+L" \u00d7 "+std::to_wstring(info.height):L"");
+                text(rt,first,84,68,296,11,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,20);text(rt,file?info.folder:clipPreview(item.value,120),84,90,296,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,20);
+                if(shelfNote)text(rt,s.shelfStatus,84,112,296,10.5f,s.shelfBusy?muted:accent,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,22);
+                const float w=89.5f,g=(380-4*w)/3;auto col=[&](int i){return float(i)*(w+g);};
+                if(file){action(Action::ShelfOpen,Icon::External,L"Open",col(0),152,w);action(Action::ShelfOpenWith,Icon::Apps,L"Open with",col(1),152,w,!info.directory);action(Action::ShelfReveal,Icon::Folder,L"In folder",col(2),152,w);action(Action::ShelfCopyPath,Icon::Copy,L"Copy path",col(3),152,w);
+                    if(info.image){action(Action::ShelfCopyText,Icon::Text,L"Copy text",col(0),188,w,!s.shelfBusy);action(Action::ShelfConvert,Icon::Convert,info.extension==L".png"?L"To JPG":L"To PNG",col(1),188,w,!s.shelfBusy);action(Action::ShelfHalf,Icon::Resize,L"Half size",col(2),188,w,!s.shelfBusy);}
+                    else action(Action::ShelfZip,Icon::Archive,L"Zip",col(0),188,w,!s.shelfBusy);
+                    action(Action::ShelfRemove,Icon::Trash,L"Remove",col(3),188,w);}
+                else{action(Action::ShelfCopyPath,Icon::Copy,L"Copy",col(0),152,w);action(Action::ShelfRemove,Icon::Trash,L"Remove",col(3),152,w);}
+            }else if(s.shelfTab==0){
+                if(s.shelf.empty()){box(0,62,380,130,raised,18);icon(Action::None,Icon::Shelf,172,76,36,accent);label(s.dropHover?L"Release to keep it close":L"A place to keep things close",20,118,340,28,15,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);label(L"Drop files or text, or snip the screen below",20,148,340,22,11,muted);}else for(size_t i=s.shelfOffset;i<std::min(size_t(s.shelfOffset+4),s.shelf.size());++i){float y=62+float(i-s.shelfOffset)*36;auto& item=s.shelf[i];Action a=Action(int(Action::ShelfItemBase)+int(i));targets.push_back({a,0,y,380,32});box(0,y,380,32,raised,9);if(item.preview)drawPreview(rt,*item.preview,6,y+3,32,26);else icon(a,item.kind==ShelfItem::Kind::File?Icon::File:Icon::Text,14,y+8,16,muted);text(rt,item.label,46,y,300,11,ink,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,32);drawIcon(rt,d2d_.Get(),Icon::Chevron,354,y+9,14,muted,s.hovered==a?1.f:.55f);}
+                // Capture straight onto the Shelf, then the item count and the whole-Shelf actions.
+                iconButton(Action::CaptureSnip,Icon::Snip,-2,199,34,28);iconButton(Action::CaptureText,Icon::Text,34,199,34,28);iconButton(Action::CaptureColour,Icon::Eyedropper,70,199,34,28);
+                const bool files=std::any_of(s.shelf.begin(),s.shelf.end(),[](auto& i){return i.kind==ShelfItem::Kind::File;});
+                text(rt,shelfNote?s.shelfStatus:std::to_wstring(s.shelf.size())+(s.shelf.size()==1?L" item":L" items"),112,201,120,10,shelfNote&&!s.shelfBusy?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
+                button(Action::ShelfZip,L"Zip",240,201,68,25,false,files&&!s.shelfBusy);button(Action::ShelfClear,L"Clear",316,201,64,25,false,!s.shelf.empty());
             }else if(!s.settings.clipboardHistory){
                 box(0,62,380,130,raised,18);drawIcon(rt,d2d_.Get(),Icon::Clipboard,176,74,28,accent);label(L"Keep what you copy close",20,106,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
                 label(L"Your last 24 copies, in memory only. Private copies are skipped.",20,130,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);button(Action::ClipboardEnable,L"Turn on",150,156,80,26,true);
                 text(rt,L"Off  \u00b7  Nothing is read until you turn it on",0,208,380,10,muted);
             }else{
                 if(s.clips.empty()){box(0,62,380,130,raised,18);drawIcon(rt,d2d_.Get(),Icon::Clipboard,176,80,28,muted);label(s.clipsPaused?L"Paused":L"Copy something to keep it here",20,116,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);label(L"Click a copy to put it back on the clipboard",20,142,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);}
-                for(int i=s.clipOffset;i<std::min(s.clipOffset+4,int(s.clips.size()));++i){float y=62+float(i-s.clipOffset)*36;auto& c=s.clips[size_t(i)];Action a=Action(int(Action::ClipBase)+(i-s.clipOffset));targets.push_back({a,0,y,380,32});box(0,y,380,32,raised,9);
-                    if(c.thumbnail)drawPreview(rt,*c.thumbnail,6,y+3,32,26);else drawIcon(rt,d2d_.Get(),c.kind==int(ClipEntry::Kind::Link)?Icon::Link:c.kind==int(ClipEntry::Kind::Files)?Icon::File:Icon::Text,14,y+8,16,muted);
-                    text(rt,c.preview,46,y+2,c.icon?300.f:326.f,11,ink);text(rt,c.meta,46,y+17,300,9,muted);if(c.icon)drawPreview(rt,*c.icon,352,y+8,16,16);}
-                text(rt,status?s.clipStatus:s.clipsPaused?std::wstring(L"Paused  \u00b7  new copies are not kept"):std::to_wstring(s.clips.size())+(s.clips.size()==1?L" copy":L" copies")+L"  \u00b7  memory only",0,208,236,10,status?ink:muted);
+                for(int i=s.clipOffset;i<std::min(s.clipOffset+4,int(s.clips.size()));++i){float y=62+float(i-s.clipOffset)*36;auto& c=s.clips[size_t(i)];const int row=i-s.clipOffset;Action a=Action(int(Action::ClipBase)+row),pin=Action(int(Action::ClipPinBase)+row);
+                    targets.push_back({pin,346,y+2,32,28});targets.push_back({a,0,y,346,32});box(0,y,380,32,raised,9);
+                    // Password-like copies stay masked until the pointer is on their row.
+                    const bool masked=c.secret&&s.settings.hideSecrets&&s.hovered!=a&&s.hovered!=pin;
+                    if(c.thumbnail)drawPreview(rt,*c.thumbnail,6,y+3,32,26);else drawIcon(rt,d2d_.Get(),masked?Icon::Lock:c.kind==int(ClipEntry::Kind::Link)?Icon::Link:c.kind==int(ClipEntry::Kind::Files)?Icon::File:Icon::Text,14,y+8,16,muted);
+                    text(rt,masked?std::wstring(L"\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"):c.preview,46,y+2,294,11,ink);float mx=46;if(c.icon){drawPreview(rt,*c.icon,46,y+18,11,11);mx=61;}text(rt,masked?L"Hidden  \u00b7  "+c.meta:c.meta,mx,y+17,340-mx,9,muted);
+                    if(c.pinned||s.hovered==a||s.hovered==pin)icon(pin,Icon::Pin,354,y+8,16,c.pinned?accent:muted,-1);}
+                text(rt,status?s.clipStatus:s.clipsPaused?std::wstring(L"Paused  \u00b7  not keeping copies"):std::to_wstring(s.clips.size())+(s.clips.size()==1?L" copy":L" copies"),0,201,190,10,status?ink:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
+                iconButton(Action::ClipSearch,Icon::Search,202,199,34,28);
                 button(Action::ClipboardPause,s.clipsPaused?L"Resume":L"Pause",244,201,64,25);button(Action::ClipboardClear,L"Clear",316,201,64,25,false,!s.clips.empty());
             }
         }else if(s.page==Page::Audio){
@@ -351,7 +386,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                     b->SetColor(D2D1::ColorF(track));rt->DrawLine({x,cy},{x+w,cy},b.Get(),3,round.Get());b->SetColor(D2D1::ColorF(accent,e.muted?.4f:1.f));if(v>0)rt->DrawLine({x,cy},{x+w*v,cy},b.Get(),3,round.Get());
                     b->SetColor(D2D1::ColorF(ink));rt->FillEllipse(D2D1::Ellipse({x+w*v,cy},5.5f,5.5f),b.Get());
                     targets.push_back({Action(int(Action::MixerSliderBase)+i),150,y,186,30});iconButton(Action(int(Action::MixerMuteBase)+i),e.muted?Icon::Muted:Icon::Volume,344,y,32,30);}
-                button(Action::MixerSettings,L"Windows volume mixer",0,203,201,25);icon(Action::MixerSettings,Icon::ArrowRight,208,208,14,muted);
+                // The arrow sits inside the button, after its label.
+                targets.push_back({Action::MixerSettings,0,203,214,25});box(0,203,214,25,raised,9);text(rt,L"Windows volume mixer",14,203,170,11.5f,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,25);drawIcon(rt,d2d_.Get(),Icon::ArrowRight,190,209,13,muted);
             }else{
             text(rt,s.feedback.empty()?L"Choose where your sound goes":s.feedback,176,37,204,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);for(size_t i=s.audioOffset;i<std::min(size_t(s.audioOffset+4),s.outputs.size());++i){float y=62+float(i-s.audioOffset)*34;auto& output=s.outputs[i];Action a=Action(int(Action::DeviceBase)+int(i));targets.push_back({a,0,y,380,30});box(0,y,380,30,raised,9);icon(a,Icon::Audio,10,y+7,16,output.current?accent:muted);text(rt,output.name,37,y+7,302,11,ink);if(output.current)drawIcon(rt,d2d_.Get(),Icon::Check,353,y+7,16,accent);}
             button(Action::SoundSettings,L"Windows sound settings",0,203,201,25);icon(Action::SoundSettings,Icon::ArrowRight,208,208,14,muted);text(rt,s.settings.directAudio?L"Direct switching":L"System picker",236,210,144,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}

@@ -32,7 +32,8 @@ void Renderer::updateTabs(const ContentSnapshot& s,float x,float y,int count,int
 }
 void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UINT32 raised,UINT32 ink){
     bool shown=s.card&&s.notice.kind;double now=seconds();cardIconEffect_->SetOpacity(shown?1.f:0.f);
-    if(!shown){cardRing_->SetContent(nullptr);cardRingKey_=-1;}
+    // Capture cards (9-11) have no level ring.
+    if(!shown||s.notice.kind>=9){cardRing_->SetContent(nullptr);cardRingKey_=-1;}
     else{const bool privacy=s.notice.kind>=5&&s.notice.kind<=7,power=s.notice.kind==3||s.notice.kind==4;const int percent=privacy?100:power?s.battery:s.notice.device.battery;const UINT32 color=privacy?(s.notice.kind==5?0x30d158:s.notice.kind==6?0xff9f0a:0x0a84ff):s.notice.kind==3?0x5fd98a:accent;
         int ringKey=int((s.notice.kind*101+percent+1)^int(color%100003)^int(track%9973));
         if(ringKey!=cardRingKey_){cardRingKey_=ringKey;surface(cardRingSurface_,72,72,[&](auto* rt){drawRing(rt,d2d_.Get(),36,36,31,3,percent>=0?percent/100.:0,color,track);});cardRing_->SetContent(cardRingSurface_.Get());}}
@@ -40,9 +41,13 @@ void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UI
     if(shown){energy_->SetOffsetX(std::round((20+28-36)*scale_));energy_->SetOffsetY(std::round((16+28-36)*scale_));}
     else if(s.expanded&&!s.live&&s.page==Page::System&&s.statsTab==1){energy_->SetOffsetX(std::round((20+58-36)*scale_));energy_->SetOffsetY(std::round((38+100-36)*scale_));}
     if(!shown){cardKey_=-1;return;}
-    int key=s.notice.kind*1000+int(std::hash<std::wstring>{}(s.notice.device.name+s.notice.app)%997);
+    int key=s.notice.kind*1000+int(std::hash<std::wstring>{}(s.notice.device.name+s.notice.app+s.notice.detail)%997);
     if(key!=cardKey_){cardKey_=key;
-        surface(cardIconSurface_,56,56,[&](auto* rt){if(s.notice.kind>=5&&s.notice.kind<=7){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());
+        surface(cardIconSurface_,56,56,[&](auto* rt){
+            if(s.notice.kind==9){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(s.notice.colour),&b);rt->FillEllipse(D2D1::Ellipse({28,28},23,23),b.Get());b->SetColor(D2D1::ColorF(ink,.22f));rt->DrawEllipse(D2D1::Ellipse({28,28},23.5f,23.5f),b.Get(),1.5f);return;}
+            if(s.notice.kind==10){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),Icon::Text,16,16,24,accent);return;}
+            if(s.notice.kind==11){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({4,4,52,52},12,12),b.Get());if(s.notice.icon)drawPreview(rt,*s.notice.icon,6,6,44,44);else drawIcon(rt,d2d_.Get(),Icon::Snip,16,16,24,accent);return;}
+            if(s.notice.kind>=5&&s.notice.kind<=7){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());
                 if(s.notice.icon)drawPreview(rt,*s.notice.icon,12,12,32,32);else drawIcon(rt,d2d_.Get(),s.notice.kind==5?Icon::Camera:s.notice.kind==6?Icon::Microphone:Icon::Location,16,16,24,ink);}
             else if(s.notice.kind==3||s.notice.kind==4){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(s.notice.kind==3?0x3fcf7a:raised,s.notice.kind==3?1.f:.9f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),s.notice.kind==3?Icon::Bolt:Icon::Battery,14,14,28,s.notice.kind==3?0x0b1f12:ink);}
             else deviceBadge(rt,s.notice.device,4,4,48,raised,ink);});cardIcon_->SetContent(cardIconSurface_.Get());

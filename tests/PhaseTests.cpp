@@ -16,6 +16,9 @@
 #include "Media/Lyrics.h"
 #include "Audio/AudioRoute.h"
 #include "Interaction/DetailModels.h"
+#include "FileShelf/Zip.h"
+#include "FileShelf/ShelfStore.h"
+#include "Capture/CaptureModel.h"
 #include <iostream>
 #include <random>
 #include <set>
@@ -24,6 +27,20 @@
 using namespace nexus;
 static int checks=0;
 static void test(bool pass,const char* label){++checks;if(!pass)throw std::runtime_error(label);}
+// Minimal RFC 1951 inflater for stored and fixed-Huffman blocks, written independently of the deflater.
+static std::vector<uint8_t> inflate(const std::vector<uint8_t>& in){
+    std::vector<uint8_t> out;size_t pos=0;int bit=0;
+    auto get=[&](int n){uint32_t v=0;for(int i=0;i<n;++i){if(pos>=in.size())throw std::runtime_error("inflate overrun");v|=uint32_t((in[pos]>>bit)&1)<<i;if(++bit==8){bit=0;++pos;}}return v;};
+    auto code=[&]{// fixed literal/length code, read bit by bit (MSB first)
+        uint32_t c=0;for(int n=1;n<=9;++n){c=(c<<1)|get(1);if(n==7&&c<=0x17)return int(c+256);if(n==8&&c>=0x30&&c<=0xbf)return int(c-0x30);if(n==8&&c>=0xc0&&c<=0xc7)return int(c-0xc0+280);if(n==9&&c>=0x190)return int(c-0x190+144);}throw std::runtime_error("bad code");};
+    const int lb[]={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258},le[]={0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
+    const int db[]={1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577},de[]={0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13};
+    for(bool last=false;!last;){last=get(1);int type=int(get(2));
+        if(type==0){if(bit){bit=0;++pos;}if(pos+4>in.size())throw std::runtime_error("stored header");size_t n=in[pos]|(in[pos+1]<<8);pos+=4;out.insert(out.end(),in.begin()+std::ptrdiff_t(pos),in.begin()+std::ptrdiff_t(pos+n));pos+=n;continue;}
+        if(type!=1)throw std::runtime_error("unexpected block type");
+        for(;;){int sym=code();if(sym<256){out.push_back(uint8_t(sym));continue;}if(sym==256)break;sym-=257;int len=lb[sym]+int(get(le[sym]));uint32_t d=0;for(int i=0;i<5;++i)d=(d<<1)|get(1);int dist=db[d]+int(get(de[d]));if(size_t(dist)>out.size())throw std::runtime_error("distance");for(int i=0;i<len;++i)out.push_back(out[out.size()-size_t(dist)]);}}
+    return out;
+}
 // Minimal evaluator for the composition expression subset the glass layer emits.
 struct Expression {
     const std::wstring& text;size_t at=0;double t;
@@ -296,5 +313,55 @@ int main(){try{
     {test(outputDisplayName(L"Headphones (WH-1000XM5)")==L"WH-1000XM5"&&outputDisplayName(L"Speakers (Realtek(R) Audio)")==L"Speakers"&&outputDisplayName(L"Headset (Galaxy Buds3 Pro Hands-Free)")==L"Galaxy Buds3 Pro Hands-Free"&&outputDisplayName(L"DELL U2720Q (NVIDIA High Definition Audio)")==L"DELL U2720Q (NVIDIA High Definition Audio)"&&outputDisplayName(L"Earbuds")==L"Earbuds","output display names");
     std::stringstream v9("version 9\nwaveTimeline 0\n");auto old=Settings::parse(v9);test(old.version==Settings::currentVersion&&!old.lyrics&&old.lyricsCompact&&old.headphoneCards&&!old.waveTimeline,"v9 files get the v10 defaults (lyrics off)");
     Settings changed;changed.lyrics=true;changed.lyricsCompact=false;changed.headphoneCards=false;std::stringstream out;changed.write(out);test(Settings::parse(out)==changed,"v10 round trip");}
+    // ---- Phase 5C: deflate and ZIP -----------------------------------------------------------------
+    {std::mt19937 rng(7);std::vector<uint8_t> text,noise(200000),empty;const char* words[]={"island ","shelf ","capture ","colour ","text ","the ","and "};for(int i=0;i<60000;++i)for(const char* c=words[rng()%7];*c;++c)text.push_back(uint8_t(*c));for(auto& b:noise)b=uint8_t(rng());
+    auto packed=zip::deflate(text.data(),text.size());test(inflate(packed)==text&&packed.size()*3<text.size(),"deflate round trip; text shrinks at least 3x");
+    auto raw=zip::deflate(noise.data(),noise.size());test(inflate(raw)==noise&&raw.size()<noise.size()+noise.size()/100,"random data is stored, not expanded");
+    test(inflate(zip::deflate(empty.data(),0)).empty(),"empty input");
+    {std::vector<uint8_t> out;zip::Deflater d(out);for(size_t at=0;at<text.size();at+=777)d.add(text.data()+at,std::min<size_t>(777,text.size()-at));d.finish();test(inflate(out)==text,"streamed chunks give the same data");}
+    std::vector<uint8_t> runs(300000,'a');test(inflate(zip::deflate(runs.data(),runs.size()))==runs,"long runs (maximum-length matches, sliding window)");
+    const uint8_t check[]={'1','2','3','4','5','6','7','8','9'};test(zip::crc32(0,check,9)==0xcbf43926u,"CRC-32 check value");
+    struct Memory:zip::Sink{std::vector<uint8_t> b;bool write(const uint8_t* p,size_t n)override{b.insert(b.end(),p,p+n);return true;}uint64_t tell()override{return b.size();}bool patch(uint64_t at,const uint8_t* p,size_t n)override{if(at+n>b.size())return false;std::copy(p,p+n,b.begin()+std::ptrdiff_t(at));return true;}} sink;
+    {zip::Writer w(sink);auto feed=[](const std::vector<uint8_t>& data){size_t at=0;return [&data,at](uint8_t* buf,size_t cap)mutable->long long{size_t n=std::min(cap,data.size()-at);std::copy(data.begin()+std::ptrdiff_t(at),data.begin()+std::ptrdiff_t(at+n),buf);at+=n;return (long long)n;};};
+        test(w.add(toUtf8(L"caf\u00e9 notes.txt"),zip::dosTime(9,15,30),zip::dosDate(2026,9,24),feed(text))&&w.add("folder/noise.bin",0,zip::dosDate(1970,1,1),feed(noise))&&w.finish(),"archive written");
+        auto u16=[&](size_t at){return uint32_t(sink.b[at]|(sink.b[at+1]<<8));};auto u32=[&](size_t at){return u16(at)|(u16(at+2)<<16);};
+        const size_t end=sink.b.size()-22;test(u32(end)==0x06054b50&&u16(end+10)==2,"end record lists two entries");
+        size_t cd=u32(end+16),at=cd;bool ok=true;std::vector<std::vector<uint8_t>> originals{text,noise};
+        for(int k=0;k<2;++k){ok=ok&&u32(at)==0x02014b50&&u16(at+8)==0x0800&&u16(at+10)==8;const uint32_t crc=u32(at+16),csize=u32(at+20),usize=u32(at+24),nameLen=u16(at+28),local=u32(at+42);
+            const size_t data=local+30+u16(local+26);std::vector<uint8_t> body(sink.b.begin()+std::ptrdiff_t(data),sink.b.begin()+std::ptrdiff_t(data+csize));auto back=inflate(body);
+            ok=ok&&u32(local)==0x04034b50&&u32(local+14)==crc&&back==originals[size_t(k)]&&usize==back.size()&&zip::crc32(0,back.data(),back.size())==crc;
+            if(k==0)ok=ok&&std::string(sink.b.begin()+std::ptrdiff_t(at+46),sink.b.begin()+std::ptrdiff_t(at+46+nameLen))==toUtf8(L"caf\u00e9 notes.txt");at+=46+nameLen;}
+        test(ok&&u32(end+12)==end-cd,"central directory, local headers, UTF-8 names and contents agree");
+        test(zip::dosDate(1970,1,1)==zip::dosDate(1980,1,1)&&zip::dosTime(23,59,59)==((23<<11)|(59<<5)|29),"DOS dates");}
+    test(zip::entryName("a\\b.txt")=="a/b.txt"&&zip::entryName("../x").empty()&&zip::entryName("C:/x").empty()&&zip::entryName("/lead")=="lead","entry names never leave the archive");}
+    // ---- Phase 5C: capture helpers ---------------------------------------------------------------
+    {PixelRect screen{-1920,0,1920,1080};test(dragRect(500,400,100,50,screen)==PixelRect{100,50,500,400}&&dragRect(-3000,-10,10,2000,screen)==PixelRect{-1920,0,10,1080},"drag rectangles normalise and clip");
+    std::vector<PixelRect> windows{{100,100,300,300},{0,0,800,600}};test(windowAt(windows,150,150)==0&&windowAt(windows,500,500)==1&&windowAt(windows,900,900)==-1,"topmost window under the pointer");
+    test(intersect({0,0,10,10},{5,5,20,20})==PixelRect{5,5,10,10}&&intersect({0,0,10,10},{20,20,30,30}).empty(),"intersections");
+    test(hexColor(0x3a7bd5)==L"#3A7BD5"&&rgbText(0x3a7bd5)==L"rgb(58, 123, 213)","colour text");
+    test(snipName(2026,9,24,9,15,30)==L"Snip 2026-09-24 091530.png"&&snipName(2026,9,24,9,15,30,2)==L"Snip 2026-09-24 091530 (2).png","snip names");
+    test(std::abs(ocrScale(200,50,10000)-3)<1e-9&&std::abs(ocrScale(800,400,10000)-2)<1e-9&&ocrScale(4000,100,10000)==1&&std::abs(ocrScale(20000,100,10000)-.5)<1e-9,"text recognition scale");
+    test(joinLines({L"  Hello  ",L"",L"   ",L"world\t"})==L"Hello\nworld"&&wordCount(L"Hello  there,\nworld")==3&&wordCount(L"")==0,"recognised text tidying");
+    std::set<std::wstring> taken{L"photo.png",L"photo (2).png"};test(freeName(L"photo",L".png",[&](const std::wstring& n){return taken.contains(n);})==L"photo (3).png","free file names");}
+    // ---- Phase 5C: clipboard v2 ----------------------------------------------------------------------
+    {ClipboardHistory h;auto text=[](const wchar_t* t){ClipEntry e;e.text=t;return e;};for(int i=0;i<5;++i)h.add(text((L"copy "+std::to_wstring(i)).c_str()),i);
+    const auto first=h.entries().back().id;test(h.togglePin(first)&&h.entries().back().pinned,"pin");
+    for(int i=5;i<40;++i)h.add(text((L"copy "+std::to_wstring(i)).c_str()),i);test(h.find(first)&&h.entries().size()==ClipboardHistory::limit+1,"pins are never pushed out");
+    h.add(text(L"copy 0"),50);test(h.entries().front().id==first&&h.entries().front().pinned,"copying a pinned item again keeps it pinned");
+    h.clear();test(h.entries().size()==1&&h.entries().front().pinned,"clear keeps pins");h.forget();test(h.entries().empty(),"forget drops everything");
+    ClipboardHistory full;for(int i=0;i<14;++i){full.add(text((L"p"+std::to_wstring(i)).c_str()),i);}int pinnedOk=0;for(auto& e:std::vector<ClipEntry>(full.entries().begin(),full.entries().end()))pinnedOk+=full.togglePin(e.id);test(pinnedOk==int(ClipboardHistory::pinLimit)&&full.pinned()==ClipboardHistory::pinLimit,"at most 12 pins");
+    ClipEntry files;files.kind=ClipEntry::Kind::Files;files.files={L"C:\\Docs\\Budget 2026.xlsx"};files.source=L"File Explorer";
+    test(clipMatches(files,L"budget XLSX")&&!clipMatches(files,L"budget pdf")&&clipMatches(text(L"Meeting at 5"),L"")&&clipMatches(text(L"Launch review"),L"REVIEW launch"),"search matches every word, any case");
+    for(auto secret:{L"Tr0ub4dor&3",L"482913",L"sk-proj-abcdefghijklmnop1234",L"ghp_16C7e42F292c6912E7710c838347Ae178B4a",L"AKIAIOSFODNN7EXAMPLE",L"aB3dE5fG7hJ9kL1mN3pQ5rS7tU9"})test(looksSecret(secret),"secrets are recognised");
+    for(auto plain:{L"hello",L"Meeting at 5 pm",L"https://github.com/Arnav-Dugad",L"1234567890123",L"ToDo",L"Hello-World",L"C:\\Users\\Public",L"2026-09-24"})test(!looksSecret(plain),"ordinary text is not hidden");
+    ClipboardHistory p;p.add(text(L"line one\nline\ttwo \\ end"),1);p.add(files,2);ClipEntry img;img.kind=ClipEntry::Kind::Image;img.dib.assign(64,1);p.add(img,3);for(auto& e:std::vector<ClipEntry>(p.entries().begin(),p.entries().end()))p.togglePin(e.id);
+    auto loaded=loadPins(savePins(p.entries()));test(loaded.size()==2&&loaded[0].text==L"line one\nline\ttwo \\ end"&&loaded[1].files==files.files&&loaded[1].source==L"File Explorer"&&loaded[1].pinned,"pins save and load (images stay in memory)");
+    test(loadPins(L"nonsense").empty()&&loadPins(L"pins 1\n9\tx\ty\n2\t\t\n").empty(),"bad pin files are ignored");
+    ClipboardHistory r;r.add(text(L"newer"),5);r.restore(loaded,6);test(r.entries().size()==3&&r.entries().front().text==L"newer"&&r.pinned()==2,"restored pins sit below newer copies");}
+    // ---- Phase 5C: pinned Shelf ---------------------------------------------------------------------
+    {std::vector<ShelfItem> items{{ShelfItem::Kind::File,L"C:\\Docs\\a.txt",L"a.txt"},{ShelfItem::Kind::Text,L"note\twith\nlines",L"note"},{ShelfItem::Kind::File,L"C:\\Gone\\b.txt",L"b.txt"},{ShelfItem::Kind::File,L"C:\\Docs\\a.txt",L"a.txt"}};
+    auto back=loadShelf(saveShelf(items),[](const std::wstring& path){return path.find(L"Gone")==std::wstring::npos;});
+    test(back.size()==2&&back[0].value==L"C:\\Docs\\a.txt"&&back[0].label==L"a.txt"&&back[1].value==L"note\twith\nlines"&&back[1].label==L"note with lines","shelf round trip drops missing files and duplicates");
+    test(loadShelf(L"shelf 2\nf\tC:\\x",[](auto&){return true;}).empty()&&loadShelf(L"shelf 1\nq\tx\nf\t\n",[](auto&){return true;}).empty(),"bad shelf files are ignored");}
     std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery, auto-hide, command, clipboard, workspace, privacy, waveform, lab, accent, lyrics, palette, seeking and audio-route checks\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

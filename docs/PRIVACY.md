@@ -85,3 +85,14 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **Per-app volume and microphone mute** use the same Windows audio APIs as the mixer. The island changes the microphone's mute only when you ask it to, and only reads it otherwise.
 - **Headphone card:** reads output names and form factors from Windows; nothing is stored.
 - Public screenshots use the synthetic showcase session with placeholder lyric lines written for testing, and illustrative devices (`--qa-lyrics`, `--qa-headphones --qa-sample`).
+
+## v0.12 capture, Shelf and clipboard
+
+- **Captures happen only when you ask** (a shortcut, a Shelf button or a command). The frozen screen image stays in memory while the overlay is open and is discarded; only what you choose is kept: a snip as a PNG in Pictures › Screenshots and on the clipboard, recognised text on the clipboard, or a colour value.
+- **Text recognition runs on this PC** with Windows' built-in engine. No image or text is sent anywhere.
+- **Shelf actions** write new files (conversions, archives) only when you press the action, next to the original or in Documents. Originals are never changed or deleted; Remove only takes an item off the Shelf.
+- **Pinned Shelf** (off by default) keeps file paths and dropped text in `shelf.nexus` on this PC. Turning it off deletes the file.
+- **Pinned copies** are saved in `clips-pinned.nexus`, encrypted with Windows DPAPI for your account, so other accounts and copies of the file elsewhere can't read them. Images are never saved. Settings' Clear, or turning clipboard history off, deletes the file.
+- **The clipboard picker** sends a Ctrl+V keystroke to the app you were in, only when you press Enter in it.
+- **crash.txt**: if the island crashes, it records the error code and code offsets inside the program. No memory contents, file names, text or device data.
+- Public screenshots use sample files in a public folder, illustrative clips and a painted backdrop for the overlay.

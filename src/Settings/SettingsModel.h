@@ -103,14 +103,17 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     for(int slot=0;slot<3;++slot){SettingItem i;i.section=7;i.control=SettingControl::Stepper;i.key="home"+std::to_string(slot);i.lo=0;i.hi=6;i.options=metricNames();i.title=std::wstring(L"Home statistic ")+wchar_t(L'1'+slot);i.detail=L"Values never repeat";
         i.get=[slot](const Settings& s){return s.homeMetrics[slot];};i.set=[slot](Settings& s,int x){assignMetric(s.homeMetrics,slot,x);};v.push_back(std::move(i));}
     button(7,L"Restore navigation and statistics",L"Other preferences stay as they are",L"Reset layout",SettingAction::ResetLayout);
-    toggle(8,L"Clipboard history",L"Keep your last 24 copies on the Shelf, in memory only. Private copies and password managers are skipped","clipboardHistory",&Settings::clipboardHistory);
+    toggle(8,L"Clipboard history",L"Your last 24 copies, in memory only (pins are saved encrypted). Password managers are skipped","clipboardHistory",&Settings::clipboardHistory);
+    toggle(8,L"Hide passwords and codes",L"Copies that look like a password, one-time code or key stay hidden until you point at them","hideSecrets",&Settings::hideSecrets);
     toggle(8,L"Copy confirmation",L"The island briefly shows what you copied","clipboardConfirm",&Settings::clipboardConfirm);
-    button(8,L"Clear clipboard history",L"Forget every kept copy now",L"Clear",SettingAction::ClearClipboard);
+    button(8,L"Clear clipboard history",L"Forget every kept copy now, pinned ones too",L"Clear",SettingAction::ClearClipboard);
     toggle(8,L"Privacy indicators",L"Dots when an app uses the camera, microphone or location","privacyDots",&Settings::privacyDots);
     toggle(8,L"Privacy cards",L"Announce which app just started using the camera or microphone","privacyCards",&Settings::privacyCards);
     button(8,L"Windows privacy settings",L"Choose which apps may use the camera, microphone and location",L"Open",SettingAction::PrivacySettings);
     number(8,C::Choice,L"Command shortcut",L"Opens the command bar","commandShortcut",&Settings::commandShortcut,0,3,1,{L"Off",L"Alt+Shift+Space",L"Ctrl+Alt+Space",L"Win+Alt+Space"});
     button(8,L"Command bar",L"Volume, timers, apps, file search, settings and workspaces by typing",L"Open",SettingAction::OpenCommand);
+    toggle(8,L"Capture and clipboard shortcuts",L"Alt+Shift+S snip  \u00b7  Alt+Shift+T copy text  \u00b7  Alt+Shift+C pick a colour  \u00b7  Alt+Shift+V clipboard","captureShortcuts",&Settings::captureShortcuts);
+    toggle(8,L"Keep the Shelf after restarts",L"Remembers links to your Shelf files and dropped text on this PC, never copies of the files","pinnedShelf",&Settings::pinnedShelf);
     button(8,L"Saved workspaces",L"Remove every saved app set; open apps are not affected",L"Remove",SettingAction::ClearWorkspaces);
     button(9,L"Local logs",L"Diagnostics stay on this device",L"Open folder",SettingAction::OpenLogs);
     button(9,L"Clear logs",L"Remove local diagnostic events",L"Clear",SettingAction::ClearLogs);
