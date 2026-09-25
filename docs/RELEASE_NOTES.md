@@ -1,4 +1,6 @@
-# Arnav Island 0.16.0-preview.1 — music from the island, sharing that goes where you drop it
+# Arnav Island 0.16.0-preview.2 — music from the island, sharing that goes where you drop it
+
+**preview.2** fixes a developer-test problem: when the settings test switched *Remember recent commands* off, it deleted the real command history file of whoever ran it (test runs now leave it alone). Nothing else changed since preview.1.
 
 Phase 5G:
 - Drop files and folders straight onto your other PC, or send the whole Shelf at once.

@@ -41,9 +41,10 @@ void IslandWindow::syncProductivity(){
     if(!settings_.privacyDots)content_.privacy.clear();else content_.privacy=privacyUses_;
     // Test runs search only the Public folder, where the sample files live, never the user's own files.
     if(!commands_){wchar_t pub[MAX_PATH]{};GetEnvironmentVariableW(L"PUBLIC",pub,MAX_PATH);commands_=std::make_unique<CommandService>(window_,testing_&&*pub?std::wstring(pub):userFolder(),store_.directory);}
-    // Command history follows its setting; turning it off forgets it (the file too).
+    // Command history follows its setting; turning it off forgets it (the file too, never in a test run: a test
+    // toggling the setting must not touch the file of the person running it).
     if(settings_.commandHistory){if(!commandMemoryLoaded_)loadCommandMemory();}
-    else if(commandMemoryLoaded_||!commandMemory_.items().empty()){commandMemory_.forget();commandMemoryLoaded_=false;std::error_code ignored;std::filesystem::remove(store_.directory/L"commands.nexus",ignored);}
+    else if(commandMemoryLoaded_||!commandMemory_.items().empty()){commandMemory_.forget();commandMemoryLoaded_=false;if(!testing_){std::error_code ignored;std::filesystem::remove(store_.directory/L"commands.nexus",ignored);}}
     syncHotkey();syncWeather();
     // Site icons run only while that setting (and rich rows) is on; turning it off forgets them.
     const bool icons=settings_.siteIcons&&settings_.richClips&&!testing_;if(icons&&!siteIcons_)siteIcons_=std::make_unique<SiteIcons>(window_);else if(!icons&&siteIcons_){siteIcons_.reset();clipViews();}

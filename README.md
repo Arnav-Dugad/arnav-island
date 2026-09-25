@@ -2,7 +2,7 @@
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.16.0-preview.1)
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.16.0-preview.2)
 
 ![Files dragged over the island: the Shelf on one side, your paired PCs on the other](docs/evidence/v0.16/drop-zones.png)
 

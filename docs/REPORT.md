@@ -57,6 +57,7 @@
 - **The first drop layout** drew under the tabs and the tab highlight. The stack's thumbnails overlapped its count, and a Nearby row's progress bar crowded its status.
 - **The UI test's fullscreen stage** could be undone by real foreground changes elsewhere on the desktop.
 - **Island DJ's next colour** waited for an unrelated redraw after the next cover loaded.
+- **The settings test deleted the tester's own command history** (since v0.13). Switching *Remember recent commands* off removes `commands.nexus`, and that wasn't guarded in test runs. It is now (preview.2), checked with a placeholder file that survives a full settings test.
 
 ## Verification
 
