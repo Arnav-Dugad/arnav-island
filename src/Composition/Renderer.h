@@ -43,7 +43,8 @@ struct ContentSnapshot {
     std::vector<SharePeer> nearby;std::string nearbyTarget;std::wstring shareName;
     // Phase 5G: transfers under way (a Nearby row's progress and Stop, the compact island's chip), and the zone a drag
     // over the island would drop into (DropShelf, or NearbyBase + the PC's row), shown while files are dragged over it.
-    struct Transfer{uint32_t id=0;std::string peer;std::wstring title,name;uint64_t done=0,total=0;uint32_t count=0;bool outgoing=true;};std::vector<Transfer> transfers;
+    // Phase 5H: rate, its speed in bytes a second (smoothed; 0 until known), sampled at rateAt (island seconds) when rateDone had arrived.
+    struct Transfer{uint32_t id=0;std::string peer;std::wstring title,name;uint64_t done=0,total=0;uint32_t count=0;bool outgoing=true;double rate=0,rateAt=0;uint64_t rateDone=0;};std::vector<Transfer> transfers;
     Action dropZone=Action::None;
     // Phase 5G: the Media page's library (songs in the Music folder, the rows on screen and their covers, the song the
     // island plays), and the paired PCs offered for continuing the music there.
@@ -53,8 +54,17 @@ struct ContentSnapshot {
     UINT32 djAccent=0;
     bool library=false,libraryScanning=false,handoffPicking=false;int libraryOffset=0;std::shared_ptr<const std::vector<LibraryTrack>> libraryTracks;
     std::vector<std::shared_ptr<const Artwork>> libraryArt;std::wstring libraryPlaying;
-    // The Media page shows what plays (not the library).
-    bool mediaPage()const{return page==Page::Media&&!library;}
+    // Phase 5H: Up next (the island's own queue after the song playing): up to 200 of its songs, the first row shown,
+    // the covers of the rows on screen, and a row being dragged to a new place (from: its index in upNextTracks; y:
+    // where the pointer holds it, in content coordinates; grab: where on the row it was taken). nextArt: the next
+    // song's cover, peeking out from behind the one playing.
+    bool upNext=false;int upNextOffset=0;std::vector<LibraryTrack> upNextTracks;std::vector<std::shared_ptr<const Artwork>> upNextArt;
+    struct QueueDrag{bool active=false;int from=-1;float y=0,grab=0;} queueDrag;std::shared_ptr<const Artwork> nextArt;
+    // Phase 5H: a paired PC's Shelf, seen from Nearby (state 0 asking, 1 shown, 2 kept to itself, 3 couldn't ask:
+    // status says why), the first row shown and the items' previews.
+    struct RemoteShelf{bool open=false;std::string peer;std::wstring name,status;int state=0,offset=0;std::vector<ShareShelfItem> items;std::vector<std::shared_ptr<const Artwork>> previews;} remote;
+    // The Media page shows what plays (not the library, not Up next).
+    bool mediaPage()const{return page==Page::Media&&!library&&!upNext;}
     std::wstring headline=L"Your space, in rhythm.";
     std::wstring detail=L"A quieter home for the things happening now.";
     std::wstring media=L"No media session";
@@ -68,7 +78,8 @@ struct ContentSnapshot {
     // Notice kinds 5-7: camera, microphone and location use (app and icon below).
     // Kind 8: sound moved to headphones (device = the output, app = the previous output, switchBack offered).
     // Kinds 9-11: a colour was picked, text was copied from the screen, a snip went to the Shelf (detail and colour describe it).
-    struct Notice{int kind=0;BluetoothDevice device;std::wstring app;std::shared_ptr<const Artwork> icon;bool switchBack=false;std::wstring detail;uint32_t colour=0;std::wstring path;} notice;
+    // progress: music from another PC (kind 17), how far into the song it is (0..1; -1 unknown).
+    struct Notice{int kind=0;BluetoothDevice device;std::wstring app;std::shared_ptr<const Artwork> icon;bool switchBack=false;std::wstring detail;uint32_t colour=0;std::wstring path;double progress=-1;} notice;
     // Phase 4: clipboard history on the Shelf, privacy indicators and the command bar.
     int shelfTab=0,clipOffset=0;bool clipsPaused=false;std::wstring clipStatus;double clipStatusUntil=0;struct Clip{uint64_t id=0;int kind=0;std::wstring preview,meta;std::shared_ptr<const Artwork> thumbnail,icon;bool pinned=false,secret=false;
         // Phase 5F, rich rows: a colour code's colour, code (preview is then its first line), a link's host and path and its site icon.
@@ -117,6 +128,9 @@ class Renderer {
     // stretches like a droplet as it moves and draws itself back in; two caps and a middle keep its corners round.
     Spring navLeft_{4},navRight_{51};ComPtr<IDCompositionVisual> navCapLeft_,navCapRight_,navMiddle_;ComPtr<IDCompositionRectangleClip> navClipLeft_,navClipRight_;ComPtr<IDCompositionScaleTransform> navMiddleScale_;ComPtr<IDCompositionSurface> navMiddleSurface_;
     void placeNav(double now,float navY);
+    // Phase 5H: Up next's rows glide to their places (per song, in content DIPs) while one is dragged among them.
+    std::map<std::wstring,float> queueY_;double queueAt_=0;bool queueGliding_=false;
+public:bool queueGliding()const{return queueGliding_;}private:
     ArtworkHandoff handoff_;Spring navX{4},batteryAngle{0},timerAngle{0};bool ringsEnabled_=true;int ringCount_=2;double ringBattery_=-2,ringTimer_=-2;int ringFlags_=-1;UINT32 ringColor_=0,ringTrack_=0;
     // celebrate: play the glyph's own animation once (a page just chosen, a switch just turned on).
     void icon(Action,Icon,float,float,float,UINT32,int stableSlot=-1,bool celebrate=false);
@@ -225,7 +239,9 @@ class Renderer {
     // The Home weather tile's animated sky (Sky.cpp).
     struct SkyPart{ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionEffectGroup> effect;};std::array<SkyPart,14> skyParts_;
     ComPtr<IDCompositionVisual> sky_;ComPtr<IDCompositionRectangleClip> skyClip_;ComPtr<IDCompositionEffectGroup> skyEffect_;ComPtr<IDCompositionRotateTransform> skyRays_;
-    ComPtr<IDCompositionSurface> skySun_,skyStreak_,skyFlake_,skyCloud_,skyFog_,skyStar_,skyFlash_;std::wstring skyKey_;bool skyShown_=false,skyWanted_=false;float skyX_=0;
+    ComPtr<IDCompositionSurface> skySun_,skyStreak_,skyFlake_,skyCloud_,skyFog_,skyStar_,skyFlash_;
+    // The tile the sky plays in, drawn beneath it (the content's own box is left out), so the tile's text stays above the weather.
+    ComPtr<IDCompositionVisual> skyBase_;ComPtr<IDCompositionSurface> skyBaseSurface_;UINT32 skyTile_=0x14171d;float skyTileAlpha_=1;std::wstring skyKey_;bool skyShown_=false,skyWanted_=false;float skyX_=0;
     void skyScene(const ContentSnapshot&,float x);void skyHide();
     // Adaptive text, while the compact header draws: the backdrop grid, where the header sits in the canvas, and the inks it flips.
     std::shared_ptr<const LumaGrid> adapt_;const LumaGrid* adaptSeen_=nullptr;int adaptSerial_=0;float adaptX_=0;UINT32 adaptInk_=0,adaptMuted_=0;
@@ -260,6 +276,9 @@ public:
     Action hit(float x,float y)const;
     // Phase 5F: the compact island's own targets (media controls), in header coordinates.
     std::vector<HitTarget> compactTargets;Action compactHit(float x,float y)const{for(auto& t:compactTargets)if(t.contains(x,y))return t.action;return Action::None;}
+    // Phase 5H: what can be pressed, for screen readers, in the body's coordinates: the compact island's controls (header at
+    // headerLeft), or the page's targets and the navigation.
+    std::vector<HitTarget> accessibleTargets(bool compact,float headerLeft)const;
     // The compact header slides the way a swipe went, then springs back.
     void trackSkip(int direction,bool reduced);
     // Phase 5G: a sideways drag that can skip a track. The compact header follows the drag (header), and a chip on the

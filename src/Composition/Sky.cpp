@@ -15,17 +15,19 @@ void Renderer::skyHide(){
 }
 void Renderer::skyScene(const ContentSnapshot& s,float x){
     const Sky sky=skyOf(s.weather.code);const bool day=s.weather.day;
-    const std::wstring key=std::to_wstring(int(sky))+L"|"+std::to_wstring(int(day))+L"|"+std::to_wstring(int(x))+L"|"+std::to_wstring(int(s.light))+L"|"+std::to_wstring(material_);
+    const std::wstring key=std::to_wstring(int(sky))+L"|"+std::to_wstring(int(day))+L"|"+std::to_wstring(int(x))+L"|"+std::to_wstring(int(s.light))+L"|"+std::to_wstring(material_)+L"|"+std::to_wstring(skyTile_)+L"|"+std::to_wstring(int(skyTileAlpha_*1000));
     if(skyShown_&&key==skyKey_)return;
     if(!sky_){
         check(device_->CreateVisual(&sky_));check(device_->CreateEffectGroup(&skyEffect_));sky_->SetEffect(skyEffect_.Get());check(device_->CreateRectangleClip(&skyClip_));
         const float r=13*scale_;auto* c=skyClip_.Get();c->SetLeft(0.f);c->SetTop(0.f);c->SetRight(std::round(tileW*scale_));c->SetBottom(std::round(tileH*scale_));
         c->SetTopLeftRadiusX(r);c->SetTopLeftRadiusY(r);c->SetTopRightRadiusX(r);c->SetTopRightRadiusY(r);c->SetBottomLeftRadiusX(r);c->SetBottomLeftRadiusY(r);c->SetBottomRightRadiusX(r);c->SetBottomRightRadiusY(r);
-        sky_->SetClip(skyClip_.Get());check(content_->AddVisual(sky_.Get(),FALSE,nullptr));
+        sky_->SetClip(skyClip_.Get());check(content_->AddVisual(sky_.Get(),TRUE,nullptr));
+        check(device_->CreateVisual(&skyBase_));check(sky_->AddVisual(skyBase_.Get(),FALSE,nullptr));
         for(auto& p:skyParts_){check(device_->CreateVisual(&p.visual));check(device_->CreateEffectGroup(&p.effect));p.visual->SetEffect(p.effect.Get());check(sky_->AddVisual(p.visual.Get(),FALSE,nullptr));}
         check(device_->CreateRotateTransform(&skyRays_));skyRays_->SetCenterX(32*scale_);skyRays_->SetCenterY(32*scale_);
     }
     skyKey_=key;skyShown_=true;
+    surface(skyBaseSurface_,int(tileW),int(tileH),[&](auto* rt){rt->Clear(D2D1::ColorF(skyTile_,skyTileAlpha_));});skyBase_->SetContent(skyBaseSurface_.Get());
     // Colours: light glass and light solid take darker marks; dark takes pale ones. All stay faint enough for the text over them.
     const bool light=s.light;const UINT32 ink=light?0x1c2230:0xffffff,rain=light?0x3b7fc4:0x9fd0ff,sun=0xffc45a;
     const float cloudAlpha=light?.07f:.10f;

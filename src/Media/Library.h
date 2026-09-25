@@ -6,6 +6,9 @@
 #include <string>
 #include <vector>
 namespace nexus {
+// The island's own player's session, told apart from Windows' sessions by this id (Media/IslandPlayer.h).
+constexpr uint64_t islandSessionId=0x49534c414e440001ull;
+constexpr const wchar_t* islandSource=L"ArnavIsland.Player";
 // Phase 5G: songs in your Music folder, played by the island itself. This is the pure part:
 // which files are songs, a title from a file name, the order the library is listed in,
 // searching it, and finding a handed-off song in it. Nothing here reads files.

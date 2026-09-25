@@ -210,6 +210,8 @@ std::vector<CommandResult> CommandService::idle(const CommandContext& ctx,const 
 void CommandService::run(){
     CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
     installedApps();// load once, off the UI thread
+    // Phase 5H: the switches' state too (the radios can take a moment to answer), so the first query is instant.
+    refreshState();
     {wchar_t code[9]{};home_=GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT,LOCALE_SINTLSYMBOL,code,9)>1&&currencyByCode(code)?code:L"USD";}
     for(;;){
         std::wstring text;std::vector<std::wstring> workspaces;uint64_t seq=0;CommandContext context;std::vector<RememberedCommand> remembered;bool currency=false,refresh=false;

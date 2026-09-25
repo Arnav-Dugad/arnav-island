@@ -17,7 +17,10 @@ enum class Action { None,Overview,Media,System,Focus,Settings,Pin,Close,Play,Pre
     DropShelf=503,ShelfStack=504,HandoffOpen=505,HandoffPlay=506,HandoffDecline=507,LibraryOpen=508,LibraryBack=509,LibraryShuffle=510,LibraryResume=511,LibraryUp=512,LibraryDown=513,
     NearbyCancelBase=514,NearbyCancelEnd=518,NearbySendBase=518,NearbySendEnd=522,HandoffPeerBase=522,HandoffPeerEnd=525,LibraryItemBase=525,LibraryItemEnd=530,
     // Phase 5G: the bud of a waiting alert, clicked to bring it forward.
-    BudPromote=530,ActionEnd=531 };
+    BudPromote=530,
+    // Phase 5H (531-552): Up next (its rows dragged to reorder), another PC's Shelf seen from Nearby.
+    UpNextOpen=531,UpNextBack=532,UpNextUp=533,UpNextDown=534,UpNextItemBase=535,UpNextItemEnd=540,
+    RemoteShelfBack=540,RemoteShelfRefresh=541,RemoteShelfUp=542,RemoteShelfDown=543,RemoteItemBase=544,RemoteItemEnd=548,NearbyBrowseBase=548,NearbyBrowseEnd=552,ActionEnd=552 };
 inline bool inRange(Action a,Action base,Action end){return int(a)>=int(base)&&int(a)<int(end);}
 // Command bar layout: input 42, then 40 per row, then the key hints.
 inline float commandFooterY(int rows){return 52+40.f*float(rows)+2;}
@@ -47,5 +50,8 @@ struct FocusClock {
     bool tick(double now){if(running&&mode!=Mode::Stopwatch&&elapsed(now)>=duration){held=duration;running=false;finished=true;return true;}return false;}
 };
 inline std::wstring clockText(double seconds){int n=int(std::max(0.,seconds));wchar_t b[32];if(n>=3600)swprintf(b,32,L"%d:%02d:%02d",n/3600,(n/60)%60,n%60);else swprintf(b,32,L"%02d:%02d",n/60,n%60);return b;}
+// Phase 5H: how long something has left ("40 s left", "12 min left", "1 h 5 min left").
+inline std::wstring leftText(double seconds){wchar_t b[40];if(!(seconds>=0)||seconds>360000)return L"";if(seconds<60)swprintf(b,40,L"%d s left",std::max(1,int(seconds)));else if(seconds<3600)swprintf(b,40,L"%d min left",int(std::lround(seconds/60)));
+    else{const int m=int(std::lround(seconds/60));swprintf(b,40,L"%d h %d min left",m/60,m%60);}return b;}
 inline std::wstring rateText(double bytes){wchar_t b[32];if(bytes<1024)swprintf(b,32,L"%.0f B/s",bytes);else if(bytes<1048576)swprintf(b,32,L"%.0f KB/s",bytes/1024);else swprintf(b,32,L"%.1f MB/s",bytes/1048576);return b;}
 }

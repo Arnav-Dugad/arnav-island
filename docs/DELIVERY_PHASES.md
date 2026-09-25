@@ -198,3 +198,28 @@ Found and fixed along the way:
 - The UI test's fullscreen stage could be undone by real foreground changes on the desktop.
 - This toolchain's `windows.foundation.h` defines `IReference<BYTE>` twice (`boolean` is `BYTE`); the player's file skips the duplicate.
 
+
+## Status after v0.17 — Phase 5H, Up next, Shelves and screen readers — 2026-09-25
+
+Shipped, as asked:
+- **UI, alignment and animation fixes:** the command bar's stray logo, the cover over the Library, rows touching footers, the Outputs chevron, the sky over the Home tile's text, light-theme contrast, cut-off Settings text, a duplicate town.
+- **Weather:** the town is chosen in Settings, with regions; checked with Manipal, Udupi, Jubail, Indore, Jaipur and Mumbai.
+- **The other PC's cover** on *Play here*.
+- **Up next** with drag to reorder, and the next cover peeking out.
+- **Taking from the other PC's Shelf.**
+- **Crossfade**, and fades when music moves between PCs.
+- **A ring for 5 GB+ transfers** with speed and time left.
+- **Two alerts side by side** on hover.
+- **A spoken island** through UI Automation.
+- **Checks:** unit, sharing (46 new checks), UI (three new stages) and settings suites.
+
+Deviations, each deliberate:
+- **Crossfade** covers the island's own songs; another app's crossfade is that app's setting.
+- **Screen readers** get the island itself; the Settings window, which draws its own controls, is next.
+- **Compatibility:** the cover and taking from a Shelf are revision 1 of protocol 2, so 0.16 PCs keep sharing with 0.17 and are simply not asked for them.
+
+Found and fixed along the way:
+- The solid island's fill was 640 DIPs wide on a 680-DIP canvas, so the side-by-side card lost its right edge.
+- In test runs the command bar could open without its search service.
+- The first search waited on Windows' radio state; it's now read when the service starts.
+- A test script's clean-up stopped every copy of the island, including the installed one; it now stops only test copies.

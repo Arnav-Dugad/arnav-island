@@ -1,4 +1,5 @@
 #include "IslandWindow.h"
+#include "Media/CoverCodec.h"
 #include <shlobj.h>
 #include <filesystem>
 // Phase 5F: sharing between your own PCs. The service (Productivity/ShareService) does the
@@ -21,8 +22,18 @@ void IslandWindow::syncSharing(){
         o.folder=data.wstring();o.downloads=folderOf(FOLDERID_Downloads);if(o.downloads.empty())o.downloads=(data/L"Received").wstring();o.handoff=(data/L"Handoff").wstring();
         share_=std::make_unique<ShareService>(window_,o);store_.log(share_->running()?"Info":"Warning",share_->running()?"share_started":"share_unavailable");
         content_.nearby=share_->peers();}
-    else if(!settings_.sharing&&share_){share_.reset();content_.nearby.clear();content_.transfers.clear();shareTarget_.clear();content_.nearbyTarget.clear();content_.handoffPicking=false;if(content_.shelfTab==2)content_.shelfTab=0;}
+    else if(!settings_.sharing&&share_){share_.reset();content_.nearby.clear();content_.transfers.clear();shareTarget_.clear();content_.nearbyTarget.clear();content_.handoffPicking=false;content_.remote={};if(content_.shelfTab==2)content_.shelfTab=0;}
+    publishShelf();
     if(content_.shareName.empty()){wchar_t n[256]{};DWORD size=256;if(GetComputerNameExW(ComputerNamePhysicalDnsHostname,n,&size))content_.shareName=n;}
+}
+// Phase 5H: what paired PCs see of this Shelf: its files and folders (not its text), each with a small preview.
+// Previews are made once per picture and kept while it is on the Shelf.
+void IslandWindow::publishShelf(){
+    if(!share_)return;std::vector<ShareShelfEntry> items;std::map<std::wstring,std::pair<const Artwork*,std::vector<uint8_t>>> kept;
+    for(auto& item:content_.shelf){if(item.kind!=ShelfItem::Kind::File)continue;ShareShelfEntry e;e.path=item.value;
+        if(item.preview){auto it=shelfPreviewBytes_.find(item.value);if(it!=shelfPreviewBytes_.end()&&it->second.first==item.preview.get())e.preview=it->second.second;else e.preview=encodeCover(*item.preview,72,6*1024,.8f);kept[item.value]={item.preview.get(),e.preview};}
+        items.push_back(std::move(e));}
+    shelfPreviewBytes_=std::move(kept);share_->offerShelf(std::move(items),settings_.shelfOpen);
 }
 // A sharing card: 14 the pairing code, 15 an offer, 16 how something went (path: a received file, shown by its button),
 // 17 music from another PC.
@@ -62,16 +73,25 @@ void IslandWindow::shareEvents(){
         case K::Progress:{auto it=std::find_if(content_.transfers.begin(),content_.transfers.end(),[&](auto& t){return t.id==e.transfer;});
             if(it==content_.transfers.end()){ContentSnapshot::Transfer t;t.id=e.transfer;t.peer=e.peer;t.name=e.name;t.title=e.file;t.outgoing=e.outgoing;content_.transfers.push_back(t);it=content_.transfers.end()-1;}
             it->done=e.done;it->total=e.size;it->count=e.count;if(!e.file.empty())it->title=e.file;
+            // Its speed: bytes over the last quarter second or more, eased (so the ring and the time left don't jitter).
+            if(it->rateAt<=0){it->rateAt=now;it->rateDone=e.done;}else if(now-it->rateAt>=.25&&e.done>=it->rateDone){const double speed=double(e.done-it->rateDone)/(now-it->rateAt);it->rate=it->rate>0?it->rate*.7+speed*.3:speed;it->rateAt=now;it->rateDone=e.done;}
             if(now-transferDrawn_>=.2||e.done==e.size){transferDrawn_=now;redraw=true;}break;}
         // Show opens Downloads with the arrival selected (a folder, or the first file).
-        case K::Received:drop(e.transfer);shareCard(16,L"Received from "+e.name,e.file+(e.count>1?L"  ·  "+filesText(e.count):L""),e.detail,8);break;
+        case K::Received:drop(e.transfer);
+            if(e.code==1){if(!e.detail.empty()&&std::none_of(content_.shelf.begin(),content_.shelf.end(),[&](auto& i){return i.value==e.detail;})&&content_.shelf.size()<32){content_.shelf.push_back({ShelfItem::Kind::File,e.detail,std::filesystem::path(e.detail).filename().wstring()});requestPreviews();}
+                shareCard(16,L"Taken from "+e.name+L"\u2019s Shelf",e.file+(e.count>1?L"  ·  "+filesText(e.count):L"")+L"  ·  now on your Shelf",e.detail,6);store_.log("Info","share_shelf_taken_here");break;}
+            shareCard(16,L"Received from "+e.name,e.file+(e.count>1?L"  ·  "+filesText(e.count):L""),e.detail,8);break;
         case K::Sent:drop(e.transfer);content_.shelfStatus.clear();shareCard(16,L"Sent to "+e.name,e.file+(e.count>1?L"  ·  "+filesText(e.count):L"")+L"  ·  "+e.detail,{},4);break;
         case K::Failed:{drop(e.transfer);content_.shelfStatus.clear();
             // Stopped here: a quiet note. An offer the other PC took back replaces its card.
             if(e.detail==L"You stopped it"){content_.shelfStatus=L"Stopped "+e.file;content_.shelfStatusUntil=now+3;redraw=true;break;}
             if(e.transfer&&e.transfer==handoffOffer_){handoffOffer_=0;if(state_==IslandState::Notification&&content_.notice.kind==17)shareCard(16,e.detail,e.file,{},3.5);break;}
             shareCard(16,e.file.empty()?std::wstring(L"Couldn't share"):L"Couldn't share "+e.file,e.detail,{},5);break;}
-        case K::Handoff:case K::HandoffAnswered:case K::HandoffFile:handoffEvent(e);break;}
+        case K::Handoff:case K::HandoffAnswered:case K::HandoffFile:handoffEvent(e);break;
+        // Phase 5H: another PC's Shelf, as asked for; and this Shelf, taken from.
+        case K::ShelfList:{auto& r=content_.remote;if(!r.open||r.peer!=e.peer)break;r.state=e.code==0?1:e.code==1?2:3;r.status=e.detail;if(!e.name.empty())r.name=e.name;r.items=e.shelf;r.offset=std::clamp(r.offset,0,std::max(0,int(r.items.size())-4));
+            r.previews.clear();for(auto& item:r.items)r.previews.push_back(decodeCover(item.preview,64));redraw=true;break;}
+        case K::ShelfTaken:drop(e.transfer);shareCard(16,e.name+L" took "+e.file,L"A copy, from your Shelf",{},3.5);store_.log("Info","share_shelf_taken_there");break;}
     }
     if(redraw&&renderer_)refresh();
 }
@@ -127,6 +147,16 @@ bool IslandWindow::shareAction(Action a){
     // Send Shelf: every file on the Shelf to that PC, in one transfer.
     if(inRange(a,Action::NearbySendBase,Action::NearbySendEnd)){const size_t i=size_t(int(a)-int(Action::NearbySendBase));
         if(share_&&i<content_.nearby.size()&&content_.nearby[i].paired){auto files=shelfFiles();if(files.empty())note(L"There are no files on the Shelf");else{shareTarget_=content_.nearby[i].id;content_.nearbyTarget=shareTarget_;sendToPeer(content_.nearby[i].id,std::move(files));}}return true;}
+    // Phase 5H: a paired PC's Shelf, looked into and taken from.
+    if(inRange(a,Action::NearbyBrowseBase,Action::NearbyBrowseEnd)){const size_t i=size_t(int(a)-int(Action::NearbyBrowseBase));
+        if(share_&&i<content_.nearby.size()&&content_.nearby[i].paired){auto& r=content_.remote;r={};r.open=true;r.peer=content_.nearby[i].id;r.name=content_.nearby[i].name;share_->askShelf(r.peer);
+            if(!motion_.reduced){motion_.swipe.reset(22,now);motion_.swipe.retarget(0,now,MotionTokens::content);}refresh();animate();store_.log("Info","share_shelf_browsed");}return true;}
+    if(a==Action::RemoteShelfBack){content_.remote.open=false;if(!motion_.reduced){motion_.swipe.reset(-22,now);motion_.swipe.retarget(0,now,MotionTokens::content);}refresh();animate();return true;}
+    if(a==Action::RemoteShelfRefresh){auto& r=content_.remote;if(share_&&r.open){r.state=0;share_->askShelf(r.peer);refresh();}return true;}
+    if(a==Action::RemoteShelfUp||a==Action::RemoteShelfDown){auto& r=content_.remote;r.offset=std::clamp(r.offset+(a==Action::RemoteShelfUp?-4:4),0,std::max(0,int(r.items.size())-4));refresh();return true;}
+    if(inRange(a,Action::RemoteItemBase,Action::RemoteItemEnd)){auto& r=content_.remote;const size_t i=size_t(r.offset+int(a)-int(Action::RemoteItemBase));
+        if(share_&&r.open&&r.state==1&&i<r.items.size()){const auto& item=r.items[i];const uint32_t id=share_->takeFromShelf(r.peer,uint32_t(i),item.name);
+            if(id){ContentSnapshot::Transfer t;t.id=id;t.peer=r.peer;t.name=r.name;t.title=item.name;t.outgoing=false;t.total=item.size;content_.transfers.push_back(t);note(L"Taking "+item.name+L"\u2026");store_.log("Info","share_shelf_take");}}return true;}
     if(inRange(a,Action::NearbyCancelBase,Action::NearbyCancelEnd)){const size_t i=size_t(int(a)-int(Action::NearbyCancelBase));
         if(share_&&i<content_.nearby.size())for(auto& t:content_.transfers)if(t.peer==content_.nearby[i].id){share_->cancel(t.id);note(L"Stopping…");break;}return true;}
     return false;

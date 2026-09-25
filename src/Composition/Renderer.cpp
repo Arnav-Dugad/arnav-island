@@ -193,7 +193,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     haloAlpha_=glass&&(s.settings.material==2||!s.blur)?(s.light?.40f:.48f):0.f;haloColor_=s.light?0xffffff:0x000000;
     sheenStrength_=s.reducedMotion?0.f:glass?(s.light?.55f:.3f):s.light?0.f:.09f;
     if(sheenStrength_>0&&sheenTone_!=0xffffff){sheenTone_=0xffffff;surface(sheenSurface_,260,260,[&](auto* rt){D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(0xffffff,.55f)},{.45f,D2D1::ColorF(0xffffff,.16f)},{1,D2D1::ColorF(0xffffff,0.f)}};ComPtr<ID2D1GradientStopCollection> c;check(rt->CreateGradientStopCollection(stops,3,&c));ComPtr<ID2D1RadialGradientBrush> b;check(rt->CreateRadialGradientBrush(D2D1::RadialGradientBrushProperties({130,130},{0,0},130,130),c.Get(),&b));rt->FillRectangle({0,0,260,260},b.Get());});sheen_->SetContent(sheenSurface_.Get());}
-    const UINT32 bg=s.light?0xf7f7f9:0x090a0c,ink=s.light?0x202329:0xf1f3f7,muted=s.light?0x656b75:(glass?0xa3aab6:0x8e96a4),raised=glass?0xffffff:s.light?0xeceef2:0x14171d,line=glass?(s.light?0x000000:0xffffff):s.light?0xdde1e7:0x242a33;
+    const UINT32 bg=s.light?0xf7f7f9:0x090a0c,ink=s.light?0x202329:0xf1f3f7,muted=s.light?(glass?0x4d535c:0x656b75):(glass?0xa3aab6:0x8e96a4),raised=glass?0xffffff:s.light?0xeceef2:0x14171d,line=glass?(s.light?0x000000:0xffffff):s.light?0xdde1e7:0x242a33;
     const float raisedAlpha=glass?(s.light?.5f:.075f):1.f,lineAlpha=glass?(s.light?.1f:.12f):1.f;const UINT32 solidRaised=glass?(s.light?0xe6e8ec:0x1b1d23):raised,track=glass?(s.light?0xc5c9d0:0x3a3e46):line;
     UINT32 accent=islandAccent(s.settings.accent,s.light,s.platform.wallpaper,s.playback.artwork.get(),s.settings.albumAccents);
     // With no album art, the playing app's icon lends its colour (Spotify green, YouTube red).
@@ -208,7 +208,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     if(!headerOnly){targets.clear();iconCursor_=pageCount;for(auto& i:icons_)i.used=false;}
     if(baseColor_!=bg||accentColor_!=accent||material_!=int(glass)||cachedEdge_!=edge_){
         baseColor_=bg;accentColor_=accent;material_=int(glass);cachedEdge_=edge_;
-        surface(baseSurface_,640,500,[&](auto* rt){rt->Clear(D2D1::ColorF(bg));});body_->SetContent(glass?nullptr:baseSurface_.Get());stub_->SetContent(glass?nullptr:baseSurface_.Get());bud_->SetContent(glass?nullptr:baseSurface_.Get());
+        surface(baseSurface_,int(canvasWidth),int(canvasHeight),[&](auto* rt){rt->Clear(D2D1::ColorF(bg));});body_->SetContent(glass?nullptr:baseSurface_.Get());stub_->SetContent(glass?nullptr:baseSurface_.Get());bud_->SetContent(glass?nullptr:baseSurface_.Get());
         surface(innerSurface_,640,500,[&](auto* rt){rt->Clear(D2D1::ColorF(bg));});inner_->SetContent(glass?nullptr:innerSurface_.Get());
         wings(wingRadius_>0?wingRadius_:17);
         {const UINT32 tone=s.light?0x1c2230:0xffffff;if(hoverColor_!=tone){hoverColor_=tone;surface(hoverSurface_,440,360,[&](auto* rt){rt->Clear(D2D1::ColorF(tone,s.light?.065f:.10f));});hoverVisual_->SetContent(hoverSurface_.Get());}}
@@ -220,7 +220,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     wingLeft_->SetContent(attached&&!glass?leftSurface_.Get():nullptr);wingRight_->SetContent(attached&&!glass?rightSurface_.Get():nullptr);barEffect_->SetOpacity(s.page==Page::Overview&&s.expanded&&!s.live?1.f:0.f);
     {const bool pulse=s.settings.artPulse&&!s.reducedMotion&&s.playback.playing&&bool(s.playback.artwork);
         setArtPulse(pulse);}
-    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track,accent2);updateLyrics(s,ink,muted,accent);updateBubble(s);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateRing(s,accent);updateCard(s,track,accent,solidRaised,ink);updateBud(s,ink,muted,accent,solidRaised);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-3.f:30.f,stats||(shelf&&s.settings.sharing)?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||(shelf&&!(s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size())&&!(s.dropHover&&s.settings.sharing&&std::any_of(s.nearby.begin(),s.nearby.end(),[](auto& p){return p.paired;}))),s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
+    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track,accent2);updateLyrics(s,ink,muted,accent);updateBubble(s);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateRing(s,accent);updateCard(s,track,accent,solidRaised,ink);updateBud(s,ink,muted,accent,solidRaised);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-3.f:30.f,stats||(shelf&&s.settings.sharing)?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||(shelf&&!(s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size())&&!(s.shelfTab==2&&s.remote.open)&&!(s.dropHover&&s.settings.sharing&&std::any_of(s.nearby.begin(),s.nearby.end(),[](auto& p){return p.paired;}))),s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
     headerSpots_.clear();compactTargets.clear();bool lyricOn=false;float sungX=0,sungW=0;
     surface(headerSurface_,600,150,[&](auto* rt){
         if(s.expanded)return;
@@ -256,7 +256,11 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         auto percent=[](double v){wchar_t b[16];swprintf(b,16,L"%.0f%%",v);return std::wstring(b);};
         auto skyIcon=[](int code,bool day){switch(skyOf(code)){case Sky::Clear:return day?Icon::Sun:Icon::Moon;case Sky::PartlyCloudy:return day?Icon::PartlyCloudy:Icon::Cloud;case Sky::Cloudy:return Icon::Cloud;case Sky::Fog:return Icon::Fog;case Sky::Drizzle:case Sky::Rain:return Icon::Rain;case Sky::Snow:return Icon::Snow;default:return Icon::Storm;}};
         // Phase 5G: files on their way to or from another PC, as a chip that fills with them.
-        if(!s.transfers.empty()&&s.activity.empty()){uint64_t done=0,total=0;for(auto& t:s.transfers){done+=t.done;total+=t.total;}chip(s.transfers.front().outgoing?Icon::Send:Icon::Download,percent(total?100.*double(done)/double(total):0),52);}
+        // Phase 5H: 5 GB or more shows as a ring that fills with the transfer and widens with its speed, and the speed beside it.
+        if(!s.transfers.empty()&&s.activity.empty()){uint64_t done=0,total=0;double rate=0;for(auto& t:s.transfers){done+=t.done;total+=t.total;rate+=t.rate;}const double f=total?double(done)/double(total):0;
+            if(total>=(5ull<<30)){const float span=rate>0?84.f:54.f;if(end-start>=span+78){end-=span;const float thick=1.6f+2.8f*float(std::clamp(rate/(110.*1048576),0.,1.));
+                    drawRing(rt,d2d_.Get(),end+9,17,7,thick,f,accent,track);text(rt,rate>0?rateText(rate):percent(f*100),end+23,0,span-25,10,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);end-=7;}}
+            else chip(s.transfers.front().outgoing?Icon::Send:Icon::Download,percent(f*100),52);}
         for(int k=chipCount-1;k>=0;--k)switch(s.settings.chips[size_t(k)]){
         case 0:if(s.settings.compactClock){SYSTEMTIME t{};GetLocalTime(&t);wchar_t value[12];swprintf(value,12,L"%02u:%02u",t.wHour,t.wMinute);chip(Icon::Clock,value,58);}break;
         case 1:if(s.settings.compactVolume)chip(s.muted?Icon::Muted:Icon::Volume,std::to_wstring(s.volume),48,6);break;
@@ -267,6 +271,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         case 6:if(glance&&s.settings.weather&&s.weather.valid)chip(skyIcon(s.weather.code,s.weather.day),temperatureText(s.weather.temperature,s.settings.weatherUnit),54,12);break;
         default:break;}
         std::wstring label=!s.activity.empty()?s.activity:media?s.playback.title:!s.transfers.empty()?(s.transfers.front().outgoing?L"Sending to ":L"Receiving from ")+s.transfers.front().name:L"Ready";
+        // A transfer whose speed is known says how long it has left.
+        if(s.activity.empty()&&!media&&!s.transfers.empty()){const auto& t=s.transfers.front();if(t.rate>0&&t.total>t.done){const auto left=leftText(double(t.total-t.done)/t.rate);if(!left.empty())label+=L"  \u00b7  "+left;}}
         // A running timer: its mode when the timer chip already shows the time, else the time itself, rolling.
         const bool timerChip=std::any_of(headerSpots_.begin(),headerSpots_.end(),[](auto& p){return p.id==8;}),rolling=timing&&!timerChip;
         if(timing)label=timerChip?(s.focus.mode==FocusClock::Mode::Break?L"Break":s.focus.mode==FocusClock::Mode::Stopwatch?L"Stopwatch":L"Focus"):clockText(std::ceil(s.focus.displayed(seconds())));
@@ -363,7 +369,10 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             else if(n.kind==15){text(rt,n.app+L" is sending",72,6,176,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,176,11,muted);
                 button(Action::ShareAccept,L"Accept",256,4,76,26,true);button(Action::ShareDecline,L"Decline",256,34,76,22);}
             // Music from another PC: the song, its artist and where it comes from.
-            else if(n.kind==17){text(rt,n.app,72,6,176,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,176,11,muted);
+            else if(n.kind==17){text(rt,n.app,72,4,176,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,26,176,11,muted);
+                // Where the song is: a hairline track, filled in the cover's colour.
+                if(n.progress>=0){const UINT32 fill=n.icon&&n.icon->accent?n.icon->accent:accent;b->SetColor(D2D1::ColorF(track));rt->FillRoundedRectangle(D2D1::RoundedRect({72,51,244,53},1,1),b.Get());
+                    b->SetColor(D2D1::ColorF(fill));rt->FillRoundedRectangle(D2D1::RoundedRect({72,51,72+float(172*n.progress),53},1,1),b.Get());rt->FillEllipse(D2D1::Ellipse({72+float(172*n.progress),52},2.5f,2.5f),b.Get());}
                 button(Action::HandoffPlay,L"Play here",256,4,76,26,true);button(Action::HandoffDecline,L"Not now",256,34,76,22);}
             else{const float room=n.path.empty()?256.f:176.f;text(rt,n.app,72,6,room,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,room,11,muted);if(!n.path.empty())button(Action::ShareShow,L"Show",256,14,76,28,true);}
             return;
@@ -420,6 +429,9 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         const bool lyricsButton=s.mediaPage()&&s.settings.lyrics&&s.lyrics&&!s.lyrics->empty(),panel=lyricsPanel(s);
         const float titleRoom=(chips?340.f-chips*28:302.f)-(lyricsButton&&chips?32.f:0.f);
         if(s.page==Page::System){}
+        else if(s.upNext&&s.page==Page::Media){iconButton(Action::UpNextBack,Icon::ArrowLeft,-4,-4,32,28);text(rt,L"Up next",32,-4,150,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,28);
+            double length=0;for(auto& t:s.upNextTracks)length+=std::max(0.,t.duration);const size_t n=s.upNextTracks.size();
+            if(n){std::wstring summary=std::to_wstring(n)+(n==1?L" song":L" songs");if(length>=60)summary+=L"  \u00b7  "+std::to_wstring(int(std::lround(length/60)))+L" min";text(rt,summary,150,-4,192,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING,28);}}
         else if(s.library&&s.page==Page::Media){iconButton(Action::LibraryBack,Icon::ArrowLeft,-4,-4,32,28);text(rt,L"Library",32,-4,150,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,28);
             const bool any=s.libraryTracks&&!s.libraryTracks->empty();targets.push_back({Action::LibraryShuffle,226,-3,118,26,any});box(226,-3,118,26,raised,13);drawIcon(rt,d2d_.Get(),Icon::Shuffle,238,3,14,any?accent:muted,any?1.f:.5f);text(rt,L"Shuffle all",258,-3,82,10.5f,any?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,26);}
         else if(panel){const float w=std::min(titleRoom,measure(s.playback.title,16,DWRITE_FONT_WEIGHT_SEMI_BOLD)+4);text(rt,s.playback.title,0,-4,w,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,28);if(titleRoom-w>40)text(rt,s.playback.artist,w+8,-3,titleRoom-w-8,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,28);}
@@ -444,9 +456,35 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             auto skyIcon=[](int code,bool day){switch(skyOf(code)){case Sky::Clear:return day?Icon::Sun:Icon::Moon;case Sky::PartlyCloudy:return day?Icon::PartlyCloudy:Icon::Cloud;case Sky::Cloudy:return Icon::Cloud;case Sky::Fog:return Icon::Fog;case Sky::Drizzle:case Sky::Rain:return Icon::Rain;case Sky::Snow:return Icon::Snow;default:return Icon::Storm;}};
             const Icon glyphs[]={Icon::Processor,Icon::Memory,Icon::Battery,Icon::Download,Icon::Upload,Icon::Disk,Icon::Clock,Icon::Gauge,s.weather.valid?skyIcon(s.weather.code,s.weather.day):Icon::Cloud};
             const std::wstring place=s.weather.valid?s.weather.place.substr(0,s.weather.place.find(L',')):std::wstring(L"Weather");const wchar_t* names[]={L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime",L"GPU",place.c_str()};
-            for(int i=0;i<3;++i){int metric=s.settings.homeMetrics[i];float x=i*130.f;box(x,126,120,68,raised,13);drawIcon(rt,d2d_.Get(),glyphs[metric],x+12,137,14,muted);text(rt,names[metric],x+33,136,77,10,muted);std::wstring number;switch(metric){case 0:number=value(s.system.cpu)+ (s.system.cpu>=0?L"%":L"");break;case 1:number=s.system.ramTotalGiB?value(s.system.ramPercent)+L"%":L"—";break;case 2:number=s.battery>=0?std::to_wstring(s.battery)+L"%":L"—";break;case 3:number=s.system.networkAvailable?rateText(s.system.download):L"—";break;case 4:number=s.system.networkAvailable?rateText(s.system.upload):L"—";break;case 5:number=s.system.diskTotalGiB?value(s.system.diskFreeGiB)+L" GB":L"—";break;case 7:number=s.system.gpu<0?L"—":value(s.system.gpu)+L"%";break;case 8:number=s.settings.weather&&s.weather.valid?temperatureText(s.weather.temperature,s.settings.weatherUnit):L"—";break;default:number=clockText(double(s.system.uptime));break;}contentSpots_.push_back({3+i,number,x+12,156,metric>=3&&metric!=7&&metric!=8?18.f:23.f,DWRITE_FONT_WEIGHT_SEMI_BOLD,ink});
+            skyTile_=raised;skyTileAlpha_=raised==0xffffff?raisedAlpha:1.f;
+            for(int i=0;i<3;++i){int metric=s.settings.homeMetrics[i];float x=i*130.f;if(!(metric==8&&skyWanted_))box(x,126,120,68,raised,13);drawIcon(rt,d2d_.Get(),glyphs[metric],x+12,137,14,muted);text(rt,names[metric],x+33,136,77,10,muted);std::wstring number;switch(metric){case 0:number=value(s.system.cpu)+ (s.system.cpu>=0?L"%":L"");break;case 1:number=s.system.ramTotalGiB?value(s.system.ramPercent)+L"%":L"—";break;case 2:number=s.battery>=0?std::to_wstring(s.battery)+L"%":L"—";break;case 3:number=s.system.networkAvailable?rateText(s.system.download):L"—";break;case 4:number=s.system.networkAvailable?rateText(s.system.upload):L"—";break;case 5:number=s.system.diskTotalGiB?value(s.system.diskFreeGiB)+L" GB":L"—";break;case 7:number=s.system.gpu<0?L"—":value(s.system.gpu)+L"%";break;case 8:number=s.settings.weather&&s.weather.valid?temperatureText(s.weather.temperature,s.settings.weatherUnit):L"—";break;default:number=clockText(double(s.system.uptime));break;}contentSpots_.push_back({3+i,number,x+12,156,metric>=3&&metric!=7&&metric!=8?18.f:23.f,DWRITE_FONT_WEIGHT_SEMI_BOLD,ink});
                 if(metric==8&&s.weather.valid)text(rt,skyLabel(skyOf(s.weather.code)),x+60,160,56,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING,22);}
             iconButton(Action::Mute,s.muted?Icon::Muted:Icon::Volume,0,200,28,28);b->SetColor(D2D1::ColorF(line,lineAlpha));rt->DrawLine({38,214},{300,214},b.Get(),2);text(rt,s.muted?L"Muted":std::to_wstring(s.volume)+L"%",306,206,36,10.5f,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,16);iconButton(Action::Audio,Icon::Audio,346,200,34,28);targets.push_back({Action::VolumeSlider,38,201,262,26});
+        }else if(s.page==Page::Media&&s.upNext){
+            // Phase 5H: Up next. Five rows; one dragged (by its handle or anywhere on it) finds its place as the others glide aside.
+            const int n=int(s.upNextTracks.size()),first=std::clamp(s.upNextOffset,0,std::max(0,n-1)),shown=std::max(0,std::min(5,n-first));
+            if(!n){box(0,40,380,150,raised,18);drawIcon(rt,d2d_.Get(),Icon::Queue,176,58,28,accent);label(L"Nothing after this song",20,96,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+                label(L"Play from the Library to fill the queue",20,122,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);}
+            const auto& drag=s.queueDrag;const bool dragging=drag.active&&drag.from>=first&&drag.from<first+shown;
+            const int to=dragging?std::clamp(int(std::floor((drag.y-drag.grab-34+17)/34))+first,first,first+shown-1):-1;
+            const double now=seconds(),dt=queueAt_>0?std::clamp(now-queueAt_,0.,.1):1;queueAt_=now;const float k=float(1-std::exp(-dt/.075));queueGliding_=false;if(queueY_.size()>400)queueY_.clear();
+            auto glide=[&](int i,float target){float& y=queueY_[s.upNextTracks[size_t(i)].path];if(y<=0||!std::isfinite(y)||s.reducedMotion)y=target;else y+=(target-y)*k;if(std::abs(target-y)>.4f)queueGliding_=true;else y=target;return y;};
+            auto row=[&](int i,float y,bool lifted){const auto& t=s.upNextTracks[size_t(i)];const size_t r=size_t(i-first);const Action a=Action(int(Action::UpNextItemBase)+int(r));
+                if(lifted){b->SetColor(D2D1::ColorF(0,s.light?.1f:.34f));rt->FillRoundedRectangle(D2D1::RoundedRect({3,y+4,383,y+36},11,11),b.Get());box(0,y,380,31,solidRaised,9);
+                    b->SetColor(D2D1::ColorF(accent,.9f));rt->DrawRoundedRectangle(D2D1::RoundedRect({.75f,y+.75f,379.25f,y+30.25f},8.5f,8.5f),b.Get(),1.5f);}
+                else box(0,y,380,31,raised,9);
+                // The one after the song playing is marked.
+                if(i==0){b->SetColor(D2D1::ColorF(accent));rt->FillRoundedRectangle(D2D1::RoundedRect({0,y+8,3,y+23},1.5f,1.5f),b.Get());}
+                if(r<s.upNextArt.size()&&s.upNextArt[r])drawPreview(rt,*s.upNextArt[r],8,y+3.5f,24,24);else drawIcon(rt,d2d_.Get(),Icon::Music,12,y+8,15,muted);
+                text(rt,t.title,42,y+1,236,11,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,16);text(rt,t.artist.empty()?(t.album.empty()?std::wstring(L"Unknown artist"):t.album):t.artist,42,y+15,236,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,14);
+                text(rt,t.duration>0?clockText(t.duration):L"",282,y,56,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING,31);
+                drawIcon(rt,d2d_.Get(),Icon::Grip,352,y+8,15,lifted?accent:muted,lifted||s.hovered==a?1.f:.55f);};
+            for(int i=first;i<first+shown;++i){if(dragging&&i==drag.from)continue;int slot=i-first;
+                if(dragging){if(drag.from<to&&i>drag.from&&i<=to)--slot;else if(to<drag.from&&i>=to&&i<drag.from)++slot;}
+                const float target=34+float(slot)*34;row(i,glide(i,target),false);targets.push_back({Action(int(Action::UpNextItemBase)+i-first),0,target,380,31});}
+            if(dragging){const float y=std::clamp(drag.y-drag.grab,28.f,34+float(shown-1)*34+6);queueY_[s.upNextTracks[size_t(drag.from)].path]=y;row(drag.from,y,true);}
+            if(n){wchar_t range[48];swprintf(range,48,L"%d\u2013%d of %d",first+1,first+shown,n);text(rt,dragging?std::wstring(L"Let go to place it here"):std::wstring(range)+L"  \u00b7  drag to reorder, click to play",0,206,300,9.5f,dragging?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,22);
+                iconButton(Action::UpNextUp,Icon::ArrowUp,316,204,30,24,false,first>0);iconButton(Action::UpNextDown,Icon::ArrowDown,350,204,30,24,false,first+5<n);}
         }else if(s.page==Page::Media&&s.library){
             // Phase 5G: songs from the Music folder, played by the island itself. Five rows; the wheel or the arrows scroll.
             const size_t n=s.libraryTracks?s.libraryTracks->size():0;
@@ -462,6 +500,11 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 iconButton(Action::LibraryUp,Icon::ArrowUp,316,204,30,24,false,s.libraryOffset>0);iconButton(Action::LibraryDown,Icon::ArrowDown,350,204,30,24,false,size_t(s.libraryOffset)+5<n);}
         }else if(s.page==Page::Media){
             bool video=s.settings.mediaLayout==2||(s.settings.mediaLayout==0&&s.playback.kind==MediaKind::Video);float tx=video?166.f:118.f,tw=380-tx;
+            // Phase 5H: the next song's cover peeks out from behind the one playing (the island's own queue); it opens Up next.
+            if(!video&&s.nextArt&&s.playback.id==islandSessionId){const bool hot=s.hovered==Action::UpNextOpen;const float px=hot?27.f:24.f;D2D1_MATRIX_3X2_F saved;rt->GetTransform(&saved);
+                rt->SetTransform(D2D1::Matrix3x2F::Rotation(hot?6.5f:5.f,{px,142})*saved);ComPtr<ID2D1RoundedRectangleGeometry> g;d2d_->CreateRoundedRectangleGeometry(D2D1::RoundedRect({px,56,px+84,140},12,12),&g);
+                ComPtr<ID2D1Layer> layer;rt->CreateLayer(&layer);rt->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),g.Get(),D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,D2D1::IdentityMatrix(),hot?.95f:.72f),layer.Get());
+                drawPreview(rt,*s.nextArt,px,56,84,84);rt->PopLayer();rt->SetTransform(saved);targets.push_back({Action::UpNextOpen,100,50,16,94});}
             if(!s.playback.artwork){box(0,video?30:44,video?148:100,video?148:100,raised,18);if(logoArt)identity(rt,s.playback,video?42:22,video?72:66,video?64:56,solidRaised);else drawIcon(rt,d2d_.Get(),Icon::Music,video?56:34,video?85:77,32,muted);}
             if(s.playback.canSeek&&s.playback.duration>0){const float ay=video?30.f:44.f,as=video?148.f:100.f;targets.push_back({Action::SkipBack,0,ay,as/2,as});targets.push_back({Action::SkipForward,as/2,ay,as/2,as});}
             // Continue on another PC: your paired PCs that are here (and up to date).
@@ -477,7 +520,9 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             double position=std::clamp(s.playback.position+(s.playback.playing?std::max(0.,seconds()-s.playback.sampledAt):0.),0.,s.playback.duration);if(s.playback.canSeek)targets.push_back({Action::Seek,0,178,380,25});if(s.scrub.active)position=s.scrub.value;text(rt,s.playback.duration>0?clockText(position):L"No timeline provided",0,204,160,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,22);// While scrubbing, the fine-control hint takes the mode button's place.
             if(s.scrub.active)text(rt,L"Pull away for finer control",100,204,180,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER,22);else button(Action::MediaMode,s.settings.mediaLayout==0?L"Auto":s.settings.mediaLayout==1?L"Music":L"Video",167,204,54,22);
             // Phase 5G: the library either side of the mode (or, with nothing playing, as the way to start), and continuing elsewhere.
-            if(!s.scrub.active&&s.playback.available){if(s.settings.musicLibrary)iconButton(Action::LibraryOpen,Icon::Library,129,201,30,28);if(handoff)iconButton(Action::HandoffOpen,Icon::Handoff,229,201,30,28,s.handoffPicking);}
+            if(!s.scrub.active&&s.playback.available){if(s.settings.musicLibrary)iconButton(Action::LibraryOpen,Icon::Library,129,201,30,28);if(handoff)iconButton(Action::HandoffOpen,Icon::Handoff,229,201,30,28,s.handoffPicking);
+                // Phase 5H: Up next, for the island's own queue.
+                if(s.playback.id==islandSessionId)iconButton(Action::UpNextOpen,Icon::Queue,handoff?267.f:229.f,201,30,28);}
             if(!s.playback.available&&s.settings.musicLibrary){button(Action::LibraryShuffle,L"Shuffle my music",tx,178,150,26,true);
                 button(Action::LibraryOpen,L"Library",tx+158,178,96,26);}text(rt,s.playback.duration>0?clockText(s.playback.duration):L"",300,204,80,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING,22);
         }else if(s.page==Page::System&&s.statsTab==1){
@@ -543,7 +588,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             const bool detail=s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size();
             // Phase 5G: files dragged over the island choose where they go: the Shelf, or one of your paired PCs (in place of the tabs and rows).
             std::vector<size_t> dropPeers;if(s.dropHover&&s.settings.sharing)for(size_t i=0;i<s.nearby.size()&&i<4;++i)if(s.nearby[i].paired)dropPeers.push_back(i);
-            if(!detail&&dropPeers.empty()){if(s.settings.sharing)tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"},{Action::ShelfNearby,L"Nearby"}},s.shelfTab,30);else tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"}},s.shelfTab,30);}
+            const bool remoteView=!detail&&dropPeers.empty()&&s.shelfTab==2&&s.remote.open;
+            if(!detail&&dropPeers.empty()&&!remoteView){if(s.settings.sharing)tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"},{Action::ShelfNearby,L"Nearby"}},s.shelfTab,30);else tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"}},s.shelfTab,30);}
             const bool status=!s.clipStatus.empty()&&seconds()<s.clipStatusUntil,shelfNote=!s.shelfStatus.empty()&&(s.shelfBusy||seconds()<s.shelfStatusUntil);
             // An icon and a label in one raised button.
             auto action=[&](Action a,Icon glyph,const wchar_t* name,float x,float y,float w,bool enabled=true){targets.push_back({a,x,y,w,30,enabled});box(x,y,w,30,raised,9);drawIcon(rt,d2d_.Get(),glyph,x+10,y+8,14,enabled?ink:muted,enabled?1.f:.5f);text(rt,name,x+29,y,w-33,10.5f,enabled?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,30);};
@@ -576,49 +622,74 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                     action(Action::ShelfRemove,Icon::Trash,L"Remove",col(3),188,w);}
                 else{action(Action::ShelfCopyPath,Icon::Copy,L"Copy",col(0),152,w);action(Action::ShelfRemove,Icon::Trash,L"Remove",col(3),152,w);}
             }else if(s.shelfTab==0){
-                if(s.shelf.empty()){box(0,62,380,130,raised,18);icon(Action::None,Icon::Shelf,172,76,36,accent);label(s.dropHover?L"Release to keep it close":L"A place to keep things close",20,118,340,28,15,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);label(L"Drop files or text, or snip the screen below",20,148,340,22,11,muted);}else for(size_t i=s.shelfOffset;i<std::min(size_t(s.shelfOffset+4),s.shelf.size());++i){float y=62+float(i-s.shelfOffset)*36;auto& item=s.shelf[i];Action a=Action(int(Action::ShelfItemBase)+int(i));targets.push_back({a,0,y,380,32});box(0,y,380,32,raised,9);if(item.preview)drawPreview(rt,*item.preview,6,y+3,32,26);else icon(a,item.kind==ShelfItem::Kind::File?Icon::File:Icon::Text,14,y+8,16,muted);text(rt,item.label,46,y,300,11,ink,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,32);drawIcon(rt,d2d_.Get(),Icon::Chevron,354,y+9,14,muted,s.hovered==a?1.f:.55f);}
+                if(s.shelf.empty()){box(0,62,380,130,raised,18);icon(Action::None,Icon::Shelf,172,76,36,accent);label(s.dropHover?L"Release to keep it close":L"A place to keep things close",20,118,340,28,15,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);label(L"Drop files or text, or snip the screen below",20,148,340,22,11,muted);}else for(size_t i=s.shelfOffset;i<std::min(size_t(s.shelfOffset+4),s.shelf.size());++i){float y=60+float(i-s.shelfOffset)*35;auto& item=s.shelf[i];Action a=Action(int(Action::ShelfItemBase)+int(i));targets.push_back({a,0,y,380,32});box(0,y,380,32,raised,9);if(item.preview)drawPreview(rt,*item.preview,6,y+3,32,26);else icon(a,item.kind==ShelfItem::Kind::File?Icon::File:Icon::Text,14,y+8,16,muted);text(rt,item.label,46,y,300,11,ink,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,32);drawIcon(rt,d2d_.Get(),Icon::Chevron,354,y+9,14,muted,s.hovered==a?1.f:.55f);}
                 // Capture straight onto the Shelf, then the item count and the whole-Shelf actions.
-                iconButton(Action::CaptureSnip,Icon::Snip,-2,199,34,28);iconButton(Action::CaptureText,Icon::Text,34,199,34,28);iconButton(Action::CaptureColour,Icon::Eyedropper,70,199,34,28);
+                iconButton(Action::CaptureSnip,Icon::Snip,-2,202,34,26);iconButton(Action::CaptureText,Icon::Text,34,202,34,26);iconButton(Action::CaptureColour,Icon::Eyedropper,70,202,34,26);
                 const bool files=std::any_of(s.shelf.begin(),s.shelf.end(),[](auto& i){return i.kind==ShelfItem::Kind::File;});
-                if(shelfNote)text(rt,s.shelfStatus,112,201,120,10,!s.shelfBusy?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
+                if(shelfNote)text(rt,s.shelfStatus,112,203,120,10,!s.shelfBusy?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
                 else{// Phase 5G: the stack. Drag it to send every file at once (onto a paired PC) or to drop them anywhere.
                     // Up to three cards, fanned about a common foot like a held stack.
                     std::vector<size_t> cards;for(size_t k=0;k<s.shelf.size()&&cards.size()<3;++k)if(s.shelf[k].kind==ShelfItem::Kind::File)cards.push_back(k);
                     const int fanned=int(cards.size());D2D1_MATRIX_3X2_F saved;rt->GetTransform(&saved);
-                    for(int c=fanned-1;c>=0;--c){const float angle=fanned==1?0.f:(float(c)-float(fanned-1)/2)*11.f,x=113+float(c)*3,y=202;
+                    for(int c=fanned-1;c>=0;--c){const float angle=fanned==1?0.f:(float(c)-float(fanned-1)/2)*11.f,x=113+float(c)*3,y=205;
                         rt->SetTransform(D2D1::Matrix3x2F::Rotation(angle,{x+10,y+26})*saved);box(x,y,20,20,solidRaised,5);
                         if(s.shelf[cards[size_t(c)]].preview)drawPreview(rt,*s.shelf[cards[size_t(c)]].preview,x+1.5f,y+1.5f,17,17);else drawIcon(rt,d2d_.Get(),Icon::File,x+4,y+4,12,muted);
                         b->SetColor(D2D1::ColorF(ink,.35f));rt->DrawRoundedRectangle(D2D1::RoundedRect({x+.5f,y+.5f,x+19.5f,y+19.5f},5,5),b.Get(),1);}
                     rt->SetTransform(saved);
-                    const float tx0=fanned?146.f:112.f;text(rt,std::to_wstring(s.shelf.size())+(s.shelf.size()==1?L" item":L" items"),tx0,201,232-tx0,10,s.hovered==Action::ShelfStack?ink:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
-                    if(fanned)targets.push_back({Action::ShelfStack,108,197,126,30});}
-                button(Action::ShelfZip,L"Zip",240,201,68,25,false,files&&!s.shelfBusy);button(Action::ShelfClear,L"Clear",316,201,64,25,false,!s.shelf.empty());
+                    const float tx0=fanned?146.f:112.f;text(rt,std::to_wstring(s.shelf.size())+(s.shelf.size()==1?L" item":L" items"),tx0,203,232-tx0,10,s.hovered==Action::ShelfStack?ink:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
+                    if(fanned)targets.push_back({Action::ShelfStack,108,201,126,28});}
+                button(Action::ShelfZip,L"Zip",240,203,68,25,false,files&&!s.shelfBusy);button(Action::ShelfClear,L"Clear",316,203,64,25,false,!s.shelf.empty());
+            }else if(remoteView){
+                // Phase 5H: a paired PC's Shelf. Clicking an item takes a copy into Downloads (and onto this Shelf).
+                const auto& r=s.remote;const int n=int(r.items.size());auto sizeLabel=[](uint64_t v){wchar_t t[32];if(v<1024)swprintf(t,32,L"%llu bytes",static_cast<unsigned long long>(v));else if(v<(1ull<<20))swprintf(t,32,L"%.0f KB",double(v)/1024);else if(v<(1ull<<30))swprintf(t,32,L"%.1f MB",double(v)/1048576);else swprintf(t,32,L"%.2f GB",double(v)/1073741824);return std::wstring(t);};
+                iconButton(Action::RemoteShelfBack,Icon::ArrowLeft,-4,26,32,30);text(rt,r.name+L"\u2019s Shelf",32,26,300,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,30);
+                iconButton(Action::RemoteShelfRefresh,Icon::Reset,346,26,34,30,false,r.state!=0);
+                if(r.state!=1||!n){box(0,62,380,130,raised,18);drawIcon(rt,d2d_.Get(),r.state==0?Icon::Laptop:Icon::Shelf,172,74,36,r.state==3?muted:accent);
+                    label(r.state==0?L"Looking at "+r.name+L"\u2019s Shelf\u2026":r.state==2?r.name+L" keeps its Shelf to itself":r.state==3?std::wstring(L"Couldn\u2019t look at it"):r.name+L"\u2019s Shelf is empty",20,114,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+                    label(r.state==2?L"Turn on \u201cMy PCs can take from the Shelf\u201d there":r.state==3?r.status:r.state==1?std::wstring(L"Files dropped on its Shelf show up here"):std::wstring(),20,140,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);}
+                else for(int i=r.offset;i<std::min(r.offset+4,n);++i){const float y=60+float(i-r.offset)*35;const auto& item=r.items[size_t(i)];const Action a=Action(int(Action::RemoteItemBase)+i-r.offset);
+                    const auto moving=std::find_if(s.transfers.begin(),s.transfers.end(),[&](auto& t){return t.peer==r.peer&&!t.outgoing&&t.title==item.name;});const bool busy=moving!=s.transfers.end();
+                    targets.push_back({a,0,y,380,32,!busy});box(0,y,380,32,raised,9);
+                    if(size_t(i)<r.previews.size()&&r.previews[size_t(i)])drawPreview(rt,*r.previews[size_t(i)],6,y+3,32,26);else drawIcon(rt,d2d_.Get(),item.folder?Icon::Folder:Icon::File,14,y+8,16,muted);
+                    text(rt,item.name,46,y+1,290,11,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,17);
+                    std::wstring meta=(item.folder?L"Folder  \u00b7  ":L"")+sizeLabel(item.size);
+                    if(busy){const double f=moving->total?double(moving->done)/double(moving->total):0;wchar_t pc[16];swprintf(pc,16,L"%d%%",int(f*100));meta=L"Taking a copy  \u00b7  "+std::wstring(pc)+(moving->rate>0?L"  \u00b7  "+rateText(moving->rate):L"");
+                        b->SetColor(D2D1::ColorF(track));rt->FillRoundedRectangle(D2D1::RoundedRect({46,y+28,336,y+30},1,1),b.Get());b->SetColor(D2D1::ColorF(accent));rt->FillRoundedRectangle(D2D1::RoundedRect({46,y+28,46+float(290*std::clamp(f,0.,1.)),y+30},1,1),b.Get());}
+                    text(rt,meta,46,y+15,290,9,busy?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,12);
+                    drawIcon(rt,d2d_.Get(),Icon::Download,352,y+9,15,s.hovered==a?accent:muted,busy?.35f:s.hovered==a?1.f:.6f);}
+                text(rt,shelfNote?s.shelfStatus:n&&r.state==1?std::wstring(L"Click one to take a copy  \u00b7  it lands in Downloads"):std::wstring(),0,203,300,10,shelfNote?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
+                if(n>4){iconButton(Action::RemoteShelfUp,Icon::ArrowUp,316,204,30,24,false,r.offset>0);iconButton(Action::RemoteShelfDown,Icon::ArrowDown,350,204,30,24,false,r.offset+4<n);}
             }else if(s.shelfTab==2){
                 // Nearby: your PCs on this network with sharing on. Clicking a paired one makes it where Send goes; an unpaired one offers Pair.
                 const size_t shown=std::min<size_t>(s.nearby.size(),4);
                 if(!shown){box(0,62,380,130,raised,18);drawIcon(rt,d2d_.Get(),Icon::Laptop,172,74,36,accent);label(L"Looking for your PCs",20,114,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
                     label(L"Turn on Share with my PCs on another PC on this network",20,140,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);}
                 const bool shelfFiles=std::any_of(s.shelf.begin(),s.shelf.end(),[](auto& i){return i.kind==ShelfItem::Kind::File;});
-                for(size_t i=0;i<shown;++i){const auto& p=s.nearby[i];const float y=62+float(i)*36;const bool target=p.paired&&p.id==s.nearbyTarget,ready=p.online&&p.version>=shareProtocol;
+                for(size_t i=0;i<shown;++i){const auto& p=s.nearby[i];const float y=60+float(i)*35;const bool target=p.paired&&p.id==s.nearbyTarget,ready=p.online&&p.version>=shareProtocol;
                     const Action row=Action(int(Action::NearbyBase)+int(i)),forget=Action(int(Action::NearbyForgetBase)+int(i)),send=Action(int(Action::NearbySendBase)+int(i)),stop=Action(int(Action::NearbyCancelBase)+int(i));
                     const auto moving=std::find_if(s.transfers.begin(),s.transfers.end(),[&](auto& t){return t.peer==p.id;});
                     box(0,y,380,32,raised,9);if(target){b->SetColor(D2D1::ColorF(accent,.9f));rt->DrawRoundedRectangle(D2D1::RoundedRect({.75f,y+.75f,379.25f,y+31.25f},8.5f,8.5f),b.Get(),1.5f);}
-                    drawIcon(rt,d2d_.Get(),Icon::Laptop,11,y+8,16,p.online?ink:muted);text(rt,p.name,36,y+1,182,11.5f,p.online?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,17);
+                    // Room for the name and status, left of the row's buttons.
+                    const float room=p.paired&&ready&&p.revision>=1&&s.settings.sharing?(shelfFiles?120.f:208.f):182.f;
+                    drawIcon(rt,d2d_.Get(),Icon::Laptop,11,y+8,16,p.online?ink:muted);text(rt,p.name,36,y+1,room,11.5f,p.online?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,17);
                     std::wstring status=p.paired?(p.online?(!ready?L"Needs the latest Arnav Island":target?L"Sends go here":L"Paired"):L"Paired \u00b7 away"):L"Not paired";
                     if(moving!=s.transfers.end()){const double f=moving->total?double(moving->done)/double(moving->total):0;wchar_t pc[16];swprintf(pc,16,L"  \u00b7  %d%%",int(f*100));status=(moving->outgoing?L"Sending ":L"Receiving ")+moving->title+pc;
+                        if(moving->rate>0){status+=L"  \u00b7  "+rateText(moving->rate);const auto left=leftText(double(moving->total-std::min(moving->done,moving->total))/moving->rate);if(!left.empty())status+=L"  \u00b7  "+left;}
                         b->SetColor(D2D1::ColorF(track));rt->FillRoundedRectangle(D2D1::RoundedRect({36,y+28,306,y+30},1,1),b.Get());b->SetColor(D2D1::ColorF(accent));rt->FillRoundedRectangle(D2D1::RoundedRect({36,y+28,36+float(270*std::clamp(f,0.,1.)),y+30},1,1),b.Get());}
-                    text(rt,status,36,moving!=s.transfers.end()?y+13:y+15,moving!=s.transfers.end()?270.f:182.f,9.5f,target||moving!=s.transfers.end()?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,12);
+                    text(rt,status,36,moving!=s.transfers.end()?y+13:y+15,moving!=s.transfers.end()?270.f:room,9.5f,target||moving!=s.transfers.end()?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,12);
                     if(moving!=s.transfers.end()){targets.push_back({row,0,y,224,32});button(stop,L"Stop",316,y+4,58,24);}
-                    else if(p.paired){targets.push_back({row,0,y,224,32});if(shelfFiles&&ready)button(send,L"Send Shelf",228,y+4,82,24,true);button(forget,L"Forget",316,y+4,58,24);}
+                    // Phase 5H: a PC that shares its Shelf can be looked into (Shelf), left of Send Shelf.
+                    else if(p.paired){const bool browse=ready&&p.revision>=1&&s.settings.sharing;const float sendX=228,browseX=shelfFiles&&ready?sendX-66:sendX+22;
+                        targets.push_back({row,0,y,browse?browseX-4:224,32});if(shelfFiles&&ready)button(send,L"Send Shelf",sendX,y+4,82,24,true);if(browse)button(Action(int(Action::NearbyBrowseBase)+int(i)),L"Shelf",browseX,y+4,60,24);button(forget,L"Forget",316,y+4,58,24);}
                     else button(row,L"Pair",316,y+4,58,24,true,p.online&&ready);}
-                text(rt,shelfNote?s.shelfStatus:(s.shareName.empty()?std::wstring(L"Visible to your PCs on this network"):L"This PC: "+s.shareName),0,201,380,10,shelfNote?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
+                text(rt,shelfNote?s.shelfStatus:(s.shareName.empty()?std::wstring(L"Visible to your PCs on this network"):L"This PC: "+s.shareName),0,203,380,10,shelfNote?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
             }else if(!s.settings.clipboardHistory){
                 box(0,62,380,130,raised,18);drawIcon(rt,d2d_.Get(),Icon::Clipboard,176,74,28,accent);label(L"Keep what you copy close",20,106,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
                 label(L"Your last 24 copies, in memory only. Private copies are skipped.",20,130,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);button(Action::ClipboardEnable,L"Turn on",150,156,80,26,true);
                 text(rt,L"Off  \u00b7  Nothing is read until you turn it on",0,208,380,10,muted);
             }else{
                 if(s.clips.empty()){box(0,62,380,130,raised,18);drawIcon(rt,d2d_.Get(),Icon::Clipboard,176,80,28,muted);label(s.clipsPaused?L"Paused":L"Copy something to keep it here",20,116,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);label(L"Click a copy to put it back on the clipboard",20,142,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);}
-                for(int i=s.clipOffset;i<std::min(s.clipOffset+4,int(s.clips.size()));++i){float y=62+float(i-s.clipOffset)*36;auto& c=s.clips[size_t(i)];const int row=i-s.clipOffset;Action a=Action(int(Action::ClipBase)+row),pin=Action(int(Action::ClipPinBase)+row);
+                for(int i=s.clipOffset;i<std::min(s.clipOffset+4,int(s.clips.size()));++i){float y=60+float(i-s.clipOffset)*35;auto& c=s.clips[size_t(i)];const int row=i-s.clipOffset;Action a=Action(int(Action::ClipBase)+row),pin=Action(int(Action::ClipPinBase)+row);
                     targets.push_back({pin,346,y+2,32,28});targets.push_back({a,0,y,346,32});box(0,y,380,32,raised,9);
                     // Password-like copies stay masked until the pointer is on their row.
                     const bool masked=c.secret&&s.settings.hideSecrets&&s.hovered!=a&&s.hovered!=pin;
@@ -635,16 +706,16 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                     else if(c.code)codeText(rt,c.preview,46,y+2,294,10.5f,ink,muted,s.light);
                     else text(rt,c.preview,46,y+2,294,11,ink);float mx=46;if(c.icon){drawPreview(rt,*c.icon,46,y+18,11,11);mx=61;}text(rt,masked?L"Hidden  \u00b7  "+c.meta:c.meta,mx,y+17,340-mx,9,muted);
                     if(c.pinned||s.hovered==a||s.hovered==pin)icon(pin,Icon::Pin,354,y+8,16,c.pinned?accent:muted,-1);}
-                text(rt,status?s.clipStatus:s.clipsPaused?std::wstring(L"Paused  \u00b7  not keeping copies"):std::to_wstring(s.clips.size())+(s.clips.size()==1?L" copy":L" copies"),0,201,190,10,status?ink:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
-                iconButton(Action::ClipSearch,Icon::Search,202,199,34,28);
-                button(Action::ClipboardPause,s.clipsPaused?L"Resume":L"Pause",244,201,64,25);button(Action::ClipboardClear,L"Clear",316,201,64,25,false,!s.clips.empty());
+                text(rt,status?s.clipStatus:s.clipsPaused?std::wstring(L"Paused  \u00b7  not keeping copies"):std::to_wstring(s.clips.size())+(s.clips.size()==1?L" copy":L" copies"),0,203,190,10,status?ink:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
+                iconButton(Action::ClipSearch,Icon::Search,202,202,34,26);
+                button(Action::ClipboardPause,s.clipsPaused?L"Resume":L"Pause",244,203,64,25);button(Action::ClipboardClear,L"Clear",316,203,64,25,false,!s.clips.empty());
             }
         }else if(s.page==Page::Audio){
             const bool apps=s.audioTab==0;tabs({{Action::AudioApps,L"Apps"},{Action::AudioOutputs,L"Outputs"}},s.audioTab,30);
             if(apps){
                 text(rt,s.mixer.empty()?L"":std::to_wstring(s.mixer.size())+(s.mixer.size()==1?L" source":L" sources"),180,37,200,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);
                 if(s.mixer.empty())label(L"No apps are using audio right now",0,96,380,40,12,muted,DWRITE_FONT_WEIGHT_NORMAL);
-                for(int i=s.mixerOffset;i<std::min(s.mixerOffset+4,int(s.mixer.size()));++i){float y=62+float(i-s.mixerOffset)*36;auto& e=s.mixer[i];
+                for(int i=s.mixerOffset;i<std::min(s.mixerOffset+4,int(s.mixer.size()));++i){float y=60+float(i-s.mixerOffset)*35;auto& e=s.mixer[i];
                     if(e.icon)drawPreview(rt,*e.icon,2,y+4,22,22);else drawIcon(rt,d2d_.Get(),e.system?Icon::Settings:Icon::Apps,5,y+7,16,muted);
                     text(rt,e.name,34,y+1,114,11,e.active?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM);text(rt,e.muted?L"Muted":std::to_wstring(int(std::lround(e.volume*100)))+L"%",34,y+17,114,9,muted);
                     float x=156,w=174,cy=y+15,v=std::clamp(e.volume,0.f,1.f);ComPtr<ID2D1StrokeStyle> round;auto props=D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND,D2D1_CAP_STYLE_ROUND);d2d_->CreateStrokeStyle(props,nullptr,0,&round);
@@ -655,7 +726,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 targets.push_back({Action::MixerSettings,0,203,214,25});box(0,203,214,25,raised,9);text(rt,L"Windows volume mixer",14,203,170,11.5f,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,25);drawIcon(rt,d2d_.Get(),Icon::ArrowRight,190,209,13,muted);
             }else{
             text(rt,s.feedback.empty()?L"Choose where your sound goes":s.feedback,176,37,204,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);for(size_t i=s.audioOffset;i<std::min(size_t(s.audioOffset+4),s.outputs.size());++i){float y=62+float(i-s.audioOffset)*34;auto& output=s.outputs[i];Action a=Action(int(Action::DeviceBase)+int(i));targets.push_back({a,0,y,380,30});box(0,y,380,30,raised,9);icon(a,Icon::Audio,10,y+7,16,output.current?accent:muted);text(rt,output.name,37,y+7,302,11,ink);if(output.current)drawIcon(rt,d2d_.Get(),Icon::Check,353,y+7,16,accent);}
-            button(Action::SoundSettings,L"Windows sound settings",0,203,201,25);icon(Action::SoundSettings,Icon::ArrowRight,208,208,14,muted);text(rt,s.settings.directAudio?L"Direct switching":L"System picker",236,210,144,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
+            targets.push_back({Action::SoundSettings,0,203,214,25});box(0,203,214,25,raised,9);text(rt,L"Windows sound settings",14,203,170,11.5f,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,25);drawIcon(rt,d2d_.Get(),Icon::ArrowRight,190,209,13,muted);text(rt,s.settings.directAudio?L"Direct switching":L"System picker",236,210,144,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
         }
         hairline(0,229,380);
         const wchar_t* labels[]={L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio",L"Controls"};const Action actions[]={Action::Overview,Action::Media,Action::System,Action::Focus,Action::Settings,Action::Shelf,Action::Audio,Action::Control};const Icon glyphs[]={Icon::Home,Icon::Music,Icon::Stats,Icon::Focus,Icon::Settings,Icon::Shelf,Icon::Audio,Icon::Sliders};
@@ -710,7 +781,11 @@ void Renderer::animate(const MotionEngine& m,double now) {
         if(bl){clip->SetBottomLeftRadiusX(radius);clip->SetBottomLeftRadiusY(radius);}else{clip->SetBottomLeftRadiusX(0.f);clip->SetBottomLeftRadiusY(0.f);}
         if(br){clip->SetBottomRightRadiusX(radius);clip->SetBottomRightRadiusY(radius);}else{clip->SetBottomRightRadiusX(0.f);clip->SetBottomRightRadiusY(0.f);}
     };corners(clip_.Get(),r.Get());corners(innerClip_.Get(),ir.Get());
-    auto x=animation(m.width,now,edge_==1?-scale_:-scale_/2,canvasWidth*scale_/(edge_==1?1:2));if(m.width.settled(now)||edge_==2)check(body_->SetOffsetX(restX));else check(body_->SetOffsetX(x.Get()));
+    // Phase 5H: spread side by side with a waiting alert, the pill moves left (the stub stays).
+    const bool spreading=dropping&&(m.spread.target()>0||std::abs(m.spread.sample(now).position)>1e-4);
+    auto x=animation(m.width,now,edge_==1?-scale_:-scale_/2,canvasWidth*scale_/(edge_==1?1:2));
+    if(spreading){auto sx=curveOf([&](double t){return ((canvasWidth-m.width.sample(t).position)/2-m.spreadShift*m.spread.sample(t).position)*scale_;},now,[&](double t){return settledAll(t)&&m.spread.settled(t);});check(body_->SetOffsetX(sx.Get()));}
+    else if(m.width.settled(now)||edge_==2)check(body_->SetOffsetX(restX));else check(body_->SetOffsetX(x.Get()));
     if(edge_){auto y=animation(m.height,now,-scale_/2,canvasHeight*scale_/2);if(m.height.settled(now))check(body_->SetOffsetY(restY));else check(body_->SetOffsetY(y.Get()));}else if(dropping){auto y=animation(m.drop,now,float(dropDistance)*scale_);check(body_->SetOffsetY(y.Get()));}else check(body_->SetOffsetY(0.f));
     auto dx=animation(m.dragX,now,scale_),dy=animation(m.dragY,now,scale_);check(root_->SetOffsetX(dx.Get()));check(root_->SetOffsetY(dy.Get()));
     // Pulled against its edge, the island leans the way it is dragged and stretches when pulled down (top dock).
@@ -746,13 +821,15 @@ void Renderer::animate(const MotionEngine& m,double now) {
             const float sr=float(m.stubRadius*scale_);stubClip_->SetBottomLeftRadiusX(sr);stubClip_->SetBottomLeftRadiusY(sr);stubClip_->SetBottomRightRadiusX(sr);stubClip_->SetBottomRightRadiusY(sr);stubEffect_->SetOpacity(1.f);}
         else stubEffect_->SetOpacity(0.f);
         // Phase 5G: a waiting alert's bud grows from the pill's foot, then lets go and settles just below it (budShape).
-        if(dropping&&(m.bud.target()>0||std::abs(m.bud.sample(now).position)>1e-3)){auto settledBud=[&](double t){return settledAll(t)&&m.bud.settled(t);};
-            auto shape=[&](double t){return budShape(m.bud.sample(t).position,m.drop.sample(t).position*dropDistance+m.height.sample(t).position,canvasWidth/2,m.budWidth,m.budHeight);};
+        if(dropping&&(m.bud.target()>0||std::abs(m.bud.sample(now).position)>1e-3)){auto settledBud=[&](double t){return settledAll(t)&&m.bud.settled(t)&&m.spread.settled(t);};
+            auto shape=[&](double t){const double w=m.width.sample(t).position,top=m.drop.sample(t).position*dropDistance,centre=canvasWidth/2-m.spreadShift*m.spread.sample(t).position;
+                return budSpreadShape(m.bud.sample(t).position,m.spread.sample(t).position,top,top+m.height.sample(t).position,centre,centre+w/2,m.radius.sample(t).position,m.budWidth,m.budHeight);};
             auto left=curveOf([&](double t){return shape(t).left*scale_;},now,settledBud),top=curveOf([&](double t){return shape(t).top*scale_;},now,settledBud),right=curveOf([&](double t){return shape(t).right*scale_;},now,settledBud),bottom=curveOf([&](double t){return shape(t).bottom*scale_;},now,settledBud),radius=curveOf([&](double t){return shape(t).radius*scale_;},now,settledBud);
             budClip_->SetLeft(left.Get());budClip_->SetTop(top.Get());budClip_->SetRight(right.Get());budClip_->SetBottom(bottom.Get());
             {auto* c=budClip_.Get();auto* a=radius.Get();c->SetTopLeftRadiusX(a);c->SetTopLeftRadiusY(a);c->SetTopRightRadiusX(a);c->SetTopRightRadiusY(a);c->SetBottomLeftRadiusX(a);c->SetBottomLeftRadiusY(a);c->SetBottomRightRadiusX(a);c->SetBottomRightRadiusY(a);}
-            // The label sits at the bud's foot and shows once the bud has let go.
-            budLabel_->SetOffsetX(std::round(float((canvasWidth-m.budWidth)/2*scale_)));auto labelY=curveOf([&](double t){return (shape(t).bottom-m.budHeight)*scale_;},now,settledBud);budLabel_->SetOffsetY(labelY.Get());
+            // The label sits at the bud's foot and shows once the bud has let go; spread, it is centred in the side card.
+            auto labelX=curveOf([&](double t){const auto b=shape(t);return (b.left+(b.right-b.left-m.budWidth)/2)*scale_;},now,settledBud);budLabel_->SetOffsetX(labelX.Get());
+            auto labelY=curveOf([&](double t){const auto b=shape(t);const double e=std::clamp(m.spread.sample(t).position,0.,1.);return (b.bottom-m.budHeight-e*(b.bottom-b.top-m.budHeight)/2)*scale_;},now,settledBud);budLabel_->SetOffsetY(labelY.Get());
             auto shown=curveOf([&](double t){return std::clamp((m.bud.sample(t).position-.72)/.24,0.,1.);},now,settledBud);budLabelEffect_->SetOpacity(shown.Get());budEffect_->SetOpacity(1.f);}
         else budEffect_->SetOpacity(0.f);
         auto hx=animation(m.width,now,expanded_?0.f:scale_/2,expanded_?20*scale_:float(-m.compactWidth/2)*scale_);if(m.width.settled(now))header_->SetOffsetX(std::round(float(expanded_?20*scale_:(m.width.target()-m.compactWidth)*scale_/2)));else header_->SetOffsetX(hx.Get());}

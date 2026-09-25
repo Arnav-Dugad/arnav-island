@@ -105,15 +105,23 @@ bool IslandWindow::promoteCard(bool swap){
 // The bud shows while an alert waits (and the pill is out); it buds with a little spring.
 void IslandWindow::syncBud(){
     const bool show=!heldCards_.empty()&&state_==IslandState::Notification&&settings_.notifyStyle==1&&settings_.edge==0&&!settings_.floating();const double now=seconds();
-    if(show){const auto& n=heldCards_.front().notice;content_.bud={n.kind,budTitle(n),int(heldCards_.size())-1};}else content_.bud={};
+    if(show){const auto& n=heldCards_.front().notice;content_.bud={n.kind,budTitle(n),int(heldCards_.size())-1};}else{content_.bud={};spreadAlerts(false);}
     const double target=show?1:0;if(motion_.bud.target()!=target){if(motion_.reduced)motion_.bud.reset(target,now);else motion_.bud.retarget(target,now,show?SpringSpec{1,170,15}:SpringSpec{1,320,36});animate();}
 }
 // Whether a point in the canvas (DIPs) is on the bud (once it has let go of the pill).
 bool IslandWindow::budAt(double x,double y)const{
     const double t=seconds();if(settings_.edge!=0||!dropped(t)||content_.bud.kind==0)return false;const double b=motion_.bud.sample(t).position;if(b<.6)return false;
     const auto origin=bodyAt(motion_.width.sample(t).position,motion_.height.sample(t).position,motion_.drop.sample(t).position);
-    const auto bud=budShape(b,origin.y+motion_.height.sample(t).position,Renderer::canvasWidth/2,motion_.budWidth,motion_.budHeight);
+    const auto bud=budNow(t,origin,motion_.width.sample(t).position,motion_.height.sample(t).position);
     return x>=bud.left&&x<=bud.right&&y>=bud.top&&y<=bud.bottom;
+}
+// Phase 5H: while the pointer is on the island (or its bud), the two alerts spread side by side; the pill makes room.
+void IslandWindow::spreadAlerts(bool on){
+    on=on&&content_.bud.kind!=0&&state_==IslandState::Notification&&settings_.edge==0&&!settings_.floating();const double now=seconds(),target=on?1:0;
+    if(on)KillTimer(window_,SpreadTimer);if(motion_.spread.target()==target)return;
+    if(on)motion_.spreadShift=std::max(0.,std::min((motion_.budWidth+budGap)/2,(Renderer::canvasWidth-motion_.width.target())/2-4));
+    if(motion_.reduced)motion_.spread.reset(target,now);else motion_.spread.retarget(target,now,on?SpringSpec{1,230,24}:SpringSpec{1,300,32});
+    animate();
 }
 std::wstring IslandWindow::budTitle(const ContentSnapshot::Notice& n){
     switch(n.kind){

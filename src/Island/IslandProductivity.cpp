@@ -39,8 +39,7 @@ void IslandWindow::syncProductivity(){
     if(privacy&&!privacy_)privacy_=std::make_unique<PrivacyProvider>(window_);
     else if(!privacy&&privacy_){privacy_.reset();privacyUses_.clear();content_.privacy.clear();}
     if(!settings_.privacyDots)content_.privacy.clear();else content_.privacy=privacyUses_;
-    // Test runs search only the Public folder, where the sample files live, never the user's own files.
-    if(!commands_){wchar_t pub[MAX_PATH]{};GetEnvironmentVariableW(L"PUBLIC",pub,MAX_PATH);commands_=std::make_unique<CommandService>(window_,testing_&&*pub?std::wstring(pub):userFolder(),store_.directory);}
+    ensureCommands();
     // Command history follows its setting; turning it off forgets it (the file too, never in a test run: a test
     // toggling the setting must not touch the file of the person running it).
     if(settings_.commandHistory){if(!commandMemoryLoaded_)loadCommandMemory();}
@@ -50,10 +49,11 @@ void IslandWindow::syncProductivity(){
     const bool icons=settings_.siteIcons&&settings_.richClips&&!testing_;if(icons&&!siteIcons_)siteIcons_=std::make_unique<SiteIcons>(window_);else if(!icons&&siteIcons_){siteIcons_.reset();clipViews();}
 }
 // Weather runs only while it is on; turning it off forgets the place too.
+// A test run uses it only with --qa-weather-live, and then keeps its place in a file of its own in the temp folder.
 void IslandWindow::syncWeather(){
-    const bool want=settings_.weather&&!testing_;
-    if(want&&!weather_)weather_=std::make_unique<WeatherService>(window_,store_.directory/L"weather.nexus");
-    else if(!want&&weather_){weather_.reset();content_.weather={};std::error_code ignored;std::filesystem::remove(store_.directory/L"weather.nexus",ignored);if(renderer_)refresh();}
+    const bool want=settings_.weather&&(!testing_||qaWeatherLive_);const auto file=testing_?std::filesystem::temp_directory_path()/L"arnav-island-qa-weather.nexus":store_.directory/L"weather.nexus";
+    if(want&&!weather_)weather_=std::make_unique<WeatherService>(window_,file);
+    else if(!want&&weather_){weather_.reset();content_.weather={};std::error_code ignored;std::filesystem::remove(file,ignored);if(renderer_)refresh();}
 }
 void IslandWindow::syncHotkey(){
     const int want=testing_?0:settings_.commandShortcut;if(want==hotkeyChoice_)return;
@@ -121,8 +121,11 @@ void IslandWindow::showPrivacyNotice(const PrivacyUse& u){
     transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info","privacy_card_shown");
 }
 // ---- Command bar -----------------------------------------------------------
+// The command bar's service (apps, files, answers on its own thread). Test runs search only the Public folder, where the
+// sample files live, never the user's own files.
+void IslandWindow::ensureCommands(){if(!commands_){wchar_t pub[MAX_PATH]{};GetEnvironmentVariableW(L"PUBLIC",pub,MAX_PATH);commands_=std::make_unique<CommandService>(window_,testing_&&*pub?std::wstring(pub):userFolder(),store_.directory);}}
 void IslandWindow::openCommand(){
-    if(content_.command.active){SetForegroundWindow(window_);return;}
+    if(content_.command.active){SetForegroundWindow(window_);return;}ensureCommands();
     commandReturn_=GetForegroundWindow();if(commandReturn_==window_)commandReturn_=nullptr;
     content_.command=ContentSnapshot::Command{};content_.command.active=true;content_.notice.kind=0;content_.pinned=false;KillTimer(window_,CommandCloseTimer);
     // The island takes keyboard focus only while the command bar is open.
@@ -258,7 +261,7 @@ void IslandWindow::runCommand(size_t index){
     case CommandKind::Currency:copyText(r.target);commandStatus(L"Copied "+r.answer);return;
     case CommandKind::Colour:copyText(r.target);commandStatus(L"Copied "+r.target);return;
     // Choosing a place is the consent to fetch weather for it.
-    case CommandKind::Weather:{if(!settings_.weather){Settings next=settings_;next.weather=true;receiveSettings(next);}if(!weather_){commandStatus(L"Weather is not available in test runs",true);return;}weather_->choose(r.target);weatherAsked_=true;commandStatus(L"Finding "+r.target+L"\u2026",false,false);return;}
+    case CommandKind::Weather:{if(r.target.empty()){openSettings(4);done();return;}if(!settings_.weather){Settings next=settings_;next.weather=true;receiveSettings(next);}if(!weather_){commandStatus(L"Weather is not available in test runs",true);return;}weather_->choose(r.target);weatherAsked_=true;commandStatus(L"Finding "+r.target+L"\u2026",false,false);return;}
     case CommandKind::OpenFile:if(shell(r.target))done();else commandStatus(L"Windows could not open that file",true);return;
     case CommandKind::None:commandShake();return;
     case CommandKind::Volume:if(audio_){audio_->setVolume(r.value);if(audio_->muted)audio_->toggleMute();}done();return;

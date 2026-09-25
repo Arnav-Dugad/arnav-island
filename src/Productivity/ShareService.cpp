@@ -26,7 +26,7 @@ constexpr uint8_t protocolVersion=uint8_t(shareProtocol);
 constexpr size_t chunkSize=256*1024,maxFrame=chunkSize+64;
 constexpr uint64_t maxFile=16ull<<30;
 constexpr char magic[4]={'A','R','N','V'};
-constexpr uint8_t modePair='P',modeSend='S',modeMusic='H';
+constexpr uint8_t modePair='P',modeSend='S',modeMusic='H',modeList='L',modeTake='T';
 bool success(LONG status){return status>=0;}
 std::string hex(const uint8_t* p,size_t n){static const char* digits="0123456789abcdef";std::string s;s.reserve(n*2);for(size_t i=0;i<n;++i){s+=digits[p[i]>>4];s+=digits[p[i]&15];}return s;}
 std::string hex(const Bytes& b){return hex(b.data(),b.size());}
@@ -117,7 +117,9 @@ double getF64(const uint8_t* p){const uint64_t u=get64(p);double v=0;std::memcpy
 void put32(Bytes& b,uint32_t v){for(int i=0;i<4;++i)b.push_back(uint8_t(v>>(8*i)));}
 uint32_t get32(const uint8_t* p){return uint32_t(p[0])|uint32_t(p[1])<<8|uint32_t(p[2])<<16|uint32_t(p[3])<<24;}
 // Frames inside a transfer (all sealed): the offer, then per file its header, data and end, then the batch end.
-constexpr uint8_t frameData=1,frameEnd=2,frameHeader=3,frameBatchEnd=4,frameOffer=1,frameMusic=5;
+constexpr uint8_t frameData=1,frameEnd=2,frameHeader=3,frameBatchEnd=4,frameOffer=1,frameMusic=5,frameShelf=6,frameTake=7;
+// A Shelf as listed to another PC: at most 32 items, each preview at most 6 KB.
+constexpr size_t shelfListMax=32,shelfPreviewLimit=6*1024;
 // Answers: 1 yes, 0 no, 2 (files) not enough space / (music) yes and send the song's file.
 constexpr uint64_t maxTotal=1ull<<40;constexpr uint32_t maxFiles=20000;
 // One file of an outgoing transfer: where it is, its path as sent ("Photos/a.jpg") and its size.
@@ -167,7 +169,7 @@ std::wstring shareTitle(const std::vector<std::wstring>& names){
     return names[0]+L" and "+std::to_wstring(names.size()-1)+L" more";
 }
 struct ShareService::Core:std::enable_shared_from_this<Core>{
-    struct Peer{std::wstring name;std::string address;uint16_t port=0;int version=1;Clock::time_point seen{};bool online=false;Bytes key;/* the paired public key; empty when not paired */};
+    struct Peer{std::wstring name;std::string address;uint16_t port=0;int version=1,revision=0;Clock::time_point seen{};bool online=false;Bytes key;/* the paired public key; empty when not paired */};
     // A person's answer (pairing or an offer), waited for by a session thread.
     struct Decision{std::mutex m;std::condition_variable cv;int value=-1;
         void set(int v){{std::lock_guard lock(m);if(value<0)value=v;}cv.notify_all();}
@@ -179,6 +181,8 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
     Bytes id,pub;BCRYPT_KEY_HANDLE key=nullptr;
     mutable std::mutex m;std::map<std::string,Peer> peers;std::vector<ShareEvent> events;std::shared_ptr<Decision> pairing;std::map<uint32_t,std::shared_ptr<Decision>> offers;std::map<uint32_t,Live> live;uint32_t nextTransfer=1;std::set<SOCKET> open;
     std::atomic<bool> stopping{false};SOCKET udp=INVALID_SOCKET,listener=INVALID_SOCKET;std::thread discovery,listening;
+    // Phase 5H: this PC's Shelf as offered to paired PCs (guarded by m).
+    std::vector<ShareShelfEntry> shelf;bool shelfOpen=false;
     ~Core(){if(key)BCryptDestroyKey(key);if(wsa)WSACleanup();}
     fs::path identityFile()const{return fs::path(o.folder)/L"share-identity.nexus";}
     fs::path peersFile()const{return fs::path(o.folder)/L"share-peers.nexus";}
@@ -235,9 +239,10 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         std::lock_guard lock(m);for(SOCKET s:open)shutdown(s,SD_BOTH);if(pairing)pairing->set(0);for(auto& [t,d]:offers)d->set(0);
     }
     // Discovery: an announcement every 3 s; a PC not heard from for 12 s is offline. The port line carries
-    // ";2", the protocol (an older version reads the number before it and ignores the rest).
+    // ";2.1", the protocol and its revision (an older version reads the number before ";" and ignores the rest,
+    // and one a little newer reads the protocol and stops at the ".").
     void discover(){
-        const std::string announce="ARNAVSHARE1\n"+hex(id)+"\n"+std::to_string(o.tcpPort)+";"+std::to_string(shareProtocol)+"\n"+utf8(o.name);auto last=Clock::now()-std::chrono::seconds(10);
+        const std::string announce="ARNAVSHARE1\n"+hex(id)+"\n"+std::to_string(o.tcpPort)+";"+std::to_string(shareProtocol)+"."+std::to_string(shareRevision)+"\n"+utf8(o.name);auto last=Clock::now()-std::chrono::seconds(10);
         while(!stopping){
             if(Clock::now()-last>=std::chrono::seconds(3)){last=Clock::now();sockaddr_in to{};to.sin_family=AF_INET;to.sin_addr.s_addr=htonl(INADDR_BROADCAST);to.sin_port=htons(o.udpPort);
                 sendto(udp,announce.data(),int(announce.size()),0,reinterpret_cast<sockaddr*>(&to),sizeof(to));
@@ -248,9 +253,10 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
             if(parts.size()!=3||parts[0]!="ARNAVSHARE1"||unhex(parts[1]).size()!=16||parts[1]==hex(id))continue;
             const auto semi=parts[2].find(';');const int port=std::atoi(parts[2].substr(0,semi).c_str());if(port<=0||port>65535)continue;
             const int version=semi==std::string::npos?1:std::clamp(std::atoi(parts[2].c_str()+semi+1),1,99);
+            const auto dot=semi==std::string::npos?std::string::npos:parts[2].find('.',semi);const int revision=dot==std::string::npos?0:std::clamp(std::atoi(parts[2].c_str()+dot+1),0,99);
             char address[INET_ADDRSTRLEN]{};inet_ntop(AF_INET,&from.sin_addr,address,sizeof(address));const std::wstring name=cleanName(wide(text.substr(start)));
-            bool changed=false;{std::lock_guard lock(m);auto& p=peers[parts[1]];changed=!p.online||p.address!=address||p.port!=port||p.version!=version||(p.key.empty()&&p.name!=name);
-                p.address=address;p.port=uint16_t(port);p.version=version;p.online=true;p.seen=Clock::now();if(p.key.empty()||p.name.empty())p.name=name;}
+            bool changed=false;{std::lock_guard lock(m);auto& p=peers[parts[1]];changed=!p.online||p.address!=address||p.port!=port||p.version!=version||p.revision!=revision||(p.key.empty()&&p.name!=name);
+                p.address=address;p.port=uint16_t(port);p.version=version;p.revision=revision;p.online=true;p.seen=Clock::now();if(p.key.empty()||p.name.empty())p.name=name;}
             if(changed)postPeers();
         }
     }
@@ -288,7 +294,7 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         ss.peerName=cleanName(wide(std::string(hello.begin()+118,hello.end())));if(ss.peerId==id)return false;
         bool allowed=false;{std::lock_guard lock(m);
             if(mode==modePair&&!pairing){pairing=claim=std::make_shared<Decision>();allowed=true;}
-            else if(mode==modeSend||mode==modeMusic){auto it=peers.find(hex(ss.peerId));allowed=it!=peers.end()&&!it->second.key.empty()&&it->second.key==ss.peerPub;}}
+            else if(mode==modeSend||mode==modeMusic||mode==modeList||mode==modeTake){auto it=peers.find(hex(ss.peerId));allowed=it!=peers.end()&&!it->second.key.empty()&&it->second.key==ss.peerPub;}}
         if(!allowed){Bytes no(magic,magic+4);no.push_back(protocolVersion);no.push_back(1);sendFrame(s,no);return false;}
         const Bytes nonce=randomBytes(32);if(nonce.size()!=32)return false;
         Bytes reply(magic,magic+4);reply.push_back(protocolVersion);reply.push_back(0);append(reply,id);append(reply,pub);append(reply,nonce);append(reply,utf8(o.name));
@@ -308,7 +314,7 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
     void incoming(SOCKET s){
         timeout(s,15000);Session ss;uint8_t mode=0;std::shared_ptr<Decision> claim;
         if(!welcome(s,ss,mode,claim)){if(claim)releasePairing(claim);return;}
-        if(mode==modePair)pairSession(s,ss,claim);else if(mode==modeMusic)receiveMusic(s,ss);else receive(s,ss);
+        if(mode==modePair)pairSession(s,ss,claim);else if(mode==modeMusic)receiveMusic(s,ss);else if(mode==modeList)serveList(s,ss);else if(mode==modeTake)serveTake(s,ss);else receive(s,ss);
     }
     // Progress for a transfer: at most one event per percent and per tenth of a second (and always the last).
     struct Progress{Core& core;ShareEvent base;uint64_t total=0,done=0;int shown=-1;Clock::time_point at{};
@@ -352,6 +358,12 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         if(!told||yes!=1){const bool mine=stopped(transfer);finish(transfer);
             if(yes==2)fail(ShareEvent::Kind::Failed,peer,from,title,L"There isn't room in Downloads for "+sizeText(total),transfer);
             else if(yes==1)fail(ShareEvent::Kind::Failed,peer,from,title,mine?L"You stopped it":from+L" stopped sending it",transfer);return;}
+        takeBatch(s,ss,peer,from,title,count,total,folder,transfer,0);
+    }
+    // The files of an accepted offer, into Downloads, then the answer that they all arrived. code: the Received event's
+    // (1: taken from the other PC's Shelf).
+    void takeBatch(SOCKET s,Session& ss,const std::string& peer,const std::wstring& from,const std::wstring& title,uint32_t count,uint64_t total,bool folder,uint32_t transfer,uint32_t code){
+        const fs::path dir=o.downloads;
         timeout(s,30000);Progress progress{*this,{}};progress.base.peer=peer;progress.base.name=from;progress.base.file=title;progress.base.transfer=transfer;progress.base.count=count;progress.total=total;
         // Top-level folders get a free name in Downloads once ("Photos (2)"); files inside keep their paths.
         std::map<std::wstring,fs::path> tops;std::vector<fs::path> shown;uint32_t files=0;bool whole=false;std::wstring why;
@@ -368,7 +380,7 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         if(whole)sealed(s,ss.channel,Bytes{1});
         finish(transfer);
         if(!whole){fail(ShareEvent::Kind::Failed,peer,from,title,stoppedHere?L"You stopped it":files?std::to_wstring(files)+L" of "+std::to_wstring(count)+L" files arrived from "+from:L"It didn't arrive whole from "+from,transfer);return;}
-        ShareEvent e;e.kind=ShareEvent::Kind::Received;e.peer=peer;e.name=from;e.count=count;e.size=total;e.transfer=transfer;e.folder=folder;
+        ShareEvent e;e.kind=ShareEvent::Kind::Received;e.peer=peer;e.name=from;e.count=count;e.size=total;e.transfer=transfer;e.folder=folder;e.code=code;
         e.file=shown.size()==1?shown[0].filename().wstring():title;e.detail=shown.empty()?dir.wstring():shown[0].wstring();post(e);
     }
     // A sender connection: reached, greeted, and checked against the pairing. False (with why) otherwise.
@@ -394,19 +406,79 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         if(total>maxTotal){finish(transfer);fail(ShareEvent::Kind::Failed,peer,target.name,title,L"Up to 1 TB can be sent at once",transfer,true);return;}
         bool folder=false;for(auto& p:paths){std::error_code e;if(fs::is_directory(p,e))folder=true;}
         SOCKET s=INVALID_SOCKET;Session ss;bool sent=false;
-        if(reach(target,peer,modeSend,transfer,s,ss,why)){
-            Bytes offer{frameOffer};put32(offer,uint32_t(items.size()));put64(offer,total);offer.push_back(folder?1:0);append(offer,utf8(title));Bytes reply;timeout(s,90000);
-            if(!sealed(s,ss.channel,offer)||!opened(s,ss.channel,reply)||reply.size()!=1)why=stopped(transfer)?L"You stopped it":target.name+L" didn't answer";
-            else if(reply[0]==2)why=L"There isn't room on "+target.name+L" for "+sizeText(total);
-            else if(reply[0]!=1)why=target.name+L" declined it";
-            else{timeout(s,30000);Progress progress{*this,{}};progress.base.peer=peer;progress.base.name=target.name;progress.base.file=title;progress.base.transfer=transfer;progress.base.count=uint32_t(items.size());progress.base.outgoing=true;progress.total=total;
-                bool flowing=true;for(auto& item:items)if(!streamFile(s,ss.channel,item,progress,transfer)){flowing=false;break;}
-                Bytes ack;timeout(s,60000);sent=flowing&&sealed(s,ss.channel,Bytes{frameBatchEnd})&&opened(s,ss.channel,ack)&&ack.size()==1&&ack[0]==1;
-                if(!sent)why=stopped(transfer)?L"You stopped it":L"The transfer to "+target.name+L" didn't finish";}}
+        if(reach(target,peer,modeSend,transfer,s,ss,why))sent=offerBatch(s,ss,items,total,folder,title,peer,target.name,transfer,why);
         if(s!=INVALID_SOCKET){untrack(s);closesocket(s);}
         finish(transfer);
         if(sent){ShareEvent e;e.kind=ShareEvent::Kind::Sent;e.peer=peer;e.name=target.name;e.file=title;e.size=total;e.count=uint32_t(items.size());e.transfer=transfer;e.outgoing=true;e.folder=folder;e.detail=sizeText(total);post(e);}
         else fail(ShareEvent::Kind::Failed,peer,target.name,title,why,transfer,true);
+    }
+    // An offer of these files, then (answered yes) the files and the batch's end, and the other PC's word that all arrived.
+    bool offerBatch(SOCKET s,Session& ss,const std::vector<Item>& items,uint64_t total,bool folder,const std::wstring& title,const std::string& peer,const std::wstring& name,uint32_t transfer,std::wstring& why){
+        Bytes offer{frameOffer};put32(offer,uint32_t(items.size()));put64(offer,total);offer.push_back(folder?1:0);append(offer,utf8(title));Bytes reply;timeout(s,90000);
+        if(!sealed(s,ss.channel,offer)||!opened(s,ss.channel,reply)||reply.size()!=1)why=stopped(transfer)?L"You stopped it":name+L" didn't answer";
+        else if(reply[0]==2)why=L"There isn't room on "+name+L" for "+sizeText(total);
+        else if(reply[0]!=1)why=name+L" declined it";
+        else{timeout(s,30000);Progress progress{*this,{}};progress.base.peer=peer;progress.base.name=name;progress.base.file=title;progress.base.transfer=transfer;progress.base.count=uint32_t(items.size());progress.base.outgoing=true;progress.total=total;
+            bool flowing=true;for(auto& item:items)if(!streamFile(s,ss.channel,item,progress,transfer)){flowing=false;break;}
+            Bytes ack;timeout(s,60000);const bool sent=flowing&&sealed(s,ss.channel,Bytes{frameBatchEnd})&&opened(s,ss.channel,ack)&&ack.size()==1&&ack[0]==1;
+            if(!sent)why=stopped(transfer)?L"You stopped it":L"The transfer to "+name+L" didn't finish";return sent;}
+        return false;
+    }
+    // ---- Phase 5H: the Shelf, seen and taken from another PC ----
+    // An item's name as listed: its file name, at most 80 characters (so at most 240 bytes as UTF-8).
+    static std::wstring listedName(const fs::path& p){std::wstring n=p.filename().wstring();if(n.size()>80)n.resize(IS_HIGH_SURROGATE(n[79])?79:80);return n;}
+    // The list: whether it is shared, then per item its size, whether it is a folder, its name and its preview.
+    void serveList(SOCKET s,Session& ss){
+        std::vector<ShareShelfEntry> items;bool open=false;{std::lock_guard lock(m);items=shelf;open=shelfOpen;}
+        Bytes list{frameShelf,uint8_t(open?1:0)};const size_t n=open?std::min(items.size(),shelfListMax):0;put32(list,uint32_t(n));
+        for(size_t i=0;i<n;++i){const fs::path p(items[i].path);std::error_code e;const bool folder=fs::is_directory(p,e);uint64_t size=0;
+            if(folder){std::vector<Item> inside;std::wstring why;if(collect({items[i].path},inside,why))for(auto& x:inside)size+=x.size;}else{size=fs::file_size(p,e);if(e)size=0;}
+            const std::string name=utf8(listedName(p));const Bytes& preview=items[i].preview.size()<=shelfPreviewLimit?items[i].preview:Bytes{};
+            put64(list,size);list.push_back(folder?1:0);list.push_back(uint8_t(name.size()));append(list,name);put32(list,uint32_t(preview.size()));append(list,preview);}
+        sealed(s,ss.channel,list);
+    }
+    void serveTake(SOCKET s,Session& ss){
+        const std::string peer=hex(ss.peerId);const std::wstring from=nameOf(peer,ss.peerName);
+        Bytes ask;if(!opened(s,ss.channel,ask)||ask.size()<5||ask[0]!=frameTake)return;
+        const uint32_t index=get32(ask.data()+1);const std::wstring name=wide(std::string(ask.begin()+5,ask.end()));
+        // Only what is on the Shelf now, at the place and with the name the other PC saw.
+        std::wstring path;{std::lock_guard lock(m);if(shelfOpen&&index<shelf.size()&&index<shelfListMax&&listedName(shelf[index].path)==name)path=shelf[index].path;}
+        std::vector<Item> items;std::wstring why;
+        if(path.empty()||!collect({path},items,why)){sealed(s,ss.channel,Bytes{frameOffer,0,0,0,0});return;}
+        uint64_t total=0;for(auto& i:items)total+=i.size;std::error_code e;const bool folder=fs::is_directory(path,e);
+        if(total>maxTotal||std::any_of(items.begin(),items.end(),[](auto& i){return i.size>maxFile;})){sealed(s,ss.channel,Bytes{frameOffer,0,0,0,0});return;}
+        const uint32_t transfer=newTransfer();attach(transfer,s);
+        const bool sent=offerBatch(s,ss,items,total,folder,name,peer,from,transfer,why);finish(transfer);
+        if(sent){ShareEvent t;t.kind=ShareEvent::Kind::ShelfTaken;t.peer=peer;t.name=from;t.file=name;t.size=total;t.count=uint32_t(items.size());t.transfer=transfer;t.folder=folder;post(t);}
+        else fail(ShareEvent::Kind::Failed,peer,from,name,why,transfer,true);
+    }
+    void askList(const std::string& peer){
+        Peer target;std::wstring why;SOCKET s=INVALID_SOCKET;Session ss;ShareEvent e;e.kind=ShareEvent::Kind::ShelfList;e.peer=peer;e.code=2;
+        const uint32_t transfer=newTransfer();
+        if(ready(peer,target,why)&&(target.revision>=1||(why=L"Update Arnav Island on "+target.name+L" to see its Shelf",false))&&reach(target,peer,modeList,transfer,s,ss,why)){
+            Bytes list;if(!opened(s,ss.channel,list)||list.size()<6||list[0]!=frameShelf)why=target.name+L" didn't answer";
+            else{e.code=list[1]?0:1;const uint32_t n=std::min<uint32_t>(get32(list.data()+2),uint32_t(shelfListMax));size_t at=6;
+                for(uint32_t i=0;i<n&&at+8+1+1<=list.size();++i){ShareShelfItem item;item.size=get64(list.data()+at);item.folder=list[at+8]!=0;const size_t len=list[at+9];at+=10;if(at+len+4>list.size())break;
+                    item.name=wide(std::string(list.begin()+long(at),list.begin()+long(at+len)));at+=len;const uint32_t pl=get32(list.data()+at);at+=4;if(pl>shelfPreviewLimit||at+pl>list.size())break;
+                    item.preview.assign(list.begin()+long(at),list.begin()+long(at+pl));at+=pl;e.shelf.push_back(std::move(item));}}}
+        if(s!=INVALID_SOCKET){untrack(s);closesocket(s);}
+        finish(transfer);e.name=target.name;e.detail=why;post(e);
+    }
+    void takeItem(const std::string& peer,uint32_t index,const std::wstring& name,uint32_t transfer){
+        Peer target;std::wstring why;SOCKET s=INVALID_SOCKET;Session ss;bool taken=false;
+        if(ready(peer,target,why)&&(target.revision>=1||(why=L"Update Arnav Island on "+target.name+L" to take from its Shelf",false))&&reach(target,peer,modeTake,transfer,s,ss,why)){
+            Bytes ask{frameTake};put32(ask,index);append(ask,utf8(name));Bytes offer;timeout(s,90000);
+            if(!sealed(s,ss.channel,ask)||!opened(s,ss.channel,offer)||offer.size()<5||offer[0]!=frameOffer)why=stopped(transfer)?L"You stopped it":target.name+L" didn't answer";
+            else if(offer.size()<14||!get32(offer.data()+1))why=L"It's no longer on "+target.name+L"\u2019s Shelf";
+            else{const uint32_t count=get32(offer.data()+1);const uint64_t total=get64(offer.data()+5);const bool folder=offer[13]!=0;const std::wstring title=cleanName(wide(std::string(offer.begin()+14,offer.end())));
+                if(count>maxFiles||total>maxTotal)why=L"That is too much to take at once";
+                else{const bool room=enoughSpace(o.downloads,total);
+                    if(!sealed(s,ss.channel,Bytes{uint8_t(room?1:2)}))why=target.name+L" stopped answering";
+                    else if(!room)why=L"There isn't room in Downloads for "+sizeText(total);
+                    // takeBatch reports how it went (Received, or Failed).
+                    else{takeBatch(s,ss,peer,target.name,title,count,total,folder,transfer,1);taken=true;}}}}
+        if(s!=INVALID_SOCKET){untrack(s);closesocket(s);}
+        if(!taken){finish(transfer);fail(ShareEvent::Kind::Failed,peer,target.name,name,why,transfer);}
     }
     // Music: what plays, as one sealed frame. The answer 2 asks for the song's own file too.
     void sendMusic(const std::string& peer,const ShareHandoff& music,const std::wstring& file,uint32_t transfer){
@@ -414,8 +486,9 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         if(ready(peer,target,why)&&reach(target,peer,modeMusic,transfer,s,ss,why)){
             std::error_code e;uint64_t size=0;if(!file.empty()&&fs::is_regular_file(file,e))size=fs::file_size(file,e);if(e||size>(2ull<<30))size=0;
             Bytes offer{frameMusic};putF64(offer,music.position);putF64(offer,music.duration);offer.push_back(music.playing?1:0);put64(offer,size);
-            auto line=[](const std::wstring& v){std::wstring t=v.substr(0,512);for(auto& c:t)if(c==L'\n'||c==L'\r')c=L' ';return t;};
+            auto line=[](const std::wstring& v){std::wstring t=v.substr(0,512);for(auto& c:t)if(c==L'\n'||c==L'\r'||c==L'\0')c=L' ';return t;};
             append(offer,utf8(line(music.title)+L"\n"+line(music.artist)+L"\n"+line(music.album)+L"\n"+line(music.app)+L"\n"+line(size?fs::path(file).filename().wstring():std::wstring())));
+            if(target.revision>=1&&!music.cover.empty()&&music.cover.size()<=shareCoverLimit){offer.push_back(0);append(offer,music.cover);}
             Bytes reply;timeout(s,90000);
             if(!sealed(s,ss.channel,offer)||!opened(s,ss.channel,reply)||reply.size()!=1)why=target.name+L" didn't answer";
             else{code=reply[0]>2?0:reply[0];ShareEvent a;a.kind=ShareEvent::Kind::HandoffAnswered;a.peer=peer;a.name=target.name;a.code=uint32_t(code);a.transfer=transfer;a.outgoing=true;a.handoff=music;post(a);
@@ -430,7 +503,8 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         const std::string peer=hex(ss.peerId);const std::wstring from=nameOf(peer,ss.peerName);
         Bytes offer;if(!opened(s,ss.channel,offer)||offer.size()<1+8+8+1+8||offer[0]!=frameMusic)return;
         ShareHandoff music;music.position=std::max(0.,getF64(offer.data()+1));music.duration=std::max(0.,getF64(offer.data()+9));music.playing=offer[17]!=0;const uint64_t size=get64(offer.data()+18);
-        {const std::wstring text=wide(std::string(offer.begin()+26,offer.end()));std::vector<std::wstring> lines;size_t at=0;for(int k=0;k<5;++k){size_t end=text.find(L'\n',at);if(end==std::wstring::npos)end=text.size();lines.push_back(at<=text.size()?text.substr(at,std::min<size_t>(end-at,512)):L"");at=end+1;}
+        const auto nul=std::find(offer.begin()+26,offer.end(),uint8_t(0));if(nul!=offer.end()&&size_t(offer.end()-nul-1)<=shareCoverLimit)music.cover.assign(nul+1,offer.end());
+        {const std::wstring text=wide(std::string(offer.begin()+26,nul));std::vector<std::wstring> lines;size_t at=0;for(int k=0;k<5;++k){size_t end=text.find(L'\n',at);if(end==std::wstring::npos)end=text.size();lines.push_back(at<=text.size()?text.substr(at,std::min<size_t>(end-at,512)):L"");at=end+1;}
             music.title=lines[0];music.artist=lines[1];music.album=lines[2];music.app=lines[3];music.fileName=size?safeShareName(lines[4]):L"";music.fileSize=size;}
         if(music.title.empty()||size>(2ull<<30))return;
         auto d=std::make_shared<Decision>();const uint32_t transfer=newTransfer();{std::lock_guard lock(m);offers[transfer]=d;}attach(transfer,s);
@@ -464,11 +538,11 @@ bool ShareService::running()const{return core_->ok;}
 std::string ShareService::error()const{return core_->failure;}
 std::string ShareService::id()const{return hex(core_->id);}
 std::vector<SharePeer> ShareService::peers()const{
-    std::vector<SharePeer> list;{std::lock_guard lock(core_->m);for(auto& [peer,p]:core_->peers)if(p.online||!p.key.empty())list.push_back({peer,p.name,!p.key.empty(),p.online,p.version});}
+    std::vector<SharePeer> list;{std::lock_guard lock(core_->m);for(auto& [peer,p]:core_->peers)if(p.online||!p.key.empty())list.push_back({peer,p.name,!p.key.empty(),p.online,p.version,p.revision});}
     std::stable_sort(list.begin(),list.end(),[](auto& a,auto& b){const int ra=(a.online?0:2)+(a.paired?0:1),rb=(b.online?0:2)+(b.paired?0:1);return ra!=rb?ra<rb:a.name<b.name;});return list;
 }
-void ShareService::addPeer(const std::string& peer,const std::wstring& name,const std::string& address,uint16_t port,int version){
-    {std::lock_guard lock(core_->m);auto& p=core_->peers[peer];if(p.key.empty()||p.name.empty())p.name=cleanName(name);p.address=address;p.port=port;p.version=version;p.online=true;p.seen=Clock::now()+std::chrono::hours(24);}core_->postPeers();}
+void ShareService::addPeer(const std::string& peer,const std::wstring& name,const std::string& address,uint16_t port,int version,int revision){
+    {std::lock_guard lock(core_->m);auto& p=core_->peers[peer];if(p.key.empty()||p.name.empty())p.name=cleanName(name);p.address=address;p.port=port;p.version=version;p.revision=revision;p.online=true;p.seen=Clock::now()+std::chrono::hours(24);}core_->postPeers();}
 void ShareService::pair(const std::string& peer){
     std::shared_ptr<Core::Decision> d;{std::lock_guard lock(core_->m);if(core_->pairing||!core_->ok)return;d=core_->pairing=std::make_shared<Core::Decision>();}
     std::thread([core=core_,peer,d]{core->pairWith(peer,d);}).detach();
@@ -488,5 +562,10 @@ uint32_t ShareService::handoff(const std::string& peer,const ShareHandoff& music
     if(!core_->ok)return 0;const uint32_t transfer=core_->newTransfer();
     std::thread([core=core_,peer,music,file,transfer]{core->sendMusic(peer,music,file,transfer);}).detach();return transfer;}
 void ShareService::answerHandoff(uint32_t transfer,int code){std::lock_guard lock(core_->m);auto it=core_->offers.find(transfer);if(it!=core_->offers.end())it->second->set(std::clamp(code,0,2));}
+void ShareService::offerShelf(std::vector<ShareShelfEntry> items,bool open){std::lock_guard lock(core_->m);core_->shelf=std::move(items);core_->shelfOpen=open;}
+void ShareService::askShelf(const std::string& peer){if(!core_->ok)return;std::thread([core=core_,peer]{core->askList(peer);}).detach();}
+uint32_t ShareService::takeFromShelf(const std::string& peer,uint32_t index,const std::wstring& name){
+    if(!core_->ok)return 0;const uint32_t transfer=core_->newTransfer();
+    std::thread([core=core_,peer,index,name,transfer]{core->takeItem(peer,index,name,transfer);}).detach();return transfer;}
 std::vector<ShareEvent> ShareService::take(){std::lock_guard lock(core_->m);std::vector<ShareEvent> out;out.swap(core_->events);return out;}
 }

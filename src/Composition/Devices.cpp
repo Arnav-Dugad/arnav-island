@@ -40,7 +40,8 @@ void Renderer::updateTabs(const ContentSnapshot& s,float x,float y,int count,int
     (void)count;
 }
 void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UINT32 raised,UINT32 ink){
-    bool shown=s.card&&s.notice.kind;double now=seconds();cardIconEffect_->SetOpacity(shown?1.f:0.f);
+    // Only on an alert card: the command bar is a card state too, and must never show the last alert's icon (a device's logo, its ring).
+    bool shown=s.card&&!s.command.active&&s.notice.kind;double now=seconds();cardIconEffect_->SetOpacity(shown?1.f:0.f);
     // Capture cards (9-11) have no level ring.
     if(!shown||(s.notice.kind>=9&&s.notice.kind!=12&&s.notice.kind!=13)){cardRing_->SetContent(nullptr);cardRingKey_=-1;}
     else{const bool privacy=(s.notice.kind>=5&&s.notice.kind<=7)||s.notice.kind==12,power=s.notice.kind==3||s.notice.kind==4,weekly=s.notice.kind==13;const int percent=privacy?100:power?s.battery:weekly?(s.healthNow>=0?int(std::lround(s.healthNow*100)):-1):s.notice.device.battery;const UINT32 color=privacy?(s.notice.kind==5?0x30d158:s.notice.kind==6?0xff9f0a:s.notice.kind==12?0xbf5af2:0x0a84ff):s.notice.kind==3?0x5fd98a:accent;
@@ -50,7 +51,8 @@ void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UI
     if(shown){energy_->SetOffsetX(std::round((20+28-36)*scale_));energy_->SetOffsetY(std::round((16+28-36)*scale_));}
     else if(s.expanded&&!s.live&&s.page==Page::System&&s.statsTab==1){energy_->SetOffsetX(std::round((20+58-36)*scale_));energy_->SetOffsetY(std::round((38+100-36)*scale_));}
     if(!shown){cardKey_=-1;return;}
-    int key=s.notice.kind*1000+int(std::hash<std::wstring>{}(s.notice.device.name+s.notice.app+s.notice.detail)%997);
+    // The icon is part of the key: a cover that arrives after the card (read from this PC's library) is drawn too.
+    int key=s.notice.kind*1000+int(std::hash<std::wstring>{}(s.notice.device.name+s.notice.app+s.notice.detail)%997)+int((reinterpret_cast<uintptr_t>(s.notice.icon.get())>>4)%2000)*20000;
     if(key!=cardKey_){cardKey_=key;
         surface(cardIconSurface_,56,56,[&](auto* rt){
             if(s.notice.kind==9){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(s.notice.colour),&b);rt->FillEllipse(D2D1::Ellipse({28,28},23,23),b.Get());b->SetColor(D2D1::ColorF(ink,.22f));rt->DrawEllipse(D2D1::Ellipse({28,28},23.5f,23.5f),b.Get(),1.5f);return;}

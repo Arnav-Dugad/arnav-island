@@ -142,3 +142,12 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **Sharing** (protocol 2) now also carries folders, keeping their tree under a new folder in Downloads; received paths are cleaned (no `..`, drive letters, reserved names or unsafe characters; at most 24 levels). Discovery announces the protocol number with the port.
 - **Sounds** are generated in memory and played through Windows' default output; nothing is recorded.
 - Public screenshots use Windows' own sounds as the library, illustrative PCs and a made-up transfer.
+
+## v0.17 town, Shelf, covers and screen readers
+
+- **The Town field** (Settings › Compact › Town) sends what you type there to Open-Meteo's geocoding service, a moment after you stop typing, to list matching towns. Typing a town turns weather on (it's off until then). The town you pick is kept in `weather.nexus` on this PC, as before; after that only its coordinates are sent, for the forecast. Test runs look towns up only when asked to, and keep their place in a file of their own in the temp folder.
+- **A song's cover** now goes with *Continue on*: a small JPEG (192 pixels) of the cover already on screen, encrypted like everything shared. It goes only to the paired PC you chose, and is shown on its *Play here* card and not kept.
+- **Your Shelf, seen from your other PCs** (on while sharing is on; turn it off with *My PCs can take from the Shelf*). A paired PC can ask for the list of files and folders on this Shelf: their names, sizes and a small preview (72 pixels). It can ask for a copy of one of them, which is sent like a file you send. Only what is on the Shelf at that moment, at the place and with the name that PC saw, can be taken. Text on the Shelf is never listed. This PC shows a card when something is taken. PCs that aren't paired get nothing.
+- **Screen readers** read the island through Windows' UI Automation, on this PC: the names on its buttons (song titles, file names, your PCs' names) and its alerts, as they would for any app. Nothing is sent anywhere. Test runs log only that an announcement was made, never what it said.
+- **Crossfades and fades** change only the island's own volume. For another app's music moving to your other PC, that app's volume in the Windows mixer goes down and is put back after it pauses.
+- Public screenshots show Windows' own sounds, illustrative PCs and files, and a made-up transfer. They're drawn by the island itself, never taken from the screen.

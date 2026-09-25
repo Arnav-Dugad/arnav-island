@@ -1,3 +1,64 @@
+# Arnav Island 0.17.0-preview.1 — Up next, your other PC's Shelf, and an island you can hear
+
+Phase 5H:
+- The weather's town is chosen in Settings, and finds towns anywhere.
+- Up next, with drag to reorder. The next song's cover peeks out from behind the one playing.
+- Crossfades between songs. Music fades out when it moves to your other PC, and fades in there.
+- The other PC's cover on *Play here*.
+- Take files from your other PC's Shelf.
+- A ring for big transfers that shows their speed and time left.
+- Two alerts spread side by side when you point at them.
+- Screen readers can read and use the island.
+- Many visual fixes.
+
+## Fixed
+- **A logo in the command bar.** The search page could show the icon of the last alert, like a pair of headphones' brand logo. The command bar never shows an alert's icon now.
+- **The cover on top of the Library.** With a song playing, its cover sat over the Library list. The cover now shows only on the Now playing view.
+- **Rows touching the footer.** Shelf, Clipboard, Nearby and Apps rows ran into the page's footer. The chevron of the Outputs button sat outside it.
+- **The weather sky over text.** The Home tile's sky was drawn over the tile's words.
+- **Light theme on glass.** Text had too little contrast.
+- **Settings.** Long descriptions were cut off.
+- **The first command.** The command bar's first search of a session could wait on the Wi-Fi and Bluetooth state; it no longer does.
+- **One town listed twice.** Two places with the same name (a town and its district) showed as two identical rows.
+
+## Weather
+- **Choose the town in Settings.** Settings › Compact › **Town**: type the town, then pick it from the list. Towns show with their region and country, so you can tell *Manipal, Karnataka, India* from *Manipal, Gandaki Pradesh, Nepal*. It works for towns anywhere: Manipal, Udupi, Jubail, Indore, Jaipur, Mumbai and so on.
+- Settings then shows *Showing the weather for …*, with the temperature and the sky.
+- Typing *weather* alone in the command bar opens the Town field. *weather Mumbai* still works.
+
+## Music
+- **Up next.** On the Media page, the queue button (or the next song's cover, peeking out from behind the one playing) opens **Up next**: the songs after this one.
+  - Drag a row up or down to move it. The others glide aside.
+  - Click a row to play it now.
+  - Scroll with the wheel or the arrows.
+- **Crossfade.** Songs the island plays blend into each other over 6 seconds. Change it in Settings › Media & sound › *Crossfade*; 0 turns it off. Skipping fades the old song out quickly instead of cutting it.
+- **Handoff fades.** Music moving to your other PC fades out over about a second and a half before it pauses. For another app, like Spotify, the island lowers that app's volume, pauses it, and puts its volume back. On the other PC, the song rises in.
+- **The cover comes along.** *Play here* on the other PC shows the song's cover, and a thin line shows how far into the song it is.
+
+## Sharing
+- **Take from your other PC's Shelf.** Shelf › Nearby › **Shelf** on a paired PC shows what's on that PC's Shelf, with previews and sizes. Click one to take a copy. It lands in Downloads and on this PC's Shelf, and the other PC tells you it was taken. Turn it off on a PC with Settings › Privacy & productivity › *My PCs can take from the Shelf*.
+- **Big transfers.** A transfer of 5 GB or more shows as a ring in the compact island that fills as it goes and widens with its speed, with the speed beside it and the time left. Every transfer's row in Nearby shows its speed and time left too.
+- **Compatibility.** This is revision 1 of sharing protocol 2, so 0.16 and 0.17 still share files and music with each other. The cover and taking from a Shelf need 0.17 on both PCs; the **Shelf** button shows only for PCs that have it.
+
+## Alerts
+- **Side by side.** When two alerts are out, point at them. The first slides left, and the waiting one comes up beside it as a card of the same height. Click it to bring it forward. Move away and they close up again.
+
+## Screen readers
+- **An island you can hear.** Narrator, NVDA and JAWS can now find the island as *Island*. It opens and closes like a menu, and says what it shows: *Open on Media. Playing Blue in Green by Miles Davis*. Everything on it that can be pressed has a name and a role:
+  - buttons, like *Play*, *Up next*, *Take a copy of Trip itinerary.pdf*
+  - switches that say whether they're on, like *Wi-Fi* and *Dark mode*
+  - sliders with their values: volume, brightness, the song's position and each app's volume
+- **Announcements.** Alerts are spoken as they arrive, with what you can do (*Music from another PC: Blue in Green. Play here, or not now*). The page that opens, the song that starts and volume changes are spoken too.
+
+## Checks
+- **Unit suites:** core 11,682; model 2,061; phase 5,613; share 165 (46 new).
+- **Native UI test:** 45 stages, 3 new: the side-by-side alerts and their hit test, Up next and the other PC's Shelf, and spoken names.
+- **Settings test:** end to end, passing.
+- **Live checks:**
+  - a crossfade between two of Windows' own sounds starts one second before the end, and the queue moves on once
+  - a screen-reader client read the island, pressed its buttons and switches, and heard its alerts
+  - the Town field found and saved all six towns above
+
 # Arnav Island 0.16.0-preview.2 — music from the island, sharing that goes where you drop it
 
 **preview.2** fixes a developer-test problem: when the settings test switched *Remember recent commands* off, it deleted the real command history file of whoever ran it (test runs now leave it alone). Nothing else changed since preview.1.

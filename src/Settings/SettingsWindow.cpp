@@ -17,7 +17,7 @@
 #include <optional>
 namespace nexus {
 namespace {
-constexpr UINT RefreshMessage=WM_APP+1,ShowMessage=WM_APP+2;
+constexpr UINT RefreshMessage=WM_APP+1,ShowMessage=WM_APP+2,TypeTownMessage=WM_APP+3;
 constexpr float Sidebar=236,Pad=20,TitleTop=30,CardTop=112;
 constexpr SpringSpec Knob{1,520,36},Pill{.9,480,36},Hover{1,700,52},Page{1,300,32},Scroll{1,260,34},Indicator{.8,420,32};
 const wchar_t* subtitles[]={L"How the island behaves while you work",L"Size, position and everyday mode",L"Theme, glass and color",L"Springs, feedback and accessibility",L"What the resting island shows",L"Players, logos and audio output",L"Bluetooth, battery and performance",L"Arrange the Command Center",L"Clipboard, privacy dots, commands and workspaces",L"Version, diagnostics and reset"};
@@ -65,6 +65,11 @@ private:
     void aim(Spring& spring,double target,SpringSpec spec){double now=seconds();if(s_.reduceMotion)spring.reset(target,now);else if(std::abs(spring.target()-target)>1e-4)spring.retarget(target,now,spec);}
     double at(Spring& spring){return spring.sample(seconds()).position;}
     std::vector<Hit> focusOrder();void refresh();bool about()const{return section_==int(settingSections().size())-1;}
+    // Phase 5G: the Town field: what is typed, the caret, whether it has the keyboard, the highlighted match.
+    std::wstring townText_;size_t townCaret_=0;bool townFocus_=false;int townPick_=0;double caretEpoch_=0;
+    bool townListed()const{return townFocus_&&!context_.townResults.empty()&&!townText_.empty()&&context_.townQuery==trimmedTown();}
+    std::wstring trimmedTown()const{size_t a=townText_.find_first_not_of(L' '),b=townText_.find_last_not_of(L' ');return a==std::wstring::npos?std::wstring():townText_.substr(a,b-a+1);}
+    void townFocus(bool on);void townEdited();void townChoose(int index);bool townKey(WPARAM);bool townChar(wchar_t);
 };
 
 Palette SettingsUi::palette()const{
@@ -86,6 +91,9 @@ std::wstring SettingsUi::detail(const SettingItem& i)const{
     if(i.key=="material"&&!context_.glassAvailable)return L"Glass needs Windows 11 composition support";
     if(i.key=="commandShortcut"&&context_.shortcutTaken)return L"Another app already uses this shortcut \u2014 choose another";
     if(i.key=="captureShortcuts"&&!context_.captureTaken.empty()&&s_.captureShortcuts)return L"Another app already uses "+context_.captureTaken+L"; the rest work";
+    if(i.control==SettingControl::Town){if(townFocus_&&context_.townBusy)return L"Looking for towns\u2026";if(!context_.townStatus.empty())return context_.townStatus;
+        if(townFocus_&&!townText_.empty()&&context_.townQuery==trimmedTown()&&context_.townResults.empty())return L"No towns match \u201c"+trimmedTown()+L"\u201d";
+        if(!context_.weatherPlace.empty())return L"Showing the weather for "+context_.weatherPlace;}
     return i.detail;
 }
 IDWriteTextFormat* SettingsUi::format(float size,DWRITE_FONT_WEIGHT weight){
@@ -104,7 +112,8 @@ std::vector<Row> SettingsUi::layout(float& contentHeight,std::vector<D2D1_RECT_F
     if(nav)*nav=navRects();
     std::vector<Row> rows;const float left=Sidebar+20,right=W()-32,R=right-Pad,scroll=float(at(scroll_));float y=CardTop-scroll+(about()?92:0);
     for(size_t index=0;index<items_.size();++index){auto& item=items_[index];if(item.section!=section_||(item.action==SettingAction::OpenArmoury&&!context_.armoury))continue;
-        Row row;row.item=int(index);float h=item.control==SettingControl::Order?52:item.control==SettingControl::Preview?216:item.control==SettingControl::Chips?122:64;row.row={left,y,right,y+h};float cy=y+h/2;
+        const size_t listed=item.control==SettingControl::Town&&townListed()?context_.townResults.size():0;
+        Row row;row.item=int(index);float h=item.control==SettingControl::Order?52:item.control==SettingControl::Preview?216:item.control==SettingControl::Chips?122:item.control==SettingControl::Town?64+(listed?float(listed)*38+10:0.f):64;row.row={left,y,right,y+h};float cy=y+h/2;
         switch(item.control){
         case SettingControl::Toggle:row.control={R-44,cy-11,R,cy+11};row.parts={row.control};break;
         case SettingControl::Slider:row.control={R-220,cy-12,R,cy+12};row.parts={row.control};break;
@@ -115,6 +124,8 @@ std::vector<Row> SettingsUi::layout(float& contentHeight,std::vector<D2D1_RECT_F
         case SettingControl::Order:row.control={R-72,cy-15,R,cy+15};row.parts={{R-72,cy-15,R-40,cy+15},{R-32,cy-15,R,cy+15}};break;
         case SettingControl::Preview:row.control={left+Pad,y+44,R,y+h-14};row.parts={row.control};break;
         // A strip like the compact island, with the chips in their order.
+        // The field at the right of the row's first line; the matches under it, across the row.
+        case SettingControl::Town:{row.control={R-300,y+16,R,y+48};row.parts={row.control};for(size_t k=0;k<listed;++k){const float ty=y+64+float(k)*38;row.parts.push_back({left+Pad-6,ty,R,ty+34});}break;}
         case SettingControl::Chips:{const float x0=left+Pad;row.control={x0,y+62,R,y+106};const float gap=6,w=(R-x0-12-gap*(chipCount-1))/chipCount;for(int k=0;k<chipCount;++k){float x=x0+6+k*(w+gap);row.parts.push_back({x,y+68,x+w,y+100});}break;}
         case SettingControl::Actions:{float total=0;std::vector<float> widths;for(auto& o:item.options){float w=std::max(74.f,measure(o,13,DWRITE_FONT_WEIGHT_MEDIUM)+32);widths.push_back(w);total+=w+8;}total-=8;float x=R-total;row.control={x,cy-16,R,cy+16};for(float w:widths){row.parts.push_back({x,cy-16,x+w,cy+16});x+=w+8;}break;}
         default:break;
@@ -170,6 +181,7 @@ void SettingsUi::activate(const Hit& h,float x){
     case SettingControl::Slider:slide(h.item,x);break;
     case SettingControl::Preview:replay();break;
     case SettingControl::Actions:if(h.part>=0){PostMessageW(island_,SettingsActionMessage,WPARAM(item.action),LPARAM(h.part));dirty=true;}break;
+    case SettingControl::Town:if(h.part>=1)townChoose(h.part-1);else if(h.part==0)townFocus(true);break;
     case SettingControl::Button:{
         if(item.action==SettingAction::TransparencySettings){ShellExecuteW(nullptr,L"open",L"ms-settings:personalization-colors",nullptr,nullptr,SW_SHOWNORMAL);break;}
         if(item.action==SettingAction::SoundSettings){ShellExecuteW(nullptr,L"open",L"ms-settings:sound",nullptr,nullptr,SW_SHOWNORMAL);break;}
@@ -194,9 +206,45 @@ void SettingsUi::key(WPARAM k){
         else if(item.control==SettingControl::Stepper)activate({focus_.item,d>0?1:0,-1},0);
         else if(item.control==SettingControl::Order)apply(focus_.item,d);
         else if(item.control==SettingControl::Chips){if(s_.sounds&&focus_.part+d>=0&&focus_.part+d<chipCount)playSound(Sound::Click);auto order=moveChip(s_.chips,focus_.part,focus_.part+d);apply(focus_.item,encodeChips(order));focus_.part=std::clamp(focus_.part+d,0,chipCount-1);}}
-    else if(k==VK_SPACE||k==VK_RETURN){if(focus_.section>=0)selectSection(focus_.section);else if(focus_.item>=0){auto& item=items_[focus_.item];if(item.control==SettingControl::Toggle||item.control==SettingControl::Button)activate({focus_.item,0,-1},0);else if(item.control==SettingControl::Actions||item.control==SettingControl::Preview)activate({focus_.item,std::max(0,focus_.part),-1},0);}}
+    else if(k==VK_SPACE||k==VK_RETURN){if(focus_.section>=0)selectSection(focus_.section);else if(focus_.item>=0){auto& item=items_[focus_.item];if(item.control==SettingControl::Town)townFocus(true);else if(item.control==SettingControl::Toggle||item.control==SettingControl::Button)activate({focus_.item,0,-1},0);else if(item.control==SettingControl::Actions||item.control==SettingControl::Preview)activate({focus_.item,std::max(0,focus_.part),-1},0);}}
     // Keep the focused row inside the viewport.
     if(focus_.item>=0){float height;for(auto& row:layout(height))if(row.item==focus_.item){float top=row.row.top,bottom=row.row.bottom;if(top<CardTop-10)scrollTarget_-=CardTop-10-top;else if(bottom>H()-20)scrollTarget_+=bottom-(H()-20);float max=std::max(0.f,height-H());scrollTarget_=std::clamp(scrollTarget_,0.,double(max));aim(scroll_,scrollTarget_,Scroll);}}
+}
+// ---- Phase 5G: the Town field ---------------------------------------------------------------------------------
+void SettingsUi::townFocus(bool on){
+    if(on==townFocus_)return;townFocus_=on;caretEpoch_=seconds();townPick_=0;
+    if(on){townCaret_=townText_.size();SetTimer(hwnd_,3,265,nullptr);
+        // The field (and room for its matches) scrolls into view.
+        float height;for(auto& row:layout(height))if(items_[row.item].control==SettingControl::Town){const float bottom=row.row.top+64+6*38+10;if(bottom>H()-20||row.row.top<CardTop-10){scrollTarget_=std::clamp(scrollTarget_+(bottom>H()-20?bottom-(H()-20):row.row.top-(CardTop-10)),0.,double(std::max(0.f,height+6*38-H())));aim(scroll_,scrollTarget_,Scroll);}}}
+    else{KillTimer(hwnd_,3);KillTimer(hwnd_,2);}dirty=true;
+}
+void SettingsUi::townEdited(){caretEpoch_=seconds();townPick_=0;SetTimer(hwnd_,2,320,nullptr);dirty=true;}
+void SettingsUi::townChoose(int index){
+    if(index<0||size_t(index)>=context_.townResults.size())return;PostMessageW(island_,SettingsTownMessage,1,LPARAM(index));
+    townText_.clear();townCaret_=0;townFocus(false);dirty=true;
+}
+bool SettingsUi::townChar(wchar_t c){
+    if(c==8){if(townCaret_>0){townText_.erase(townCaret_-1,1);--townCaret_;townEdited();}return true;}
+    if(c<32||c==127)return c==13||c==27||c==9?true:false;
+    if(townText_.size()>=60)return true;townText_.insert(townCaret_,1,c);++townCaret_;townEdited();return true;
+}
+bool SettingsUi::townKey(WPARAM k){
+    const bool ctrl=GetKeyState(VK_CONTROL)&0x8000;const int n=int(context_.townResults.size());
+    switch(k){
+    case VK_LEFT:if(townCaret_>0)--townCaret_;break;case VK_RIGHT:if(townCaret_<townText_.size())++townCaret_;break;
+    case VK_HOME:townCaret_=0;break;case VK_END:townCaret_=townText_.size();break;
+    case VK_DELETE:if(townCaret_<townText_.size()){townText_.erase(townCaret_,1);townEdited();}break;
+    case VK_UP:if(townListed())townPick_=(townPick_+n-1)%n;break;case VK_DOWN:if(townListed())townPick_=(townPick_+1)%n;break;
+    case VK_RETURN:if(townListed())townChoose(townPick_);return true;
+    case VK_ESCAPE:if(!townText_.empty()){townText_.clear();townCaret_=0;}else townFocus(false);break;
+    case VK_TAB:townFocus(false);return false;
+    case 'V':if(!ctrl)return false;
+        // Paste: the clipboard's text, one line of it.
+        if(OpenClipboard(hwnd_)){if(HANDLE d=GetClipboardData(CF_UNICODETEXT))if(auto* t=static_cast<const wchar_t*>(GlobalLock(d))){std::wstring add(t);GlobalUnlock(d);for(auto& ch:add)if(ch<32)ch=L' ';
+            add=add.substr(0,60-std::min<size_t>(60,townText_.size()));townText_.insert(townCaret_,add);townCaret_+=add.size();townEdited();}CloseClipboard();}break;
+    case 'A':if(!ctrl)return false;townCaret_=townText_.size();break;
+    default:return false;}
+    caretEpoch_=seconds();dirty=true;return true;
 }
 void SettingsUi::refresh(){
     std::lock_guard lock(shared_.mutex);
@@ -302,6 +350,23 @@ void SettingsUi::render(){
             else{fill(r,7,p.ink,(.07f+std::min(g,1.f)*.05f-std::max(0.f,g-1)*.04f)*alpha);stroke(r,7,p.ink,.08f*alpha,1);text(item.options.front(),r,13,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER);}break;}
         case SettingControl::Order:{int slot=row.item;for(int b=0;b<2;++b){auto r=row.parts[b];bool possible=b?item.key!="nav"+std::to_string(pageCount-1):item.key!="nav0";auto& h=spring(thumbs_,100000+slot*10+b,0);aim(h,press_.item==row.item&&press_.part==b?2:hovered(b)?1:0,Hover);float g=float(at(h));fill(r,15,p.ink,(.06f+std::min(g,1.f)*.06f)*(possible?1:.4f));drawIcon(dc_.Get(),factory_.Get(),b?Icon::ArrowDown:Icon::ArrowUp,r.left+8,r.top+8,14,p.ink,possible?1:.35f);}break;}
         case SettingControl::Preview:drawPreview(row.control,p,alpha);break;
+        case SettingControl::Town:{
+            // The field: a search mark, the text (or its hint) and a blinking caret while it has the keyboard.
+            const auto c=row.parts[0];auto& h=spring(thumbs_,400000+row.item,0);aim(h,townFocus_?2:hovered(0)?1:0,Hover);const float g=float(at(h));
+            fill(c,9,p.ink,(p.light?.04f:.05f)+std::min(g,1.f)*.02f);stroke(c,9,townFocus_?p.accent:p.ink,townFocus_?.95f:.12f,townFocus_?1.6f:1);
+            drawIcon(dc_.Get(),factory_.Get(),Icon::Search,c.left+11,c.top+8,16,townFocus_?p.accent:p.muted);
+            const D2D1_RECT_F field{c.left+36,c.top,c.right-12,c.bottom};
+            if(townText_.empty()&&!townFocus_)text(context_.weatherPlace.empty()?L"Search for a town":context_.weatherPlace.substr(0,context_.weatherPlace.find(L',')),field,13,p.muted,.9f);
+            else{dc_->PushAxisAlignedClip(field,D2D1_ANTIALIAS_MODE_ALIASED);const float before=measure(townText_.substr(0,townCaret_),13),shift=std::max(0.f,before-(field.right-field.left-4));
+                text(townText_,{field.left-shift,field.top,field.right+400,field.bottom},13,p.ink);
+                if(townFocus_&&std::fmod(now-caretEpoch_,1.06)<.53)fill({field.left-shift+before,c.top+8,field.left-shift+before+1.6f,c.bottom-8},.8f,p.accent,1);dc_->PopAxisAlignedClip();}
+            // Matches: the town, then its region and country, the highlighted one outlined in the accent.
+            for(size_t k=1;k<row.parts.size();++k){const auto r=row.parts[k];const int index=int(k)-1;const bool picked=index==townPick_;const std::wstring& full=context_.townResults[size_t(index)];
+                auto& rh=spring(hovers_,500000+index,0);aim(rh,hovered(int(k))?1:0,Hover);fill(r,8,p.light?0x000000:0xffffff,(picked?(p.light?.05f:.07f):0.f)+float(at(rh))*(p.light?.03f:.04f));if(picked)stroke(r,8,p.accent,.7f,1.2f);
+                drawIcon(dc_.Get(),factory_.Get(),Icon::Location,r.left+12,r.top+9,16,picked?p.accent:p.muted);
+                const auto comma=full.find(L',');const std::wstring town=full.substr(0,comma),rest=comma==std::wstring::npos?L"":full.substr(comma+2);const float tw=std::min(260.f,measure(town,14,DWRITE_FONT_WEIGHT_MEDIUM)+2);
+                text(town,{r.left+38,r.top,r.left+38+tw,r.bottom},14,p.ink,1,DWRITE_FONT_WEIGHT_MEDIUM);text(rest,{r.left+46+tw,r.top,r.right-12,r.bottom},12.5f,p.muted);}
+            break;}
         case SettingControl::Chips:{
             // The strip, then each chip where its spring has it; a dragged chip follows the pointer and the others make room.
             fill(row.control,16,p.light?0x15171c:0x0b0c0f,alpha);const Icon glyphs[]={Icon::Clock,Icon::Volume,Icon::Battery,Icon::Focus,Icon::Processor,Icon::Gauge,Icon::Sun};
@@ -362,13 +427,18 @@ LRESULT SettingsUi::message(HWND h,UINT m,WPARAM w,LPARAM l){
     case WM_DPICHANGED:{dpi_=float(HIWORD(w));formats_.clear();auto* r=reinterpret_cast<RECT*>(l);SetWindowPos(h,nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);resize();return 0;}
     case WM_SETTINGCHANGE:theme();dirty=true;return 0;
     case RefreshMessage:refresh();return 0;
+    case TypeTownMessage:{std::unique_ptr<std::wstring> text(reinterpret_cast<std::wstring*>(l));if(text){townFocus(true);townText_=*text;townCaret_=townText_.size();townEdited();}return 0;}
     case ShowMessage:ShowWindow(h,IsIconic(h)?SW_RESTORE:SW_SHOW);SetForegroundWindow(h);refresh();return 0;
-    case WM_TIMER:if(w==1){KillTimer(h,1);dirty=true;}return 0;
+    case WM_TIMER:if(w==1){KillTimer(h,1);dirty=true;}
+        // 2: the typing has paused, so the town is looked up; 3: the caret blinks.
+        if(w==2){KillTimer(h,2);const auto q=trimmedTown();if(q.size()>=2){auto owned=std::make_unique<std::wstring>(q);if(PostMessageW(island_,SettingsTownMessage,0,reinterpret_cast<LPARAM>(owned.get())))owned.release();}}
+        if(w==3)dirty=true;return 0;
     case WM_MOUSEMOVE:{auto [x,y]=point();if(!tracking_){TRACKMOUSEEVENT t{sizeof(t),TME_LEAVE,h,0};TrackMouseEvent(&t);tracking_=true;}if(dragItem_>=0){slide(dragItem_,x);return 0;}if(chipDrag_>=0){chipX_=x;dirty=true;
             // Phase 5G: a soft click each time the dragged chip passes another's place.
             float height;for(auto& row:layout(height))if(row.item==press_.item){const int to=chipTarget(row);if(to!=chipHeard_){if(s_.sounds)playSound(Sound::Click);chipHeard_=to;}}return 0;}auto next=hit(x,y);if(!(next==hover_)){hover_=next;dirty=true;}return 0;}
     case WM_MOUSELEAVE:tracking_=false;if(dragItem_<0){hover_={};dirty=true;}return 0;
-    case WM_LBUTTONDOWN:{auto [x,y]=point();keyboard_=false;press_=hit(x,y);SetCapture(h);if(press_.item>=0&&items_[press_.item].control==SettingControl::Slider&&press_.part==0&&enabled(items_[press_.item])){dragItem_=press_.item;slide(dragItem_,x);}
+    case WM_LBUTTONDOWN:{auto [x,y]=point();keyboard_=false;press_=hit(x,y);SetCapture(h);
+        if(townFocus_&&!(press_.item>=0&&items_[press_.item].control==SettingControl::Town&&press_.part>=0))townFocus(false);if(press_.item>=0&&items_[press_.item].control==SettingControl::Slider&&press_.part==0&&enabled(items_[press_.item])){dragItem_=press_.item;slide(dragItem_,x);}
         if(press_.item>=0&&items_[press_.item].control==SettingControl::Chips&&press_.part>=0){float height;for(auto& row:layout(height))if(row.item==press_.item){chipDrag_=press_.part;chipHeard_=press_.part;chipGrab_=x-row.parts[size_t(press_.part)].left;chipX_=x;}}if(press_.item>=0||press_.section>=0)focus_=press_.section>=0?press_:Hit{press_.item,std::max(0,press_.part),-1};dirty=true;return 0;}
     case WM_LBUTTONUP:{
         // ReleaseCapture sends WM_CAPTURECHANGED synchronously, which clears the press.
@@ -381,7 +451,8 @@ LRESULT SettingsUi::message(HWND h,UINT m,WPARAM w,LPARAM l){
         dragItem_=-1;press_={};hover_=up;dirty=true;return 0;}
     case WM_CAPTURECHANGED:dragItem_=-1;chipDrag_=-1;press_={};dirty=true;return 0;
     case WM_MOUSEWHEEL:{float height;layout(height);float max=std::max(0.f,height-H());scrollTarget_=std::clamp(scrollTarget_-GET_WHEEL_DELTA_WPARAM(w)*.9,0.,double(max));aim(scroll_,scrollTarget_,Scroll);dirty=true;return 0;}
-    case WM_KEYDOWN:key(w);return 0;
+    case WM_KEYDOWN:if(townFocus_&&townKey(w))return 0;key(w);return 0;
+    case WM_CHAR:if(townFocus_&&townChar(wchar_t(w)))return 0;break;
     case WM_CLOSE:DestroyWindow(h);return 0;
     case WM_DESTROY:PostQuitMessage(0);return 0;
     }
@@ -397,6 +468,7 @@ void SettingsWindow::show(const Settings& s,const SettingsContext& c,int section
     // Wait briefly for the handle so tests and callers can address the window.
     for(int i=0;i<400&&!window_.load()&&!finished_.load();++i)Sleep(5);
 }
+void SettingsWindow::typeTown(const std::wstring& text){HWND h=window_.load();if(!h)return;auto owned=std::make_unique<std::wstring>(text);if(PostMessageW(h,TypeTownMessage,0,reinterpret_cast<LPARAM>(owned.get())))owned.release();}
 void SettingsWindow::update(const Settings& s,const SettingsContext& c,unsigned sequence){HWND h=window_.load();if(!h)return;{std::lock_guard lock(state_->mutex);state_->incoming=s;state_->incomingContext=c;state_->incomingSequence=sequence;state_->pending=true;}PostMessageW(h,RefreshMessage,0,0);}
 std::vector<SettingsWindow::Probe> SettingsWindow::probes(){std::lock_guard lock(state_->mutex);return state_->probes;}
 bool SettingsWindow::settled(){std::lock_guard lock(state_->mutex);return state_->settled;}

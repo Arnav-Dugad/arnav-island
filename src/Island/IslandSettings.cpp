@@ -13,7 +13,23 @@ std::string narrow(const std::wstring& w){std::string s;for(wchar_t c:w)s+=c<128
 }
 SettingsContext IslandWindow::settingsContext(){
     SettingsContext c;int monitors=0;EnumDisplayMonitors(nullptr,nullptr,countMonitor,reinterpret_cast<LPARAM>(&monitors));c.monitors=std::max(1,monitors);
-    c.blur=GlassBackdrop::effectsEnabled();c.armoury=!content_.platform.armoury.empty();c.glassAvailable=renderer_&&renderer_->glassAvailable();c.labStats=labStats();c.wallpaper=content_.platform.wallpaper;c.captureTaken=captureTaken_;c.shortcutTaken=settings_.commandShortcut!=0&&!hotkey_&&!testing_;c.version=appVersion;return c;
+    c.blur=GlassBackdrop::effectsEnabled();c.armoury=!content_.platform.armoury.empty();c.glassAvailable=renderer_&&renderer_->glassAvailable();c.labStats=labStats();c.wallpaper=content_.platform.wallpaper;c.captureTaken=captureTaken_;c.shortcutTaken=settings_.commandShortcut!=0&&!hotkey_&&!testing_;c.version=appVersion;
+    // The weather's place and the Town field's search.
+    if(weather_){if(auto p=weather_->place()){c.weatherPlace=p->name;if(auto n=weather_->now())c.weatherPlace+=L"  \u00b7  "+temperatureText(n->temperature,settings_.weatherUnit)+L", "+skyName(skyOf(n->code));}
+        c.townQuery=weather_->searched();for(auto& m:weather_->matches())c.townResults.push_back(m.name);}
+    c.townBusy=townBusy_;c.townStatus=townStatus_;return c;
+}
+// Settings has something new about the weather's town to show.
+void IslandWindow::pushSettingsContext(){if(settingsWindow_&&settingsWindow_->open())settingsWindow_->update(settings_,settingsContext(),settingsSequence_);}
+// Settings' Town field: a search (weather turns on with it, since it looks the town up) or the match chosen.
+void IslandWindow::townMessage(WPARAM w,LPARAM l){
+    if(w==0){std::unique_ptr<std::wstring> query(reinterpret_cast<std::wstring*>(l));if(!query)return;townStatus_.clear();
+        if(testing_&&!qaWeatherLive_){townStatus_=L"The weather isn\u2019t looked up in test runs";pushSettingsContext();return;}
+        if(!settings_.weather){Settings next=settings_;next.weather=true;receiveSettings(next);}
+        if(!weather_)syncWeather();
+        if(weather_){weather_->search(*query);townBusy_=true;}else townStatus_=L"The weather service couldn’t start";pushSettingsContext();return;}
+    if(!weather_)return;const auto matches=weather_->matches();const size_t i=size_t(l);if(i>=matches.size())return;
+    weather_->choose(matches[i]);townStatus_=L"Getting the weather for "+matches[i].name+L"\u2026";store_.log("Info","weather_town_chosen");pushSettingsContext();
 }
 void IslandWindow::openSettings(int section){
     if(!settingsWindow_)settingsWindow_=std::make_unique<SettingsWindow>(window_);
@@ -127,7 +143,7 @@ void IslandWindow::settingsTestStep(){
     auto log=[&](bool pass,const std::string& line){settingsTestLog_.push_back((pass?"PASS ":"FAIL ")+line);if(!pass)++settingsTestFailures_;};
     auto click=[&](RECT r,float fx=.5f){int x=r.left+int(std::lround((r.right-r.left)*fx)),y=(r.top+r.bottom)/2;SendMessageW(settings,WM_MOUSEMOVE,0,MAKELPARAM(x,y));SendMessageW(settings,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(x,y));SendMessageW(settings,WM_LBUTTONUP,0,MAKELPARAM(x,y));};
     auto probe=[&](int index)->std::optional<SettingsWindow::Probe>{for(auto& p:settingsWindow_->probes())if(p.kind==SettingsWindow::Probe::Kind::Control&&p.index==index)return p;return std::nullopt;};
-    auto testable=[&](const SettingItem& i){if(i.control==SettingControl::Preview||i.control==SettingControl::Actions||i.control==SettingControl::Note)return false;return i.control!=SettingControl::Button||i.action==SettingAction::ResetLayout||i.action==SettingAction::ResetAll;};
+    auto testable=[&](const SettingItem& i){if(i.control==SettingControl::Preview||i.control==SettingControl::Actions||i.control==SettingControl::Note||i.control==SettingControl::Town)return false;return i.control!=SettingControl::Button||i.action==SettingAction::ResetLayout||i.action==SettingAction::ResetAll;};
     auto finish=[&]{
         KillTimer(window_,21);settingsWindow_.reset();
         std::ostringstream out;out<<"Settings window end-to-end test: "<<(settingsTestFailures_?"FAIL":"PASS")<<" ("<<settingsTestLog_.size()<<" checks, "<<settingsTestFailures_<<" failures)\n";for(auto& l:settingsTestLog_)out<<l<<'\n';

@@ -10,7 +10,8 @@ namespace nexus {
 // persisted and bounded. Keys match the names written by Settings::write.
 // Preview is the Animation Lab's live spring; Actions is a row of one-shot buttons.
 // Chips: the compact island's chips, dragged into order (v14).
-enum class SettingControl { Toggle,Slider,Choice,Stepper,Swatch,Button,Order,Note,Preview,Actions,Chips };
+// Town (Phase 5G): a search field whose matches are listed under it; it sets the weather's place, not a Settings value.
+enum class SettingControl { Toggle,Slider,Choice,Stepper,Swatch,Button,Order,Note,Preview,Actions,Chips,Town };
 enum class SettingAction { None,OpenLab,ResetAll,OpenLogs,ClearLogs,TransparencySettings,ResetLayout,DisplaySettings,SoundSettings,BluetoothSettings,PowerSettings,OpenArmoury,ClearClipboard,PrivacySettings,ClearWorkspaces,OpenCommand,LabPlay,ClearLyrics };
 struct SettingItem {
     int section=0;std::wstring title,detail;SettingControl control=SettingControl::Toggle;std::string key;
@@ -64,7 +65,7 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     number(2,C::Choice,L"Alerts",L"How device, charging and privacy alerts appear","notifyStyle",&Settings::notifyStyle,0,1,1,{L"Grow the island",L"Drop a pill"});
     toggle(2,L"Light along the edge",L"A glint runs around the island when an alert arrives","edgeSplash",&Settings::edgeSplash);
     toggle(2,L"Two alerts at once",L"When a second alert arrives while one shows, it buds off below the first instead of waiting","stackAlerts",&Settings::stackAlerts);
-    toggle(2,L"Sounds",L"A faint chime with the light along the edge and soft clicks as you arrange chips. Quiet while something plays full screen","sounds",&Settings::sounds);
+    toggle(2,L"Sounds",L"A faint chime with alerts and soft clicks as you arrange chips. Quiet while an app is full screen","sounds",&Settings::sounds);
     number(3,C::Choice,L"Motion character",L"","preset",&Settings::preset,0,5,1,{L"Balanced",L"Fluid",L"Playful",L"Snappy",L"Calm",L"Custom"});
     // Choosing a preset shows its values on the sliders below; moving a slider makes the spring Custom.
     v.back().set=[](Settings& s,int x){s.preset=std::clamp(x,0,5);if(s.preset<5){auto p=preset(MotionPreset(s.preset));s.springStiffness=int(std::lround(p.stiffness));s.springDamping=int(std::lround(p.damping));s.springMass=int(std::lround(p.mass*100));}};
@@ -92,7 +93,8 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(4,L"Media controls",L"Previous, play and next at the end of the island while something plays","compactControls",&Settings::compactControls);
     toggle(4,L"Swipe to change track",L"Swipe sideways on the island (two fingers, or drag) for the next or previous track","swipeSkip",&Settings::swipeSkip);
     number(4,C::Choice,L"Live audio style",L"How the playing sound moves in the compact island","waveformStyle",&Settings::waveformStyle,0,1,1,{L"Bars",L"Ring"});
-    toggle(4,L"Weather",L"In the idle glance and as a Home statistic. Type \u201cweather\u201d and a town in the command bar to choose the place. From Open-Meteo, a free service; only that place is sent","weather",&Settings::weather);
+    toggle(4,L"Weather",L"In the idle glance and as a Home statistic, from Open-Meteo, a free service. Choose the town below","weather",&Settings::weather);
+    {SettingItem i;i.section=4;i.control=SettingControl::Town;i.key="weatherTown";i.title=L"Town";i.detail=L"Type, then pick it. What you type goes to Open-Meteo";v.push_back(std::move(i));}
     number(4,C::Choice,L"Temperature",L"","weatherUnit",&Settings::weatherUnit,0,1,1,{L"Celsius",L"Fahrenheit"});
     toggle(4,L"Glance when idle",L"With nothing else to show: today\u2019s date, and CPU and GPU use where there is room","compactGlance",&Settings::compactGlance);
     number(4,C::Choice,L"Glance rings",L"Progress rings at the end of the island","glanceRings",&Settings::glanceRings,0,3,1,{L"Off",L"Battery",L"Timer",L"Both"});
@@ -104,7 +106,8 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(5,L"Now Playing over fullscreen apps",L"While the island is hidden for a fullscreen app, touch its edge to see and control what is playing","fullscreenPeek",&Settings::fullscreenPeek);
     toggle(5,L"Island DJ",L"Near the end of a track the ring glows, and it blooms into the next track’s colours as it starts","islandDj",&Settings::islandDj);
     toggle(5,L"Music library",L"Play songs from your Music folder right in the island (Media › Library). The list stays on this PC","musicLibrary",&Settings::musicLibrary);
-    toggle(5,L"Continue on my other PC",L"With sharing on, send what is playing to a paired PC (Media › Continue on). Only the song’s title, artist and position are sent, encrypted","handoff",&Settings::handoff);
+    number(5,C::Slider,L"Crossfade",L"The island’s own songs blend into each other. Set to 0 to turn it off","crossfade",&Settings::crossfade,0,12,1,{},L" s");
+    toggle(5,L"Continue on my other PC",L"Send what plays to a paired PC from Media \u203a Continue on. Only the song\u2019s details go, encrypted","handoff",&Settings::handoff);
     toggle(5,L"Artwork pulses to the beat",L"The cover swells gently with the bass of what Windows is playing","artPulse",&Settings::artPulse);
     button(5,L"Saved lyrics",L"Remove the lyrics kept on this PC",L"Clear",SettingAction::ClearLyrics);
     toggle(5,L"App logos",L"Show the real icon of the app that is playing","appIcons",&Settings::appIcons);
@@ -126,7 +129,7 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
         i.get=[slot](const Settings& s){return s.homeMetrics[slot];};i.set=[slot](Settings& s,int x){assignMetric(s.homeMetrics,slot,x);};v.push_back(std::move(i));}
     button(7,L"Restore navigation and statistics",L"Other preferences stay as they are",L"Reset layout",SettingAction::ResetLayout);
     toggle(8,L"Clipboard history",L"Your last 24 copies. Password managers and copies marked private are skipped","clipboardHistory",&Settings::clipboardHistory);
-    toggle(8,L"Remember the clipboard after restarts",L"Keeps the history on this PC, encrypted for your Windows account. Copies that look like passwords are kept only when pinned","clipboardKeep",&Settings::clipboardKeep);
+    toggle(8,L"Remember the clipboard after restarts",L"Kept on this PC, encrypted for your Windows account. Password-like copies are kept only if pinned","clipboardKeep",&Settings::clipboardKeep);
     toggle(8,L"Hide passwords and codes",L"Copies that look like a password, one-time code or key stay hidden until you point at them","hideSecrets",&Settings::hideSecrets);
     toggle(8,L"Rich clipboard rows",L"Links show their site, colours show a swatch and code is highlighted","richClips",&Settings::richClips);
     toggle(8,L"Site icons for links",L"Fetches a copied link\u2019s icon from that site itself; nothing else is sent","siteIcons",&Settings::siteIcons);
@@ -138,9 +141,10 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     number(8,C::Choice,L"Command shortcut",L"Opens the command bar","commandShortcut",&Settings::commandShortcut,0,3,1,{L"Off",L"Alt+Shift+Space",L"Ctrl+Alt+Space",L"Win+Alt+Space"});
     button(8,L"Command bar",L"Apps, files, system switches, timers, settings and workspaces by typing",L"Open",SettingAction::OpenCommand);
     toggle(8,L"Remember recent commands",L"The empty command bar shows your pinned and recent commands; kept only on this PC","commandHistory",&Settings::commandHistory);
-    toggle(8,L"Currency conversion",L"Type \u201c100 usd to inr\u201d. Fetches the European Central Bank\u2019s public daily rates, at most twice a day; nothing about you is sent","currency",&Settings::currency);
+    toggle(8,L"Currency conversion",L"Type \u201c100 usd to inr\u201d. Uses the European Central Bank\u2019s public daily rates; nothing about you is sent","currency",&Settings::currency);
     toggle(8,L"Capture and clipboard shortcuts",L"Alt+Shift+S snip  \u00b7  Alt+Shift+T copy text  \u00b7  Alt+Shift+C pick a colour  \u00b7  Alt+Shift+V clipboard","captureShortcuts",&Settings::captureShortcuts);
-    toggle(8,L"Share with my PCs",L"Send Shelf files to your own PCs on this network (Shelf \u203a Nearby). Each pair of PCs confirms a code once; files are encrypted and need accepting. Windows may ask to allow it through the firewall","sharing",&Settings::sharing);
+    toggle(8,L"Share with my PCs",L"Send files to your own PCs on this network (Shelf \u203a Nearby). Paired once with a code, and encrypted","sharing",&Settings::sharing);
+    toggle(8,L"My PCs can take from the Shelf",L"Your paired PCs can see this Shelf in Shelf › Nearby and take a copy of what is on it","shelfOpen",&Settings::shelfOpen);
     toggle(8,L"Keep the Shelf after restarts",L"Remembers links to your Shelf files and dropped text on this PC, never copies of the files","pinnedShelf",&Settings::pinnedShelf);
     button(8,L"Saved workspaces",L"Remove every saved app set; open apps are not affected",L"Remove",SettingAction::ClearWorkspaces);
     button(9,L"Local logs",L"Diagnostics stay on this device",L"Open folder",SettingAction::OpenLogs);

@@ -5,6 +5,12 @@ Action Renderer::hit(float x,float y)const {
     if(y>=38+navY&&y<38+navY+44){double now=seconds();for(size_t i=0;i<size_t(pageCount);++i){auto& icon=icons_[i];if(!icon.used)continue;double left=icon.x.sample(now).position+16-icon.drawnSize/2-14;if(x>=left&&x<left+47)return icon.action;}return Action::None;}
     for(auto& target:targets)if(target.y<navY&&target.contains(x-20,y-38))return target.action;return Action::None;
 }
+std::vector<HitTarget> Renderer::accessibleTargets(bool compact,float headerLeft)const{
+    std::vector<HitTarget> out;if(compact){for(auto t:compactTargets){t.x+=headerLeft;out.push_back(t);}return out;}
+    const float lift=live_?-18.f:0.f;for(auto t:targets){if(t.y>=navY)continue;t.x+=20;t.y+=38+lift;out.push_back(t);}
+    if(!live_){const double now=seconds();for(size_t i=0;i<size_t(pageCount);++i){auto& icon=icons_[i];if(!icon.used)continue;out.push_back({icon.action,float(icon.x.sample(now).position+16-icon.drawnSize/2-14),38+navY,47,44});}}
+    return out;
+}
 // An icon's own colour: its palette's accent (and deep shade for light islands), remembered per icon.
 std::pair<UINT32,UINT32> Renderer::iconColour(const std::shared_ptr<const Artwork>& icon){
     for(auto& [weak,colours]:iconColours_)if(weak.lock()==icon)return colours;

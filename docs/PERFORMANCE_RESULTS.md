@@ -210,3 +210,18 @@ Same conditions as v0.15 (the development PC's own settings, compact, nothing pl
 
 The differences are one to three of Windows' 15.6 ms scheduler ticks over 30 seconds. The extra thread is the music library's worker, which waits until the library is first used; the player itself starts only with the first song. The halo, the bud and the liquid pill are compositor animations and cost the app nothing while they play.
 
+
+## v0.17 idle measurements
+
+The installed copy, with the development PC's own settings: compact, nothing playing, 25 s after launch, 30 s windows. v0.16.0-preview.2 was run from the same folder a few minutes earlier, so both used the same firewall rule and settings. The settings file was byte-identical afterwards.
+
+| Build | CPU time | One-core equivalent | Private memory | Threads | UI thread |
+|---|---:|---:|---:|---:|---:|
+| v0.17, first window | 0.156 s | 0.52% | 81.0 MB | 28 | 125 ms |
+| v0.17, second window | 0.250 s | 0.83% | 80.2 MB | 25 | 141 ms |
+| v0.16, same session | 0.141 s | 0.47% | 80.4 MB | 28 | 109 ms |
+
+Today this PC's baseline is higher for both builds than when v0.16 was first measured (0.031 s): the compact island redraws its glance each second. The two builds are within one or two of Windows' 15.6 ms scheduler ticks per second of work on the UI thread. v0.17 adds no work while idle:
+- the player's crossfade timer runs only while the island's own music plays
+- Up next's glide timer runs only while a row moves
+- the screen-reader tree is built only when a screen reader asks for it

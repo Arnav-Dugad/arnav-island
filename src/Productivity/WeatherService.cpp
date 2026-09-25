@@ -13,12 +13,19 @@ void WeatherService::run(){
     // Woken by a request (or at start), otherwise every 30 minutes; after a failed attempt, again in 2 minutes.
     DWORD wait=30*60*1000;
     for(;;){const DWORD r=WaitForMultipleObjects(2,waits,FALSE,wait);if(r==WAIT_OBJECT_0||r==WAIT_FAILED)break;
-        std::wstring town;{std::lock_guard lock(mutex_);town.swap(pending_);}
+        std::wstring town,query;std::optional<WeatherPlace> picked;{std::lock_guard lock(mutex_);town.swap(pending_);query.swap(search_);picked.swap(chosen_);}
+        // A search from Settings: up to six matches, posted as they are (nothing else changes).
+        if(!query.empty()){auto body=httpsGet(L"geocoding-api.open-meteo.com",geocodePath(query,8));auto found=body?parseGeocodeAll(*body,6):std::vector<WeatherPlace>{};
+            {std::lock_guard lock(mutex_);matches_=std::move(found);searched_=query;searchFailed_=!body;}PostMessageW(window_,WeatherMessage,2,0);
+            if(town.empty()&&!picked)continue;}
+        // A place chosen from those matches is saved as it is, and its weather is fetched straight away.
+        auto save=[&](const WeatherPlace& p){std::lock_guard lock(mutex_);place_=p;now_.reset();auto temp=file_;temp+=L".tmp";{std::ofstream out(temp,std::ios::binary);writePlace(out,p);}MoveFileExW(temp.c_str(),file_.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);};
+        if(picked){save(*picked);town.clear();}
         std::wstring problem;bool offline=false;
         if(!town.empty()){
             auto body=httpsGet(L"geocoding-api.open-meteo.com",geocodePath(town));auto found=body?parseGeocode(*body):std::nullopt;
-            if(found){std::lock_guard lock(mutex_);place_=found;now_.reset();auto temp=file_;temp+=L".tmp";{std::ofstream out(temp,std::ios::binary);writePlace(out,*found);}MoveFileExW(temp.c_str(),file_.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);}
-            else if(body)problem=L"No town called “"+town+L"” was found";
+            if(found)save(*found);
+            else if(body)problem=L"No town called “"+town+L"” was found. Pick it in Island settings, under Town";
             // Unreachable: keep the town (unless another was typed meanwhile) and try again soon.
             else{problem=L"Open-Meteo could not be reached. The island will try again";offline=true;std::lock_guard lock(mutex_);if(pending_.empty())pending_=town;}}
         std::optional<WeatherPlace> place;{std::lock_guard lock(mutex_);place=place_;}

@@ -6,6 +6,8 @@
 #include <optional>
 #include <ostream>
 #include <string>
+#include <vector>
+#include <algorithm>
 namespace nexus {
 // Phase 5F: weather from Open-Meteo (opt-in). WMO weather codes, as Open-Meteo reports them,
 // fold into a few skies the island can draw and animate.
@@ -22,20 +24,29 @@ inline std::wstring temperatureText(double celsius,int unit){const double v=unit
 // The chosen place: a name to show and coordinates rounded to two decimals (about a kilometre).
 struct WeatherPlace {std::wstring name;double latitude=0,longitude=0;bool operator==(const WeatherPlace&)const=default;};
 struct WeatherNow {double temperature=0;int code=-1;bool day=true;};
-// Open-Meteo's geocoding answer: the first match, named "Town, Country".
-inline std::optional<WeatherPlace> parseGeocode(std::string_view json){
-    auto doc=Json::parse(json);if(!doc)return std::nullopt;auto* results=doc->find("results");if(!results||results->type!=Json::Type::Array||results->items.empty())return std::nullopt;
-    const auto& r=results->items.front();if(r.type!=Json::Type::Object)return std::nullopt;auto* lat=r.find("latitude");auto* lon=r.find("longitude");if(!lat||!lon||lat->type!=Json::Type::Number||lon->type!=Json::Type::Number)return std::nullopt;
-    if(std::abs(lat->number)>90||std::abs(lon->number)>180)return std::nullopt;std::wstring name=fromUtf8(r.string("name"));if(name.empty())return std::nullopt;const auto country=fromUtf8(r.string("country"));if(!country.empty())name+=L", "+country;
-    return WeatherPlace{name,std::round(lat->number*100)/100,std::round(lon->number*100)/100};
+// Open-Meteo's geocoding answer: every match, named "Town, Region, Country" (Phase 5G: the region
+// tells towns of one name apart, "Manipal, Karnataka, India"), coordinates rounded to two decimals.
+inline std::vector<WeatherPlace> parseGeocodeAll(std::string_view json,size_t limit=8){
+    std::vector<WeatherPlace> out;auto doc=Json::parse(json);if(!doc)return out;auto* results=doc->find("results");if(!results||results->type!=Json::Type::Array)return out;
+    for(const auto& r:results->items){if(out.size()>=limit)break;if(r.type!=Json::Type::Object)continue;auto* lat=r.find("latitude");auto* lon=r.find("longitude");
+        if(!lat||!lon||lat->type!=Json::Type::Number||lon->type!=Json::Type::Number||std::abs(lat->number)>90||std::abs(lon->number)>180)continue;
+        std::wstring name=fromUtf8(r.string("name"));if(name.empty())continue;const auto region=fromUtf8(r.string("admin1")),country=fromUtf8(r.string("country"));
+        if(!region.empty()&&region!=name)name+=L", "+region;if(!country.empty())name+=L", "+country;if(name.size()>120)name.resize(120);
+        const WeatherPlace p{name,std::round(lat->number*100)/100,std::round(lon->number*100)/100};
+        // A name listed twice (a town and its district, a few kilometres apart) shows once, as Open-Meteo's first
+        // (most likely) match: two rows that read the same couldn't be told apart.
+        if(std::none_of(out.begin(),out.end(),[&](auto& q){return q.name==p.name;}))out.push_back(p);}
+    return out;
 }
+// The first match (the weather command's choice).
+inline std::optional<WeatherPlace> parseGeocode(std::string_view json){auto all=parseGeocodeAll(json,1);if(all.empty())return std::nullopt;return all.front();}
 // The "current" block of Open-Meteo's forecast answer.
 inline std::optional<WeatherNow> parseForecast(std::string_view json){
     auto doc=Json::parse(json);if(!doc)return std::nullopt;auto* current=doc->find("current");if(!current||current->type!=Json::Type::Object)return std::nullopt;
     auto* t=current->find("temperature_2m");auto* code=current->find("weather_code");if(!t||!code||t->type!=Json::Type::Number||code->type!=Json::Type::Number||!std::isfinite(t->number)||t->number<-100||t->number>70)return std::nullopt;
     return WeatherNow{t->number,int(code->number),current->num("is_day",1)!=0};
 }
-inline std::wstring geocodePath(const std::wstring& town){return L"/v1/search?count=1&language=en&format=json&name="+fromUtf8(urlEncode(toUtf8(town)));}
+inline std::wstring geocodePath(const std::wstring& town,int count=1){return L"/v1/search?count="+std::to_wstring(std::clamp(count,1,10))+L"&language=en&format=json&name="+fromUtf8(urlEncode(toUtf8(town)));}
 inline std::wstring forecastPath(const WeatherPlace& p){wchar_t b[160];swprintf(b,160,L"/v1/forecast?latitude=%.2f&longitude=%.2f&current=temperature_2m,weather_code,is_day&timezone=auto",p.latitude,p.longitude);return b;}
 // weather.nexus: the chosen place only.
 inline void writePlace(std::ostream& out,const WeatherPlace& p){char b[64];snprintf(b,sizeof b,"%.2f %.2f",p.latitude,p.longitude);out<<"weather 1\n"<<b<<'\n'<<toUtf8(p.name)<<'\n';}

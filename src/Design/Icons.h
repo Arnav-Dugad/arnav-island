@@ -11,7 +11,9 @@ enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous
     // Phase 5F: sharing with your own PCs.
     Laptop,Send,
     // Phase 5G: the music library, shuffle, and continuing music on another PC.
-    Library,Shuffle,Handoff};
+    Library,Shuffle,Handoff,
+    // Phase 5H: Up next, and the handle a row is dragged by.
+    Queue,Grip};
 // Original 24-unit optical grid. Rounded stroke ends are consistent at every DPI.
 inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float x,float y,float size,UINT32 color,float opacity=1){
     D2D1_MATRIX_3X2_F saved;rt->GetTransform(&saved);rt->SetTransform(D2D1::Matrix3x2F::Scale(size/24,size/24)*D2D1::Matrix3x2F::Translation(x,y)*saved);
@@ -100,6 +102,8 @@ inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float
     case Icon::Send:path({{3,11},{21,3},{14,21},{11,13}},true);line(11,13,21,3);break;
     case Icon::Library:line(3,6,15,6);line(3,11,15,11);line(3,16,10.5f,16);path({{18.5f,18},{18.5f,8.5f},{22,7.5f}});rt->FillEllipse(D2D1::Ellipse({16.2f,18.4f},2.5f,2.1f),brush.Get());break;
     case Icon::Shuffle:path({{3,7},{7,7},{15,17},{20.5f,17}});path({{3,17},{7,17},{9.6f,13.6f}});path({{12.4f,10.4f},{15,7},{20.5f,7}});path({{17.8f,4.3f},{20.5f,7},{17.8f,9.7f}});path({{17.8f,14.3f},{20.5f,17},{17.8f,19.7f}});break;
+    case Icon::Queue:path({{3.5f,4.5f},{3.5f,10.5f},{8.5f,7.5f}},true,true);line(12,7.5f,21,7.5f);line(3.5f,13.5f,21,13.5f);line(3.5f,19,21,19);break;
+    case Icon::Grip:for(float gy:{6.f,12.f,18.f}){dot(9,gy,1.6f);dot(15,gy,1.6f);}break;
     case Icon::Handoff:rect(2.5f,9.5f,14.5f,17.5f,1.5f);line(1,20.5f,16,20.5f);line(13.5f,11,21,3.5f);path({{16,3.5f},{21,3.5f},{21,8.5f}});break;
     case Icon::Exchange:line(4,8.5f,19,8.5f);path({{15.5f,5},{19,8.5f},{15.5f,12}});line(20,15.5f,5,15.5f);path({{8.5f,12},{5,15.5f},{8.5f,19}});break;
     case Icon::Trash:line(4,6.5f,20,6.5f);path({{9,6.5f},{9.6f,4},{14.4f,4},{15,6.5f}});path({{6,6.5f},{7,20},{17,20},{18,6.5f}});line(10,10,10,16.5f);line(14,10,14,16.5f);break;

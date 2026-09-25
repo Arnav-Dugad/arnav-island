@@ -180,7 +180,7 @@ void IslandWindow::shelfAction(Action a){
 }
 // ---- Pinned Shelf and pinned copies ---------------------------------------------------------------------
 void IslandWindow::shelfChanged(){
-    if(testing_)return;const auto path=store_.directory/L"shelf.nexus";
+    publishShelf();if(testing_)return;const auto path=store_.directory/L"shelf.nexus";
     if(!settings_.pinnedShelf){std::error_code ec;std::filesystem::remove(path,ec);return;}
     const std::string data=toUtf8(saveShelf(content_.shelf));store_.submit([path,data]{auto temp=path;temp+=L".tmp";{std::ofstream f(temp,std::ios::binary|std::ios::trunc);f<<data;}MoveFileExW(temp.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);});
 }

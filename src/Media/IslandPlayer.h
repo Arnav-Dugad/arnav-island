@@ -6,9 +6,6 @@
 #include <vector>
 namespace nexus {
 constexpr UINT PlayerMessage=WM_APP+73;
-// The island's own session, told apart from Windows' sessions by this id.
-constexpr uint64_t islandSessionId=0x49534c414e440001ull;
-constexpr const wchar_t* islandSource=L"ArnavIsland.Player";
 // Phase 5G: songs played by the island itself (Media Foundation), from a queue of library songs.
 // It registers with Windows' media controls for this window, so the keyboard's media keys, the
 // volume flyout and the lock screen show and control it like any player. Events (the engine's and
@@ -25,6 +22,17 @@ public:
     void toggle();void resume();void pause();void next();void previous();void seek(double seconds);
     // Silences the engine (test runs play Windows' own sounds without a sound).
     void mute(bool muted);
+    // Phase 5H: songs blend into each other over `seconds` (0: they don't); a song skipped fades out in a moment.
+    void crossfade(double seconds);
+    // The song playing rises from silence (music arriving from another PC), or sinks to silence and then pauses
+    // (music leaving for another PC).
+    void fadeIn(double seconds);void fadeOut(double seconds);bool fading()const;
+    // Volume ramps and the start of a crossfade; call again within the returned milliseconds (0: not needed).
+    // changed: what shows changed (the next song began, or a fade-out paused).
+    int tick(bool& changed);
+    // Up next: the songs after the one playing (at most `count`); a song moved within them (queue positions, both
+    // after the one playing); and a jump to a song in the queue.
+    std::vector<LibraryTrack> upNext(size_t count)const;bool move(size_t from,size_t to);void jump(size_t index);
     // Stops and forgets the queue (the session goes away).
     void stop();
     bool active()const;bool playing()const;

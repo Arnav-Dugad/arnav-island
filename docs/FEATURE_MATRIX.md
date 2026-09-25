@@ -1,4 +1,4 @@
-# Feature status — v0.16 preview
+# Feature status — v0.17 preview
 
 | Area | Implemented | Limits |
 |---|---|---|
@@ -156,3 +156,15 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Liquid navigation pill | Two edge springs (leading quicker) with caps and a stretched middle | — |
 | Weather | WinHTTP decompression failure detected and retried uncompressed; the town is kept and retried every 2 minutes when offline | — |
 
+
+| v0.17 feature | Implemented | Limits |
+|---|---|---|
+| Town field | Settings › Compact › Town: a text field that searches Open-Meteo 320 ms after typing stops; up to six towns named *Town, Region, Country*, one row per name; arrow keys, Enter, click; the chosen place saved and its weather shown in Settings | Needs the internet (Open-Meteo) |
+| Up next | The island's queue after the song playing (up to 200 listed), five rows with covers; drag to reorder (the others glide aside), click to play now, wheel and arrows to scroll; the next cover peeks from behind the current one | The island's own songs only |
+| Crossfade | Two media engines; equal-power curves (sine in, cosine out) over 0–12 s (6 by default); a 0.35 s fade on skips | Songs shorter than twice the crossfade plus 4 s don't crossfade |
+| Handoff fades | The island's song fades out over 1.4 s, then pauses; another app's mixer volume is lowered, the app paused, and its volume put back; on the other PC the song rises over 1.6 s | Apps without a mixer session pause straight away |
+| The cover on Play here | A 192-pixel JPEG of the cover goes with the offer (revision 1); the card shows it and how far into the song it is | Both PCs need 0.17 |
+| Another PC's Shelf | Nearby › Shelf lists a paired PC's Shelf (up to 32 items, previews up to 6 KB each); a click takes a copy into Downloads and onto this Shelf; the other PC confirms; off with *My PCs can take from the Shelf* | Files and folders only; both PCs need 0.17 |
+| Big transfers | 5 GB or more: a ring in the compact island filling with progress, its stroke from 1.6 to 4.4 DIPs with speed (full at 110 MB/s), the speed beside it and the time left in the label; speed and time left on Nearby rows | Speed is smoothed over quarter-second samples |
+| Side by side | Pointing at two alerts: the pill moves left and the waiting alert becomes a card as tall as it, 8 DIPs to its right (spring), clickable there; closes up 0.38 s after the pointer leaves | Drop pill (top dock) |
+| Screen readers | UI Automation: the island is a pane (expand and collapse) whose children are its current targets in reading order, with names; Invoke for buttons, Toggle for switches, RangeValue for sliders; alerts, pages, songs and levels announced | The Settings window is not yet exposed |

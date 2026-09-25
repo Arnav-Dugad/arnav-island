@@ -152,6 +152,15 @@ inline BudShape budShape(double b,double pillBottom,double centre,double width,d
     const double top=pillBottom-1+(1+budGap)*part,bottom=std::max(top,pillBottom-1+(1+budGap+height)*grow+over*14);
     return {centre-w/2,top,centre+w/2,bottom,std::max(0.,std::min({height/2,(bottom-top)/2,w/2}))};
 }
+// Phase 5H: hovered, the two alerts spread side by side (spread 0..1): the pill moves left (the caller's origin already
+// has) and the bud glides from below it to a card as tall as the pill, budGap to its right. pillTop and pillBottom are
+// the pill's edges, centre its middle and pillRight its right edge, all in DIPs.
+inline BudShape budSpreadShape(double b,double spread,double pillTop,double pillBottom,double centre,double pillRight,double pillRadius,double width,double height){
+    const auto below=budShape(b,pillBottom,centre,width,height);const double e=std::clamp(spread,0.,1.);if(e<=0)return below;
+    const double sl=pillRight+budGap,st=pillTop,sb=pillBottom,rad=std::max(0.,std::min({pillRadius,(sb-st)/2,width/2}));
+    auto mix=[&](double a,double z){return a+(z-a)*e;};
+    return {mix(below.left,sl),mix(below.top,st),mix(below.right,sl+width),mix(below.bottom,sb),mix(below.radius,rad)};
+}
 inline double rubberBand(double displacement,double limit=90) {
     return std::copysign(limit*(1-1/(std::abs(displacement)/limit+1)),displacement);
 }
@@ -182,6 +191,8 @@ struct MotionEngine {
     Spring drop{0};double stubWidth=196,stubHeight=34,stubRadius=17;
     // Phase 5G: the bud of a waiting alert (budShape), and its size.
     Spring bud{0};double budWidth=236,budHeight=36;
+    // Phase 5H: the two alerts side by side (budSpreadShape), and how far left the pill moves for it.
+    Spring spread{0};double spreadShift=122;
     // Auto-hide fades the island only in the last part of its slide.
     PhysicalState stageOpacity(double now)const{auto s=slide.sample(now);double q=std::clamp((s.position-.45)/.55,0.,1.),dq=(s.position>.45&&s.position<1)?s.velocity/.55:0;return {1-q*q*(3-2*q),-6*q*(1-q)*dq};}
     // A short sideways kick to the resting width when something new arrives.

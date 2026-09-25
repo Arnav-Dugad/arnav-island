@@ -93,7 +93,7 @@ int main(){try{
     auto items=settingItems(2);std::set<std::string> covered;for(auto& i:items)if(!i.key.empty())covered.insert(i.key);
     // The seven chip positions are one control ("chips").
     for(auto& k:keys)test(covered.contains(k)||(k.starts_with("chip")&&covered.contains("chips")),"settings window exposes every persisted preference");
-    for(auto& item:items){if(item.control==SettingControl::Chips||item.control==SettingControl::Button||item.control==SettingControl::Note||item.control==SettingControl::Order||item.control==SettingControl::Preview||item.control==SettingControl::Actions)continue;
+    for(auto& item:items){if(item.control==SettingControl::Chips||item.control==SettingControl::Button||item.control==SettingControl::Note||item.control==SettingControl::Order||item.control==SettingControl::Preview||item.control==SettingControl::Actions||item.control==SettingControl::Town)continue;
         // Slow motion is a study aid and is deliberately never saved.
         if(item.key!="labSpeed")for(int v=item.lo;v<=item.hi;v+=std::max(1,(item.hi-item.lo)/12)){Settings s;item.set(s,v);std::stringstream io;s.write(io);auto back=Settings::parse(io);test(item.get(back)==item.get(s),"each control value round-trips through the settings file");}
         if(item.control==SettingControl::Slider||item.control==SettingControl::Choice||item.control==SettingControl::Swatch){Settings s;item.set(s,item.hi+1000);test(item.get(s)<=item.hi,"controls clamp above range");item.set(s,item.lo-1000);test(item.get(s)>=item.lo,"controls clamp below range");}}
@@ -506,7 +506,7 @@ int main(){try{
         test(skyOf(0)==Sky::Clear&&skyOf(2)==Sky::PartlyCloudy&&skyOf(45)==Sky::Fog&&skyOf(53)==Sky::Drizzle&&skyOf(81)==Sky::Rain&&skyOf(73)==Sky::Snow&&skyOf(96)==Sky::Storm,"WMO codes");
         test(std::wstring(skyLabel(Sky::Storm))==L"Storm"&&std::wstring(skyLabel(Sky::PartlyCloudy))==L"Partly cloudy"&&temperatureText(-.4,0)==L"0\u00b0"&&temperatureText(20,1)==L"68\u00b0","the tile's words and degrees");
         const std::vector<InstalledApp> apps;auto c=parseCommand(L"weather in Paris",apps,{},L"C:\\");test(!c.empty()&&c[0].kind==CommandKind::Weather&&c[0].detail.find(L"only the town is sent")!=std::wstring::npos&&!CommandMemory::memorable(CommandKind::Weather),"the weather command");
-        c=parseCommand(L"weather",apps,{},L"C:\\");test(!c.empty()&&c[0].kind!=CommandKind::Weather,"the weather command needs a town");}
+        c=parseCommand(L"weather",apps,{},L"C:\\");test(!c.empty()&&c[0].kind==CommandKind::Weather&&c[0].target.empty(),"a bare weather command opens the Town field");}
     // ---- Phase 5F: battery health and the week ---------------------------------------------------------
     {BatteryHealthLog log;BatteryReading r;r.fullMwh=45000;r.designMwh=50000;r.cycles=10;const int64_t day=86400;
         test(log.add(100*day,r)&&!log.add(100*day+3600,r),"one health reading a day");r.relative=true;test(!log.add(101*day,r),"relative readings carry no capacity");r.relative=false;
@@ -571,6 +571,22 @@ int main(){try{
             test(peak>1000&&peak<32767/6&&std::abs(int(tail))<=2,"the sounds are quiet and end in silence");}
         std::stringstream v14("version 14\nsharing 1\n");auto s=Settings::parse(v14);test(s.clipboardKeep&&s.sounds&&s.handoff&&s.islandDj&&s.stackAlerts&&s.musicLibrary&&s.sharing,"v14 settings gain the v15 features, on");
         Settings off;off.clipboardKeep=off.sounds=off.handoff=off.islandDj=off.stackAlerts=off.musicLibrary=false;std::stringstream io;off.write(io);auto back=Settings::parse(io);
-        test(!back.clipboardKeep&&!back.sounds&&!back.handoff&&!back.islandDj&&!back.stackAlerts&&!back.musicLibrary&&back.version==15,"v15 settings round-trip");}
+        test(!back.clipboardKeep&&!back.sounds&&!back.handoff&&!back.islandDj&&!back.stackAlerts&&!back.musicLibrary&&back.version==Settings::currentVersion,"v15 settings round-trip");}
+    // ---- Phase 5H: settings v16, the alerts side by side, time left, towns ------------------------------
+    {std::stringstream v15("version 15\nsharing 1\n");auto s=Settings::parse(v15);test(s.shelfOpen&&s.crossfade==6&&s.sharing,"v15 settings gain the v16 features (the Shelf open to your PCs, a 6 s crossfade)");
+        Settings off;off.shelfOpen=false;off.crossfade=0;std::stringstream io;off.write(io);auto back=Settings::parse(io);test(!back.shelfOpen&&back.crossfade==0&&back.version==16,"v16 settings round-trip");
+        std::stringstream wild("version 16\ncrossfade 40\n");test(Settings::parse(wild).crossfade==12,"a crossfade is at most 12 s");
+        bool listed=false,town=false;for(auto& i:settingItems())if(i.key=="crossfade"&&i.control==SettingControl::Slider&&i.hi==12)listed=true;else if(i.key=="weatherTown"&&i.control==SettingControl::Town&&i.section==4)town=true;
+        test(listed&&town,"Settings has the crossfade slider and the Town field");
+        const auto below=budShape(1,120,340,236,36);const auto same=budSpreadShape(1,0,28,120,340,526,30,236,36);
+        test(std::abs(same.left-below.left)+std::abs(same.top-below.top)+std::abs(same.right-below.right)+std::abs(same.bottom-below.bottom)<1e-9,"unspread, the bud stays below the pill");
+        const auto side=budSpreadShape(1,1,28,120,340,526,30,236,36);
+        test(std::abs(side.left-(526+budGap))<1e-9&&std::abs(side.right-(526+budGap+236))<1e-9&&std::abs(side.top-28)<1e-9&&std::abs(side.bottom-120)<1e-9&&side.radius<=30+1e-9,"spread, it is a card as tall as the pill, beside it");
+        bool smooth=true;BudShape last=same;for(int k=1;k<=50;++k){const auto b=budSpreadShape(1,k/50.,28,120,340,526,30,236,36);if(b.left<last.left-1e-9||b.top>last.top+1e-9||b.radius>(b.bottom-b.top)/2+1e-9||b.radius>(b.right-b.left)/2+1e-9)smooth=false;last=b;}
+        test(smooth,"it glides there, its corners always fitting it");
+        test(leftText(40)==L"40 s left"&&leftText(.3)==L"1 s left"&&leftText(719)==L"12 min left"&&leftText(3900)==L"1 h 5 min left"&&leftText(-1).empty()&&leftText(1e9).empty(),"time left reads naturally");
+        const auto many=parseGeocodeAll(R"({"results":[{"name":"Manipal","admin1":"Karnataka","country":"India","latitude":13.35,"longitude":74.79},{"name":"Manipal","admin1":"Karnataka","country":"India","latitude":13.36,"longitude":74.78},{"name":"Manipal","admin1":"Gandaki Pradesh","country":"Nepal","latitude":28.2,"longitude":83.9},{"name":"Jubail","admin1":"Eastern Province","country":"Saudi Arabia","latitude":27.0,"longitude":49.66}]})",8);
+        test(many.size()==3&&many[0].name==L"Manipal, Karnataka, India"&&many[1].name==L"Manipal, Gandaki Pradesh, Nepal"&&many[2].name==L"Jubail, Eastern Province, Saudi Arabia","towns are named with their region, and listed once");
+        test(parseGeocodeAll(R"({"results":[{"name":"A","country":"X","latitude":1,"longitude":1},{"name":"B","country":"X","latitude":2,"longitude":2}]})",1).size()==1&&geocodePath(L"Udupi",8).find(L"count=8")!=std::string::npos&&geocodePath(L"x",99).find(L"count=10")!=std::string::npos,"a search asks for up to ten");}
     std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery, auto-hide, command, clipboard, workspace, privacy, waveform, lab, accent, lyrics, palette, seeking, audio-route, currency, system-action, completion, file-search, command-memory, rolling-digit, GPU, colour, typo, row-group, left-dock, clipboard-history, library, bud, sound and v15 checks\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

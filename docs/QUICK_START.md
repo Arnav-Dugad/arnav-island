@@ -185,3 +185,17 @@ Click a paired PC in Nearby to make it where Send goes. **Forget** unpairs it.
 
 **Weather.** If you set a town on 0.15, type *weather* and the town once more.
 
+
+## v0.17 Up next, your other PC's Shelf, side by side, screen readers
+
+**Choose the weather's town.** Settings › Compact › **Town**: type the town and pick it from the list (arrow keys and Enter work too).
+
+**Up next.** While the island plays your music, press the queue button on the Media page (or the cover peeking out from behind the one playing). Drag a song up or down to move it; click one to play it now.
+
+**Crossfade.** Settings › Media & sound › *Crossfade*: 0 to 12 seconds (6 to begin with).
+
+**Take from your other PC's Shelf.** Shelf › Nearby › **Shelf** on a paired PC. Click anything to take a copy; it lands in Downloads and on your Shelf. Both PCs need 0.17.
+
+**Two alerts.** Point at them and they spread side by side; click the second to see it now.
+
+**Screen readers.** Narrator (Win+Ctrl+Enter), NVDA or JAWS find the island as *Island*; its buttons, switches and sliders are listed with their names, and alerts are read out as they arrive.
