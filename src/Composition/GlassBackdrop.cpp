@@ -146,7 +146,9 @@ struct GlassBackdrop::Impl {
     bool leanable=true;
     ComPtr<wuc::IVisual> visual(const ComPtr<IInspectable>& v){return as<wuc::IVisual>(v);}
     ComPtr<wuc::IExpressionAnimation> expression(const std::wstring& text){ComPtr<wuc::IExpressionAnimation> a;String s(text.c_str());check(compositor->CreateExpressionAnimationWithExpression(s,&a));String p(L"p");check(as<wuc::ICompositionAnimation>(a)->SetReferenceParameter(p,as<wuc::ICompositionObject>(properties).Get()));return a;}
-    template<class T> void start(const ComPtr<T>& object,const wchar_t* property,const std::wstring& text){auto a=expression(text);String name(property);check(as<wuc::ICompositionObject>(object)->StartAnimation(name,as<wuc::ICompositionAnimation>(a).Get()));}
+    // A failure names the property and the start of its expression.
+    template<class T> void start(const ComPtr<T>& object,const wchar_t* property,const std::wstring& text){try{auto a=expression(text);String name(property);check(as<wuc::ICompositionObject>(object)->StartAnimation(name,as<wuc::ICompositionAnimation>(a).Get()));}
+        catch(const std::exception& e){std::string what(e.what());what+=" starting ";for(const wchar_t* c=property;*c;++c)what+=char(*c);what+=" = ";for(size_t k=0;k<text.size()&&k<90;++k)what+=char(text[k]);throw std::runtime_error(what);}}
     ComPtr<IInspectable> stop(float offset,Color color){ComPtr<IInspectable> s;check(as<Compositor4>(compositor)->CreateColorGradientStopWithOffsetAndColor(offset,color,&s));return s;}
     ComPtr<IInspectable> gradient(bool absolute){
         ComPtr<IInspectable> brush;check(as<Compositor4>(compositor)->CreateLinearGradientBrush(&brush));auto linear=as<LinearGradientBrush>(brush);check(linear->put_StartPoint({0,0}));check(linear->put_EndPoint({0,1}));
@@ -244,12 +246,16 @@ void GlassBackdrop::Impl::layout(){
     const bool drops=!side&&attached;const std::wstring dp=L"(p.d*"+px(dropDistance)+L")",top=drops?L"Min(2*"+dp+L"-"+E+L","+dp+L")":L"0",detach=L"("+dp+L"-"+E+L"/2)";
     // The bud (budShape in MotionEngine.h, in these units): it grows from the pill's foot, then lets go budGap below it.
     const std::wstring pillFoot=L"(Round(p.h)+"+dp+L")",budGrow=L"Clamp(p.b/0.55,0,1)",budPart=L"Clamp((p.b-0.55)/0.45,0,1.25)",budOver=L"Max(p.b-1,0)",budW0=L"(p.bw*(0.35+0.65*Clamp(p.b/0.8,0,1)))";
-    const std::wstring budTop0=L"("+pillFoot+L"-"+px(1)+L"+"+px(1+budGap)+L"*"+budPart+L")",budBottom0=L"Max("+budTop0+L","+pillFoot+L"-"+px(1)+L"+("+px(1+budGap)+L"+p.bh)*"+budGrow+L"+"+budOver+L"*"+px(14)+L")";
-    const std::wstring budLeft0=L"(("+cw+L"-"+budW0+L")/2-p.sp*p.ss)",budCorner0=L"Min(p.bh/2,Min(("+budBottom0+L"-"+budTop0+L")/2,"+budW0+L"/2))";
     // Phase 5H: spread, the bud glides to a card as tall as the pill beside it (budSpreadShape).
+    // Its edges are properties of their own (bt0, bb0, bw0 below the pill; bl, bt, bv, bb, bc mixed), each from a
+    // short expression: written out in full, the corner's expression grew too long to start, and the glass stopped.
     const std::wstring e=L"Clamp(p.sp,0,1)",sideL=L"(("+cw+L"+p.w)/2-p.sp*p.ss+"+px(budGap)+L")",sideT=dp,sideB=pillFoot,sideC=L"Min(p.r,Min(("+sideB+L"-"+sideT+L")/2,p.bw/2))";
     auto mixed=[&](const std::wstring& a,const std::wstring& z){return L"("+a+L"+("+z+L"-"+a+L")*"+e+L")";};
-    const std::wstring budLeft=mixed(budLeft0,sideL),budTop=mixed(budTop0,sideT),budW=mixed(budW0,L"p.bw"),budBottom=mixed(budBottom0,sideB),budCorner=mixed(budCorner0,sideC);
+    if(drops){start(properties,L"bt0",L"("+pillFoot+L"-"+px(1)+L"+"+px(1+budGap)+L"*"+budPart+L")");
+        start(properties,L"bb0",L"Max(p.bt0,"+pillFoot+L"-"+px(1)+L"+("+px(1+budGap)+L"+p.bh)*"+budGrow+L"+"+budOver+L"*"+px(14)+L")");start(properties,L"bw0",budW0);
+        start(properties,L"bl",mixed(L"(("+cw+L"-p.bw0)/2-p.sp*p.ss)",sideL));start(properties,L"bt",mixed(L"p.bt0",sideT));start(properties,L"bv",mixed(L"p.bw0",L"p.bw"));
+        start(properties,L"bb",mixed(L"p.bb0",sideB));start(properties,L"bc",mixed(L"Min(p.bh/2,Min((p.bb0-p.bt0)/2,p.bw0/2))",sideC));}
+    const std::wstring budLeft=L"p.bl",budTop=L"p.bt",budW=L"p.bv",budBottom=L"p.bb",budCorner=L"p.bc";
     const std::wstring blend=L"Clamp("+detach+L"/"+px(12)+L",0,1)",SW=L"(p.w+(p.sw-p.w)*"+blend+L")",Ls=L"Round(("+cw+L"-"+SW+L")/2)",Rs=L"Round(("+cw+L"+"+SW+L")/2)";
     start(glass,L"Offset",edge==1?L"Vector3(Round(p.dx+p.s*"+px(74)+L"),Round(p.dy),0)":left?L"Vector3(Round(p.dx-p.s*"+px(74)+L"),Round(p.dy),0)":L"Vector3(Round(p.dx),Round(p.dy-p.s*"+px(44)+L"),0)");
     start(glass,L"Opacity",L"1-Clamp((p.s-0.45)/0.55,0,1)*Clamp((p.s-0.45)/0.55,0,1)*(3-2*Clamp((p.s-0.45)/0.55,0,1))");
@@ -371,7 +377,7 @@ bool GlassBackdrop::initialize(HWND window,float scale,float canvasWidth,float c
         check(as<wuc::ICompositionTarget>(i.target)->put_Root(i.visual(i.root).Get()));
         ComPtr<wuc::IVisualCollection> rootChildren;check(i.root->get_Children(&rootChildren));check(rootChildren->InsertAtTop(i.visual(i.glass).Get()));
         check(i.visual(i.root)->put_Size({canvasWidth*scale,canvasHeight*scale}));check(i.visual(i.glass)->put_Size({canvasWidth*scale,canvasHeight*scale}));
-        check(c->CreatePropertySet(&i.properties));for(auto key:{L"t",L"w",L"h",L"r",L"dx",L"dy",L"s",L"tw",L"th",L"so",L"d",L"sw",L"sr",L"sh",L"b",L"bw",L"bh"}){String k(key);check(i.properties->InsertScalar(k,0.f));}
+        check(c->CreatePropertySet(&i.properties));for(auto key:glassProperties){String k(key);check(i.properties->InsertScalar(k,0.f));}
         check(c->CreateColorBrushWithColor(color(0x0c0d11,.55f),&i.tintBrush));
         check(as<Compositor5>(c)->CreateRoundedRectangleGeometry(&i.geometry));
         ComPtr<wuc::IVisualCollection> glassChildren;check(i.glass->get_Children(&glassChildren));
@@ -484,7 +490,7 @@ void GlassBackdrop::style(const GlassStyle& s){
     }catch(...){}
 }
 void GlassBackdrop::animate(const MotionEngine& m,double now,int edge,bool attached){
-    if(!available_)return;auto& i=*impl_;
+    if(!available_)return;auto& i=*impl_;const char* step="clock";
     try{
         const double s=i.scale;
         // The expression clock starts on the frame that receives this commit; begin
@@ -495,17 +501,17 @@ void GlassBackdrop::animate(const MotionEngine& m,double now,int edge,bool attac
         ComPtr<wuc::ICompositionEasingFunction> linear;{ComPtr<wuc::ILinearEasingFunction> l;check(i.compositor->CreateLinearEasingFunction(&l));check(l.As(&linear));}
         const float span=6;check(clock->InsertKeyFrame(0,float(lead)));check(clock->InsertKeyFrameWithEasingFunction(1,float(lead+span),linear.Get()));
         ABI::Windows::Foundation::TimeSpan duration{LONGLONG(span*1e7)};check(as<KeyFrameAnimation>(clock)->put_Duration(duration));
-        ComPtr<IInspectable> props;check(i.properties.As(&props));
+        ComPtr<IInspectable> props;check(i.properties.As(&props));step="targets";
         {String tw(L"tw"),th(L"th");check(i.properties->InsertScalar(tw,float(m.width.target()*s)));check(i.properties->InsertScalar(th,float(m.height.target()*s)));}
         {String sw(L"sw"),sr(L"sr"),sh(L"sh");check(i.properties->InsertScalar(sw,float(m.stubWidth*s)));check(i.properties->InsertScalar(sr,float(m.stubRadius*s)));check(i.properties->InsertScalar(sh,float(m.stubHeight*s)));}
-        i.start(props,L"d",springExpression(SpringTerms::from(m.drop,now),1));i.start(props,L"b",springExpression(SpringTerms::from(m.bud,now),1));
+        step="springs";i.start(props,L"d",springExpression(SpringTerms::from(m.drop,now),1));i.start(props,L"b",springExpression(SpringTerms::from(m.bud,now),1));
         {String bw(L"bw"),bh(L"bh"),ss(L"ss");check(i.properties->InsertScalar(bw,float(m.budWidth*s)));check(i.properties->InsertScalar(bh,float(m.budHeight*s)));check(i.properties->InsertScalar(ss,float(m.spreadShift*s)));}
         i.start(props,L"sp",springExpression(SpringTerms::from(m.spread,now),1));
         i.start(props,L"w",springExpression(SpringTerms::from(m.width,now),s));i.start(props,L"h",springExpression(SpringTerms::from(m.height,now),s));
         i.start(props,L"r",springExpression(SpringTerms::from(m.radius,now),s));i.start(props,L"dx",springExpression(SpringTerms::from(m.dragX,now),s));i.start(props,L"dy",springExpression(SpringTerms::from(m.dragY,now),s));i.start(props,L"s",springExpression(SpringTerms::from(m.slide,now),1));
-        check(as<wuc::ICompositionObject>(i.properties)->StartAnimation(t,as<wuc::ICompositionAnimation>(clock).Get()));
-        const float radius=float(m.radius.target());
+        step="time";check(as<wuc::ICompositionObject>(i.properties)->StartAnimation(t,as<wuc::ICompositionAnimation>(clock).Get()));
+        const float radius=float(m.radius.target());step="layout";
         if(edge!=i.edge||attached!=i.attached||std::abs(radius-i.radius)>1e-3f){i.edge=edge;i.attached=attached;i.radius=radius;i.layout();}
-    }catch(const std::exception& e){lastError_=e.what();}
+    }catch(const std::exception& e){lastError_=std::string(step)+": "+e.what();}
 }
 }

@@ -74,3 +74,21 @@
 - **The Settings window** is not yet exposed to screen readers. The island is.
 - **Side by side** needs the drop pill (top dock).
 - **Unsigned preview.**
+
+## 0.17.0-preview.2
+
+**Glass.** Three separate failures, each making `GlassBackdrop::animate` or `layout` throw and leave the glass behind:
+- **`sp` and `ss`** (the side-by-side spring and shift) weren't created with the property set. Starting a spring on a missing property fails with `E_INVALIDARG`, before the width, height and radius springs start. Fixed with one list, `glassProperties`, that creates them all. A phase test scans every expression literal for `p.<name>` and every started spring, against that list.
+- **The bud's corner** was a single expression over a thousand characters long, written twice in a `Vector2`. It is now built from properties (`bt0`, `bb0`, `bw0`, then `bl`, `bt`, `bv`, `bb`, `bc`), each from a short expression.
+- **`expressionNumber`** used `%.9g`, which writes exponents for tiny values (a settling spring's terms). Expressions reject them. It now writes plain decimals to about nine significant digits, and treats anything under 1e-9 as 0.
+- **Why this wasn't caught.** The UI test checked that the glass was visible, never that its animations had started. It now reports the glass's last error, and the step that failed names the property and expression.
+
+**Lyrics.** `MediaProvider` now calls `timelinePosition`: while playing, the reported position plus the time since the timeline's `LastUpdatedTime` (from the future, missing or more than six hours old: ignored). The live check used Windows' `MediaPlayer` on one of Windows' own sounds:
+
+| Moment | True position | Reported | Report's age | Corrected |
+|---:|---:|---:|---:|---:|
+| 3 s | 2.91 s | 0.00 s | 2.91 s | 2.92 s |
+| 6 s | 5.91 s | 0.00 s | 5.91 s | 5.91 s |
+| 9 s | 8.91 s | 6.04 s | 2.87 s | 8.91 s |
+
+**Audit.** 78 island views from its internal render, and 18 Settings pages saved by the Settings window itself (`--qa-settings-sweep`, test runs only), reviewed one by one. No screen was captured.

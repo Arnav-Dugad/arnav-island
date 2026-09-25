@@ -61,7 +61,7 @@ endif()
 
 add_executable(phase_tests tests/PhaseTests.cpp)
 target_link_libraries(phase_tests PRIVATE nexus_core)
-target_compile_definitions(phase_tests PRIVATE UNICODE _UNICODE NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00)
+target_compile_definitions(phase_tests PRIVATE UNICODE _UNICODE NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00 NEXUS_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 if(MINGW)
   target_link_options(phase_tests PRIVATE -static -static-libgcc -static-libstdc++)
 endif()

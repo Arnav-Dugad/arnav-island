@@ -223,3 +223,21 @@ Found and fixed along the way:
 - In test runs the command bar could open without its search service.
 - The first search waited on Windows' radio state; it's now read when the service starts.
 - A test script's clean-up stopped every copy of the island, including the installed one; it now stops only test copies.
+
+## Status after v0.17.0-preview.2 — glass, lyrics timing, full UI audit — 2026-09-26
+
+Shipped, as asked:
+- **Frosted and Clear glass:** fixed. There were three causes:
+  - properties missing from the property set
+  - an expression too long to start
+  - numbers written with exponents
+- **Lyrics timing:** positions now move on from when the player last reported them; checked against a real session.
+- **Every UI surface and alignment:** audited from the island's own renders and the Settings window's own frames. Fixed:
+  - offer card details
+  - output icons
+  - command icons and hints
+
+Guards added:
+- A phase test reads the glass source and fails if any `p.<name>` it reads or animates isn't created with the property set.
+- A phase test fails if any expression number has an exponent.
+- The UI test fails if the glass reports any error, and runs Clear and Frosted through every shape.

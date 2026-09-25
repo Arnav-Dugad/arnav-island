@@ -286,7 +286,7 @@ inline std::vector<CommandResult> parseCommand(const std::wstring& typed,const s
     // Weather: "weather London" (or "weather in London") chooses the place.
     if(first==L"weather"||first==L"forecast"){std::wstring town=after(1);for(auto lead:{L"in ",L"for ",L"at "})if(lowered(town).starts_with(lead)){town=trimmed(town.substr(wcslen(lead)));break;}
         // Just "weather": the town is chosen in Island settings (an empty target opens its Town field).
-        if(town.size()<2){add(CommandKind::Weather,L"Choose the weather\u2019s town",L"Island settings  \u00b7  Compact  \u00b7  Town, or type \u201cweather Mumbai\u201d");return out;}
+        if(town.size()<2){add(CommandKind::Weather,L"Choose the weather\u2019s town",L"Opens Settings \u203a Compact \u203a Town");return out;}
         if(town.size()>60)town.resize(60);add(CommandKind::Weather,L"Show the weather for "+town,L"In the island\u2019s glance and on Home  \u00b7  from Open-Meteo; only the town is sent",0,town);return out;}
     // A colour code previews itself.
     if(auto colour=parseColourCode(text)){CommandResult r;r.kind=CommandKind::Colour;r.value=int(*colour);r.title=colourHex(*colour);r.answer=r.title;r.detail=colourDetail(*colour);r.target=r.title;out.push_back(std::move(r));return out;}

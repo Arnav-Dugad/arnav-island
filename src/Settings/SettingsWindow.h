@@ -31,6 +31,8 @@ public:
     bool open()const{return window_.load()!=nullptr;}
     // Test support: types into the Town field (it takes the keyboard and looks the town up).
     void typeTown(const std::wstring& text);
+    // Test support: saves every section, a page at a time, as the window drew it, into `dir` (then done.txt).
+    void sweep(const std::wstring& dir);
     HWND handle()const{return window_.load();}
     // Test support: current layout in client pixels, whether motion has settled.
     std::vector<Probe> probes();bool settled();int section();

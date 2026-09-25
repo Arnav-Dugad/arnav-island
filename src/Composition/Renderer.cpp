@@ -1,4 +1,5 @@
 #include "Renderer.h"
+#include "Audio/AudioRoute.h"
 #include <dxgi1_2.h>
 #include "Composition/DockGeometry.h"
 
@@ -314,7 +315,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 case CommandKind::SearchFiles:return Icon::Search;case CommandKind::OpenSettings:return Icon::Settings;case CommandKind::Workspace:case CommandKind::SaveWorkspace:case CommandKind::DeleteWorkspace:return Icon::Workspace;
                 case CommandKind::Clipboard:case CommandKind::ClearClipboard:return Icon::Clipboard;case CommandKind::Lock:return Icon::Lock;case CommandKind::MicMute:return Icon::MicOff;case CommandKind::Snip:return Icon::Snip;case CommandKind::CopyText:return Icon::Text;case CommandKind::PickColour:return Icon::Eyedropper;case CommandKind::ClipPaste:return Icon::Clipboard;case CommandKind::MicUnmute:case CommandKind::MicToggle:return Icon::Microphone;
                 case CommandKind::DarkMode:case CommandKind::Sleep:return Icon::Moon;case CommandKind::Bluetooth:return Icon::Bluetooth;case CommandKind::WiFi:return Icon::Wifi;case CommandKind::Airplane:return Icon::Plane;case CommandKind::EmptyBin:return Icon::Trash;
-                case CommandKind::Restart:return Icon::Reset;case CommandKind::ShutDown:return Icon::Power;case CommandKind::OpenFile:return Icon::File;case CommandKind::Currency:return Icon::Exchange;default:return Icon::Info;}};
+                case CommandKind::Restart:return Icon::Reset;case CommandKind::ShutDown:return Icon::Power;case CommandKind::OpenFile:return Icon::File;case CommandKind::Currency:return Icon::Exchange;case CommandKind::Weather:return Icon::Cloud;case CommandKind::PlaySong:return Icon::Music;case CommandKind::ShuffleMusic:return Icon::Shuffle;case CommandKind::ContinueOn:return Icon::Handoff;default:return Icon::Info;}};
             if(c.results.empty()&&c.clips){drawIcon(rt,d2d_.Get(),Icon::Clipboard,14,62,16,muted);text(rt,s.settings.clipboardHistory?(c.text.empty()?L"Nothing copied yet":L"No copies match"):L"Turn on clipboard history to search your copies",46,52,330,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,38);}
             else if(c.results.empty()){
                 // Nothing typed yet: a few things to try.
@@ -363,7 +364,10 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         }
         if(s.card&&s.notice.kind>=14&&s.notice.kind<=17){
             // Sharing: the pairing code both PCs show, a file to accept, or how a transfer or a pairing went.
-            const auto& n=s.notice;
+            // A detail too long for its room keeps what follows its first dot (a size, where it's from) and shortens the name.
+            auto fitted=[&](const std::wstring& d,float w,float size){if(measure(d,size)<=w)return d;const auto cut=d.find(L"  \u00b7  ");if(cut==std::wstring::npos)return d;
+                std::wstring head=d.substr(0,cut);const std::wstring tail=d.substr(cut);while(head.size()>1&&measure(head+L"\u2026"+tail,size)>w)head.pop_back();return head+L"\u2026"+tail;};
+            auto n=s.notice;n.detail=fitted(n.detail,n.kind==16&&!n.path.empty()?176.f:n.kind==16?256.f:176.f,11);
             if(n.kind==14){text(rt,L"Pair with "+n.app+L"?",72,2,176,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,20,176,19,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,30);
                 text(rt,L"The same code shows on both PCs",72,46,176,9,muted);button(Action::SharePair,L"Pair",256,4,76,26,true);button(Action::ShareDecline,L"Not now",256,34,76,22);}
             else if(n.kind==15){text(rt,n.app+L" is sending",72,6,176,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,176,11,muted);
@@ -725,7 +729,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 // The arrow sits inside the button, after its label.
                 targets.push_back({Action::MixerSettings,0,203,214,25});box(0,203,214,25,raised,9);text(rt,L"Windows volume mixer",14,203,170,11.5f,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,25);drawIcon(rt,d2d_.Get(),Icon::ArrowRight,190,209,13,muted);
             }else{
-            text(rt,s.feedback.empty()?L"Choose where your sound goes":s.feedback,176,37,204,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);for(size_t i=s.audioOffset;i<std::min(size_t(s.audioOffset+4),s.outputs.size());++i){float y=62+float(i-s.audioOffset)*34;auto& output=s.outputs[i];Action a=Action(int(Action::DeviceBase)+int(i));targets.push_back({a,0,y,380,30});box(0,y,380,30,raised,9);icon(a,Icon::Audio,10,y+7,16,output.current?accent:muted);text(rt,output.name,37,y+7,302,11,ink);if(output.current)drawIcon(rt,d2d_.Get(),Icon::Check,353,y+7,16,accent);}
+            text(rt,s.feedback.empty()?L"Choose where your sound goes":s.feedback,176,37,204,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);for(size_t i=s.audioOffset;i<std::min(size_t(s.audioOffset+4),s.outputs.size());++i){float y=62+float(i-s.audioOffset)*34;auto& output=s.outputs[i];Action a=Action(int(Action::DeviceBase)+int(i));targets.push_back({a,0,y,380,30});box(0,y,380,30,raised,9);icon(a,isHeadphoneOutput(output.name,output.form)?Icon::Audio:Icon::Speaker,10,y+7,16,output.current?accent:muted);text(rt,output.name,37,y+7,302,11,ink);if(output.current)drawIcon(rt,d2d_.Get(),Icon::Check,353,y+7,16,accent);}
             targets.push_back({Action::SoundSettings,0,203,214,25});box(0,203,214,25,raised,9);text(rt,L"Windows sound settings",14,203,170,11.5f,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,25);drawIcon(rt,d2d_.Get(),Icon::ArrowRight,190,209,13,muted);text(rt,s.settings.directAudio?L"Direct switching":L"System picker",236,210,144,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
         }
         hairline(0,229,380);

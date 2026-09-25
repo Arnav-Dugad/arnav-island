@@ -11,6 +11,9 @@ namespace nexus {
 // the DirectComposition body, so the glass morphs at display cadence with no
 // per-frame application work. Any failure leaves the solid material in place.
 // wallpaper: the desktop's colour (0 when unknown) that tints the material; shadow: the drop shadow's opacity (shadow window only).
+// Every property the glass's expressions read (p.<name>), created with the property set. An expression or animation
+// that names one missing from here fails, and the glass stops following the island (0.17.0-preview.1: sp and ss).
+inline constexpr const wchar_t* glassProperties[]={L"t",L"w",L"h",L"r",L"dx",L"dy",L"s",L"tw",L"th",L"so",L"d",L"sw",L"sr",L"sh",L"b",L"bw",L"bh",L"sp",L"ss",L"bt0",L"bb0",L"bw0",L"bl",L"bt",L"bv",L"bb",L"bc"};
 struct GlassStyle {bool visible=false,light=false,blur=true;int material=1;float tint=.5f;uint32_t accent=0,wallpaper=0;float shadow=0;};
 class GlassBackdrop {
     struct Impl;Impl* impl_=nullptr;bool available_=false;

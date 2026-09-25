@@ -1,3 +1,20 @@
+# Arnav Island 0.17.0-preview.2 — glass fixed, lyrics on time
+
+## Fixed
+- **Frosted and Clear glass.** In 0.17.0-preview.1 the glass stopped following the island. Every time the island changed shape, the glass tried to animate a value it had never created, Windows refused, and the rest of that update was skipped. The glass is back, and the island's own test now fails if the glass ever reports an error. Two more causes of broken glass are fixed:
+  - **Long expression.** The shape of a waiting alert's card was one expression too long for Windows to accept. It's now built from short steps.
+  - **Scientific notation.** A spring that had nearly settled wrote numbers like `2e-05`, which Windows' expressions don't accept. The glass could freeze for a moment when that happened, and this goes back to earlier versions. Numbers are now always plain decimals.
+- **Lyrics on time.** Windows reports where a player is as of the moment that player last told it. Many players, Spotify among them, tell it only now and then. The island took that report as the current position, so lyrics could run several seconds behind and jump back. It now adds the time since the report. Tested with a real Windows media session: the report was up to 5.9 s behind the music; corrected, the island is within a hundredth of a second.
+- **Offer cards keep the size.** A long file name no longer pushes the size off the card. The name is shortened instead, as in *Holiday pho… · 12 files · 48.2 MB*.
+- **Outputs** show a speaker for speakers and headphones for headphones, from Windows' own device type.
+- **The command bar** shows the right icons for the weather, a song, shuffling and continuing on another PC. *weather* alone reads *Opens Settings › Compact › Town*.
+
+## Checks
+- **Unit suites:** core 11,682; model 2,061; phase 5,621 (8 new); share 165; provider lifecycle passing.
+- **Native UI test:** 50 stages, 5 new. Clear and Frosted glass go through opening, the command bar, two alerts dropping and spreading, and back, with no glass errors allowed at any stage.
+- **Settings end to end:** 192 of 192.
+- **Visual audit:** every page, tab, card, compact mode, side dock and command state, in dark and light, drawn by the island itself (78 views). Every Settings section and page, drawn by the Settings window itself (18 views).
+
 # Arnav Island 0.17.0-preview.1 — Up next, your other PC's Shelf, and an island you can hear
 
 Phase 5H:

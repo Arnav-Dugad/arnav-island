@@ -7,6 +7,9 @@
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <d2d1_1.h>
+#include <wincodec.h>
+#include <filesystem>
+#include <fstream>
 #include <dwrite.h>
 #include <dcomp.h>
 #include <dwmapi.h>
@@ -17,7 +20,7 @@
 #include <optional>
 namespace nexus {
 namespace {
-constexpr UINT RefreshMessage=WM_APP+1,ShowMessage=WM_APP+2,TypeTownMessage=WM_APP+3;
+constexpr UINT RefreshMessage=WM_APP+1,ShowMessage=WM_APP+2,TypeTownMessage=WM_APP+3,SweepMessage=WM_APP+4;
 constexpr float Sidebar=236,Pad=20,TitleTop=30,CardTop=112;
 constexpr SpringSpec Knob{1,520,36},Pill{.9,480,36},Hover{1,700,52},Page{1,300,32},Scroll{1,260,34},Indicator{.8,420,32};
 const wchar_t* subtitles[]={L"How the island behaves while you work",L"Size, position and everyday mode",L"Theme, glass and color",L"Springs, feedback and accessibility",L"What the resting island shows",L"Players, logos and audio output",L"Bluetooth, battery and performance",L"Arrange the Command Center",L"Clipboard, privacy dots, commands and workspaces",L"Version, diagnostics and reset"};
@@ -42,6 +45,8 @@ public:
     HWND create();
     LRESULT message(HWND,UINT,WPARAM,LPARAM);
     bool animating();void render();bool dirty=true;
+    // Test runs only: every section, a window's height at a time, saved as the window drew it (never a screen copy).
+    std::wstring sweepDir_;int sweepPage_=0;bool sweepShot_=false;void sweepStep();void saveFrame(const std::wstring& file,UINT32 background);
 private:
     HWND island_,hwnd_=nullptr;SettingsWindow::State& shared_;Settings s_;SettingsContext context_;std::vector<SettingItem> items_;int section_=0;unsigned posted_=0;
     ComPtr<ID3D11Device> d3d_;ComPtr<IDXGISwapChain1> swap_;ComPtr<ID2D1Factory1> factory_;ComPtr<ID2D1Device> device2d_;ComPtr<ID2D1DeviceContext> dc_;ComPtr<IDWriteFactory> write_;
@@ -164,6 +169,28 @@ void SettingsUi::apply(int index,int value){
 void SettingsUi::replay(){double now=seconds();previewForward_=!previewForward_;previewStart_=now;auto spec=bodySpring(s_);if(s_.reduceMotion)preview_.reset(previewForward_?1:0,now);else preview_.retarget(previewForward_?1:0,now,spec);dirty=true;}
 void SettingsUi::slide(int index,float x){
     float height;auto rows=layout(height);for(auto& row:rows)if(row.item==index){auto& item=items_[index];auto r=row.control;float f=std::clamp((x-r.left)/(r.right-r.left),0.f,1.f);int v=item.lo+int(std::lround(f*(item.hi-item.lo)/item.step))*item.step;apply(index,std::clamp(v,item.lo,item.hi));}
+}
+// The frame just drawn, over the window's own background colour, as a PNG.
+void SettingsUi::saveFrame(const std::wstring& file,UINT32 background){
+    ComPtr<ID2D1Image> image;dc_->GetTarget(&image);ComPtr<ID2D1Bitmap1> drawn;check(image.As(&drawn));const auto size=drawn->GetPixelSize();
+    auto props=D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_CPU_READ|D2D1_BITMAP_OPTIONS_CANNOT_DRAW,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),dpi_,dpi_);
+    ComPtr<ID2D1Bitmap1> cpu;check(dc_->CreateBitmap(size,nullptr,0,&props,&cpu));check(cpu->CopyFromBitmap(nullptr,drawn.Get(),nullptr));
+    D2D1_MAPPED_RECT mapped{};check(cpu->Map(D2D1_MAP_OPTIONS_READ,&mapped));std::vector<BYTE> pixels(size_t(size.width)*size.height*3);
+    const int br=int(background&0xff),bg=int((background>>8)&0xff),rr=int((background>>16)&0xff);
+    for(UINT32 y=0;y<size.height;++y)for(UINT32 x=0;x<size.width;++x){const BYTE* s=mapped.bits+size_t(y)*mapped.pitch+size_t(x)*4;BYTE* d=pixels.data()+(size_t(y)*size.width+x)*3;const int a=s[3];
+        d[0]=BYTE(std::min(255,s[0]+br*(255-a)/255));d[1]=BYTE(std::min(255,s[1]+bg*(255-a)/255));d[2]=BYTE(std::min(255,s[2]+rr*(255-a)/255));}
+    cpu->Unmap();CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+    ComPtr<IWICImagingFactory> factory;check(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory)));ComPtr<IWICStream> stream;check(factory->CreateStream(&stream));check(stream->InitializeFromFilename(file.c_str(),GENERIC_WRITE));
+    ComPtr<IWICBitmapEncoder> encoder;check(factory->CreateEncoder(GUID_ContainerFormatPng,nullptr,&encoder));check(encoder->Initialize(stream.Get(),WICBitmapEncoderNoCache));ComPtr<IWICBitmapFrameEncode> frame;check(encoder->CreateNewFrame(&frame,nullptr));check(frame->Initialize(nullptr));
+    check(frame->SetSize(size.width,size.height));WICPixelFormatGUID format=GUID_WICPixelFormat24bppBGR;check(frame->SetPixelFormat(&format));check(frame->WritePixels(size.height,size.width*3,UINT(pixels.size()),pixels.data()));check(frame->Commit());check(encoder->Commit());
+}
+// One shot, then the next: down the section a window's height at a time, then the next section.
+void SettingsUi::sweepStep(){
+    sweepShot_=true;dirty=true;render();
+    float height;layout(height);const float max=std::max(0.f,height-H()),pageStep=std::max(120.f,H()-CardTop-40);const double now=seconds();
+    if((sweepPage_+1)*pageStep<max+pageStep-1&&max>0&&sweepPage_*pageStep<max){++sweepPage_;scrollTarget_=std::min(double(max),double(sweepPage_*pageStep));scroll_.reset(scrollTarget_,now);dirty=true;SetTimer(hwnd_,4,500,nullptr);return;}
+    if(section_+1<int(settingSections().size())){sweepPage_=0;selectSection(section_+1);SetTimer(hwnd_,4,900,nullptr);return;}
+    std::ofstream(std::filesystem::path(sweepDir_)/L"done.txt")<<"done";
 }
 void SettingsUi::selectSection(int section){
     section=std::clamp(section,0,int(settingSections().size())-1);if(section==section_)return;section_=section;double now=seconds();
@@ -388,6 +415,7 @@ void SettingsUi::render(){
     dc_->PopLayer();dc_->SetTransform(base);dc_->PopAxisAlignedClip();
     if(maxScroll>0){float track=H()-24,thumb=std::max(40.f,track*H()/contentHeight),y=12+(track-thumb)*scroll/maxScroll;fill({W()-7,y,W()-4,y+thumb},1.5f,p.ink,.22f);}
     HRESULT hr=dc_->EndDraw();if(hr==D2DERR_RECREATE_TARGET){resize();return;}check(hr);
+    if(sweepShot_){sweepShot_=false;try{saveFrame(sweepDir_+L"\\settings-"+std::to_wstring(section_)+L"-"+std::to_wstring(sweepPage_)+L".png",p.bg);}catch(...){}}
     check(swap_->Present(1,0));dirty=false;publish();
 }
 // A miniature island on a screen edge, morphing with the island's spring, beside
@@ -427,12 +455,13 @@ LRESULT SettingsUi::message(HWND h,UINT m,WPARAM w,LPARAM l){
     case WM_DPICHANGED:{dpi_=float(HIWORD(w));formats_.clear();auto* r=reinterpret_cast<RECT*>(l);SetWindowPos(h,nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);resize();return 0;}
     case WM_SETTINGCHANGE:theme();dirty=true;return 0;
     case RefreshMessage:refresh();return 0;
+    case SweepMessage:{std::unique_ptr<std::wstring> dir(reinterpret_cast<std::wstring*>(l));if(dir){sweepDir_=*dir;sweepPage_=0;if(section_!=0)selectSection(0);SetTimer(h,4,1200,nullptr);}return 0;}
     case TypeTownMessage:{std::unique_ptr<std::wstring> text(reinterpret_cast<std::wstring*>(l));if(text){townFocus(true);townText_=*text;townCaret_=townText_.size();townEdited();}return 0;}
     case ShowMessage:ShowWindow(h,IsIconic(h)?SW_RESTORE:SW_SHOW);SetForegroundWindow(h);refresh();return 0;
     case WM_TIMER:if(w==1){KillTimer(h,1);dirty=true;}
         // 2: the typing has paused, so the town is looked up; 3: the caret blinks.
         if(w==2){KillTimer(h,2);const auto q=trimmedTown();if(q.size()>=2){auto owned=std::make_unique<std::wstring>(q);if(PostMessageW(island_,SettingsTownMessage,0,reinterpret_cast<LPARAM>(owned.get())))owned.release();}}
-        if(w==3)dirty=true;return 0;
+        if(w==3)dirty=true;if(w==4){KillTimer(h,4);sweepStep();}return 0;
     case WM_MOUSEMOVE:{auto [x,y]=point();if(!tracking_){TRACKMOUSEEVENT t{sizeof(t),TME_LEAVE,h,0};TrackMouseEvent(&t);tracking_=true;}if(dragItem_>=0){slide(dragItem_,x);return 0;}if(chipDrag_>=0){chipX_=x;dirty=true;
             // Phase 5G: a soft click each time the dragged chip passes another's place.
             float height;for(auto& row:layout(height))if(row.item==press_.item){const int to=chipTarget(row);if(to!=chipHeard_){if(s_.sounds)playSound(Sound::Click);chipHeard_=to;}}return 0;}auto next=hit(x,y);if(!(next==hover_)){hover_=next;dirty=true;}return 0;}
@@ -468,6 +497,7 @@ void SettingsWindow::show(const Settings& s,const SettingsContext& c,int section
     // Wait briefly for the handle so tests and callers can address the window.
     for(int i=0;i<400&&!window_.load()&&!finished_.load();++i)Sleep(5);
 }
+void SettingsWindow::sweep(const std::wstring& dir){HWND h=window_.load();if(!h)return;auto owned=std::make_unique<std::wstring>(dir);if(PostMessageW(h,SweepMessage,0,reinterpret_cast<LPARAM>(owned.get())))owned.release();}
 void SettingsWindow::typeTown(const std::wstring& text){HWND h=window_.load();if(!h)return;auto owned=std::make_unique<std::wstring>(text);if(PostMessageW(h,TypeTownMessage,0,reinterpret_cast<LPARAM>(owned.get())))owned.release();}
 void SettingsWindow::update(const Settings& s,const SettingsContext& c,unsigned sequence){HWND h=window_.load();if(!h)return;{std::lock_guard lock(state_->mutex);state_->incoming=s;state_->incomingContext=c;state_->incomingSequence=sequence;state_->pending=true;}PostMessageW(h,RefreshMessage,0,0);}
 std::vector<SettingsWindow::Probe> SettingsWindow::probes(){std::lock_guard lock(state_->mutex);return state_->probes;}

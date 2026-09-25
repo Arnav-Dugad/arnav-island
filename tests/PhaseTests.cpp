@@ -28,6 +28,10 @@
 #include "Animation/MotionEngine.h"
 #include "Media/Library.h"
 #include "Audio/Sounds.h"
+#include "Composition/GlassBackdrop.h"
+#include "Media/Timeline.h"
+#include <fstream>
+#include <regex>
 #include <iostream>
 #include <random>
 #include <set>
@@ -572,6 +576,29 @@ int main(){try{
         std::stringstream v14("version 14\nsharing 1\n");auto s=Settings::parse(v14);test(s.clipboardKeep&&s.sounds&&s.handoff&&s.islandDj&&s.stackAlerts&&s.musicLibrary&&s.sharing,"v14 settings gain the v15 features, on");
         Settings off;off.clipboardKeep=off.sounds=off.handoff=off.islandDj=off.stackAlerts=off.musicLibrary=false;std::stringstream io;off.write(io);auto back=Settings::parse(io);
         test(!back.clipboardKeep&&!back.sounds&&!back.handoff&&!back.islandDj&&!back.stackAlerts&&!back.musicLibrary&&back.version==Settings::currentVersion,"v15 settings round-trip");}
+    // ---- 0.17.0-preview.2: a playing session's position moves on from when the player last reported it --------
+    {const int64_t at=133000000000000000ll;
+        test(std::abs(timelinePosition(10,200,true,at,at+25000000)-12.5)<1e-9,"a playing position moves on by the time since the player's report");
+        test(timelinePosition(10,200,false,at,at+25000000)==10&&timelinePosition(10,200,true,0,at)==10&&timelinePosition(10,200,true,at,at-5)==10,"paused, unreported or from the future, it stays");
+        test(timelinePosition(199,200,true,at,at+50000000)==200&&timelinePosition(10,200,true,at,at+int64_t(7*3600)*10000000)==10,"never past the end, and a report hours old is not trusted");}
+    // ---- 0.17.0-preview.2: numbers in glass expressions are plain decimals (no exponents) ------------------
+    {bool plain=true,close=true;for(double v:{2.09591124e-05,-3.3e-7,1e-12,0.,8.,-8.5,1234567.891,1e11,0.000123456789,-0.999999999,15.2173913,std::nan(""),1e300}){
+            const auto s=expressionNumber(v);if(s.find_first_of(L"eE")!=std::wstring::npos||s.find(L"nan")!=std::wstring::npos||s.find(L"inf")!=std::wstring::npos)plain=false;
+            const double back=std::wcstod(s.c_str()+1,nullptr),want=std::isfinite(v)&&std::abs(v)>=1e-9?std::clamp(v,-1e12,1e12):0.;if(std::abs(back-want)>std::max(1e-9,std::abs(want)*1e-8))close=false;}
+        test(plain&&expressionNumber(0)==L"(0)"&&expressionNumber(8)==L"(8)"&&expressionNumber(-0.5)==L"(-0.5)","expression numbers are plain decimals (the parser rejects exponents)");test(close,"and keep about nine significant digits");
+        // A nearly settled spring (tiny terms) still makes an expression without exponents.
+        Spring nearly{22};nearly.reset(22.00002,0,.0004);nearly.retarget(22,0,{1,380,30});const auto x=springExpression(SpringTerms::from(nearly,.9),1.25);test(x.find_first_of(L"eE")==std::wstring::npos,"a nearly settled spring's expression has no exponents");}
+    // ---- 0.17.0-preview.2: every property the glass reads or animates exists from the start ------------
+    {std::ifstream in(std::string(NEXUS_SOURCE_DIR)+"/src/Composition/GlassBackdrop.cpp");std::stringstream text;text<<in.rdbuf();const std::string src=text.str();test(src.size()>10000,"the glass source is read");
+        std::set<std::string> known;for(auto* k:glassProperties){std::string n;for(const wchar_t* c=k;*c;++c)n+=char(*c);known.insert(n);}
+        std::set<std::string> used;const std::regex read("p\\.([a-z]+)"),started("start\\(props,L\"([a-z]+)\"");
+        // Expressions live in wide string literals; p.<name> is read only there (elsewhere p is often a C++ variable).
+        const std::regex literal("L\"((?:[^\"\\\\]|\\\\.)*)\"");
+        for(auto lit=std::sregex_iterator(src.begin(),src.end(),literal);lit!=std::sregex_iterator();++lit){const std::string body=(*lit)[1];
+            for(auto it=std::sregex_iterator(body.begin(),body.end(),read);it!=std::sregex_iterator();++it)used.insert((*it)[1]);}
+        for(auto it=std::sregex_iterator(src.begin(),src.end(),started);it!=std::sregex_iterator();++it)used.insert((*it)[1]);
+        std::string missing;for(auto& u:used)if(!known.count(u))missing+=u+" ";
+        test(used.size()>=15&&missing.empty(),("the glass's properties all exist before its expressions and springs start (missing: "+missing+")").c_str());}
     // ---- Phase 5H: settings v16, the alerts side by side, time left, towns ------------------------------
     {std::stringstream v15("version 15\nsharing 1\n");auto s=Settings::parse(v15);test(s.shelfOpen&&s.crossfade==6&&s.sharing,"v15 settings gain the v16 features (the Shelf open to your PCs, a 6 s crossfade)");
         Settings off;off.shelfOpen=false;off.crossfade=0;std::stringstream io;off.write(io);auto back=Settings::parse(io);test(!back.shelfOpen&&back.crossfade==0&&back.version==16,"v16 settings round-trip");

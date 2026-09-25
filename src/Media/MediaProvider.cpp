@@ -1,4 +1,5 @@
 #include "MediaProvider.h"
+#include "Media/Timeline.h"
 #include "BrowserTabs.h"
 #include "MediaAbi.h"
 #include "Design/Accent.h"
@@ -100,6 +101,9 @@ void MediaProvider::run(){
                 }catch(...){if(WaitForSingleObject(stop_,0)==WAIT_OBJECT_0)throw;snapshot.title=L"Media session";snapshot.available=true;}
                 ComPtr<PlaybackInfo> playback;if(SUCCEEDED(session->GetPlaybackInfo(reinterpret_cast<IInspectable**>(playback.GetAddressOf())))&&playback){INT32 status=0;playback->get_Status(&status);snapshot.playing=status==4;ComPtr<Controls> controls;if(SUCCEEDED(playback->get_Controls(&controls))&&controls){BYTE enabled=0;controls->Toggle(&enabled);snapshot.canToggle=enabled;controls->Previous(&enabled);snapshot.canPrevious=enabled;controls->Next(&enabled);snapshot.canNext=enabled;enabled=0;if(SUCCEEDED(controls->Position(&enabled)))snapshot.canSeek=enabled;}}
                 ComPtr<Timeline> timeline;if(SUCCEEDED(session->GetTimelineProperties(reinterpret_cast<IInspectable**>(timeline.GetAddressOf())))&&timeline){INT64 start=0,end=0,position=0;timeline->get_Start(&start);timeline->get_End(&end);timeline->get_Position(&position);snapshot.duration=std::max(0.,double(end-start)/1e7);snapshot.position=std::clamp(double(position-start)/1e7,0.,snapshot.duration);INT64 lo=0,hi=0;timeline->get_MinSeek(&lo);timeline->get_MaxSeek(&hi);snapshot.seekMin=std::clamp(double(lo-start)/1e7,0.,snapshot.duration);snapshot.seekMax=std::clamp(double(hi-start)/1e7,0.,snapshot.duration);snapshot.canSeek=snapshot.canSeek&&snapshot.seekMax>snapshot.seekMin;
+                    // The position is as of when the player last told Windows; a playing one has moved on since (lyrics depend on it).
+                    INT64 updated=0;if(snapshot.playing&&SUCCEEDED(timeline->get_LastUpdated(&updated))){FILETIME ft{};GetSystemTimePreciseAsFileTime(&ft);
+                        snapshot.position=timelinePosition(snapshot.position,snapshot.duration,true,updated,INT64((uint64_t(ft.dwHighDateTime)<<32)|ft.dwLowDateTime));}
                     if(requested>=0&&snapshot.canSeek&&(seekId?seekId==w.id:seekSource==snapshot.source)&&seekTitle==snapshot.title){ComPtr<IInspectable> operation;session->TryChangePlaybackPositionAsync(start+INT64(std::clamp(requested,snapshot.seekMin,snapshot.seekMax)*1e7),&operation);requested=-1;}}
                 auto id=identities.find(snapshot.source);if(id==identities.end())id=identities.emplace(snapshot.source,resolveApp(snapshot.source)).first;
                 snapshot.appName=id->second.name;snapshot.appIcon=id->second.icon;snapshot.browser=id->second.browser;

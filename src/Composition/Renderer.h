@@ -305,7 +305,7 @@ public:
     void setRest(bool expanded,bool compact){restExpanded_=expanded;restCompact_=compact;}
     void animate(const MotionEngine&,double);
     void iconFeedback(Action,bool pressed,bool enabled);
-    bool glassAvailable()const{return glass_.available();}GlassStyle glassStyle()const{return glass_.current();}UINT32 accentColor()const{return accentColor_;}
+    bool glassAvailable()const{return glass_.available();}std::string glassError()const{return glass_.lastError_.empty()?shadow_.lastError_:glass_.lastError_;}GlassStyle glassStyle()const{return glass_.current();}UINT32 accentColor()const{return accentColor_;}
     void spectrum(const SpectrumFrame&);
     // Phase 5E: the artwork beat pulse (a scale about the cover's centre, before its size scale).
     ComPtr<IDCompositionScaleTransform> artPulse_;Glide artBeat_{1,0,1,0,0};float bassAverage_=0;double beatAt_=0;bool artPulseOn_=false;void beat(const SpectrumFrame&);void setArtPulse(bool on);void energize(bool reduced,bool charging);void meters(const std::vector<MixerEntry>&,int offset,bool visible);
