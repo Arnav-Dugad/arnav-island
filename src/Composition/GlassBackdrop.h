@@ -24,6 +24,8 @@ public:
     void style(const GlassStyle&);
     void animate(const MotionEngine&,double now,int edge,bool attached);
     bool vibrant()const;
+    // Phase 5F: whether the glass can lean with the island while it is dragged.
+    bool leans()const;
     bool available()const{return available_;}
     GlassStyle current()const;
     // Why the material or edge light fell back, if they did (for the log).

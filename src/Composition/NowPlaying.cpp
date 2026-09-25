@@ -42,25 +42,57 @@ void Renderer::drawLyric(ID2D1RenderTarget* rt,IDWriteTextLayout* layout,float x
     if(haloAlpha_>0){ComPtr<ID2D1SolidColorBrush> halo;check(rt->CreateSolidColorBrush(D2D1::ColorF(haloColor_,haloAlpha_*std::min(1.f,alpha*1.8f)),&halo));const float d=.6f/scale_;for(auto [dx,dy]:{std::pair{-d,0.f},std::pair{d,0.f},std::pair{0.f,-d},std::pair{0.f,d}})rt->DrawTextLayout({at.x+dx,at.y+dy},layout,halo.Get());}
     ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(color,alpha),&b));rt->DrawTextLayout(at,layout,b.Get());
 }
-// The compact island's sung line. A new line rises 9 DIPs into place and fades in while the
-// one before it lifts away and fades, inside a clip the size of the label, so one line
-// flows into the next instead of blinking.
-void Renderer::updateCompactLyric(const std::wstring& line,float x,float w,UINT32 ink,bool reduced){
-    if(!compactLyricHost_){check(device_->CreateVisual(&compactLyricHost_));check(device_->CreateRectangleClip(&compactLyricClip_));compactLyricHost_->SetClip(compactLyricClip_.Get());check(header_->AddVisual(compactLyricHost_.Get(),TRUE,nullptr));
-        for(auto& l:compactLyric_){check(device_->CreateVisual(&l.visual));check(device_->CreateEffectGroup(&l.effect));l.visual->SetEffect(l.effect.Get());check(compactLyricHost_->AddVisual(l.visual.Get(),FALSE,nullptr));}}
-    if(line.empty()){if(!compactLyricShown_.empty()){compactLyricShown_.clear();compactLyricKey_.clear();for(auto& l:compactLyric_)l.visual->SetContent(nullptr);}return;}
-    // The clip is the label's box, with a DIP either side for the halo.
-    compactLyricHost_->SetOffsetX(std::round((x-1)*scale_));compactLyricClip_->SetLeft(0.f);compactLyricClip_->SetTop(std::floor(3*scale_));compactLyricClip_->SetRight(std::ceil((w+2)*scale_));compactLyricClip_->SetBottom(std::ceil(31*scale_));
-    const std::wstring key=line+L"\x1f"+std::to_wstring(ink)+L"."+std::to_wstring(int(w))+L"."+std::to_wstring(int(haloAlpha_*100));
-    if(key==compactLyricKey_)return;
-    const bool morph=!reduced&&!compactLyricShown_.empty()&&compactLyricShown_!=line;
-    if(morph)compactFront_^=1;
-    auto& in=compactLyric_[size_t(compactFront_)];auto& out=compactLyric_[size_t(compactFront_^1)];
-    in.surface.Reset();surface(in.surface,int(std::ceil(w))+3,34,[&](auto* rt){text(rt,line,1,0,w,11.5f,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);});in.visual->SetContent(in.surface.Get());
-    if(morph){const double t=seconds();auto rise=ease(t,9*scale_,0.f,.36),show=ease(t,0.f,1.f,.3),lift=ease(t,0.f,-9*scale_,.3),hide=ease(t,1.f,0.f,.2);
-        in.visual->SetOffsetY(rise.Get());in.effect->SetOpacity(show.Get());out.visual->SetOffsetY(lift.Get());out.effect->SetOpacity(hide.Get());}
-    else{in.visual->SetOffsetY(0.f);in.effect->SetOpacity(1.f);out.visual->SetContent(nullptr);}
-    compactLyricShown_=line;compactLyricKey_=key;
+ComPtr<IDCompositionAnimation> Renderer::track(double now,double position,bool playing,const std::vector<std::pair<double,double>>& keys){
+    ComPtr<IDCompositionAnimation> an;check(device_->CreateAnimation(&an));check(an->SetAbsoluteBeginTime(ticks(now)));
+    double cursor=0,value=keyedAt(keys,position);
+    if(playing)for(auto& [t,v]:keys){const double rel=t-position;if(rel<=cursor+1e-6)continue;const double to=keyedAt(keys,t);check(an->AddCubic(cursor,float(value),float((to-value)/(rel-cursor)),0,0));cursor=rel;value=to;}
+    if(cursor==0)check(an->AddCubic(0,float(value),0,0,0));
+    check(an->End(cursor,float(value)));return an;
+}
+void Renderer::lineLyric(LineLyric& L,IDCompositionVisual* parent,const ContentSnapshot& s,bool visible,float x,float y,float w,float h,float size,UINT32 lit,bool reduced){
+    if(!L.host){check(device_->CreateVisual(&L.host));check(device_->CreateRectangleClip(&L.clip));L.host->SetClip(L.clip.Get());L.host->SetBorderMode(DCOMPOSITION_BORDER_MODE_HARD);check(parent->AddVisual(L.host.Get(),TRUE,nullptr));
+        for(auto& slot:L.slots){check(device_->CreateVisual(&slot.visual));check(device_->CreateVisual(&slot.fill));check(device_->CreateEffectGroup(&slot.effect));check(device_->CreateRectangleClip(&slot.fillClip));
+            slot.visual->SetEffect(slot.effect.Get());slot.fillClip->SetLeft(0.f);slot.fillClip->SetTop(0.f);slot.fillClip->SetRight(0.f);slot.fill->SetClip(slot.fillClip.Get());check(slot.visual->AddVisual(slot.fill.Get(),FALSE,nullptr));check(L.host->AddVisual(slot.visual.Get(),FALSE,nullptr));}
+        check(device_->CreateVisual(&L.dotLayer));check(L.host->AddVisual(L.dotLayer.Get(),TRUE,nullptr));
+        for(size_t k=0;k<3;++k){check(device_->CreateVisual(&L.dots[k]));check(device_->CreateEffectGroup(&L.dotEffects[k]));L.dots[k]->SetEffect(L.dotEffects[k].Get());L.dotEffects[k]->SetOpacity(0.f);check(L.dotLayer->AddVisual(L.dots[k].Get(),FALSE,nullptr));}}
+    const bool on=visible&&s.lyrics&&s.lyricLine>=0&&size_t(s.lyricLine)<s.lyrics->size();
+    if(!on){if(L.line!=-2){L.line=-2;L.key.clear();L.timing.clear();for(auto& slot:L.slots){slot.visual->SetContent(nullptr);slot.fill->SetContent(nullptr);}for(auto& e:L.dotEffects)e->SetOpacity(0.f);}return;}
+    const auto& lines=*s.lyrics;const int i=s.lyricLine;const auto& text=lines[size_t(i)].text;const bool gap=text.empty();const double now=seconds();
+    L.host->SetOffsetX(std::round((x-1)*scale_));L.host->SetOffsetY(std::round(y*scale_));L.clip->SetLeft(0.f);L.clip->SetTop(0.f);L.clip->SetRight(std::ceil((w+2)*scale_));L.clip->SetBottom(std::ceil(h*scale_));
+    const std::wstring key=std::to_wstring(i)+L"\x1f"+text+L"\x1f"+std::to_wstring(lit)+L"."+std::to_wstring(int(w))+L"."+std::to_wstring(int(h))+L"."+std::to_wstring(int(haloAlpha_*100))+(reduced?L".r":L"");
+    if(key!=L.key){
+        // A new line (or a gap after a line) morphs in; a restyle redraws in place.
+        const bool morph=!reduced&&L.line>=0&&L.line!=i;if(morph)L.front^=1;
+        auto& in=L.slots[size_t(L.front)];auto& out=L.slots[size_t(L.front^1)];
+        if(!gap){auto layout=lyricLayout(text,size,w,size*1.6f,DWRITE_FONT_WEIGHT_SEMI_BOLD);/* one row, trimmed with an ellipsis */DWRITE_TEXT_METRICS m{};check(layout->GetMetrics(&m));const float top=std::round((h-m.height)/2*scale_)/scale_;
+            const float dim=haloAlpha_>0?.5f:.36f;
+            in.base.Reset();surface(in.base,int(std::ceil(w))+3,int(std::ceil(h)),[&](auto* rt){drawLyric(rt,layout.Get(),1,top,lit,reduced?1.f:dim);});in.visual->SetContent(in.base.Get());
+            in.lit.Reset();if(!reduced)surface(in.lit,int(std::ceil(w))+3,int(std::ceil(h)),[&](auto* rt){drawLyric(rt,layout.Get(),1,top,lit,1.f);});in.fill->SetContent(reduced?nullptr:in.lit.Get());
+            in.fillClip->SetBottom(std::ceil(h*scale_));in.fillClip->SetRight(0.f);
+            // Where each character begins along the row (a trimmed line stops at the edge).
+            L.xs.clear();for(UINT32 c=0;c<=UINT32(text.size());++c){float px=0,py=0;DWRITE_HIT_TEST_METRICS hm{};const UINT32 len=UINT32(text.size());layout->HitTestTextPosition(c<len?c:len-1,c>=len,&px,&py,&hm);L.xs.push_back(std::min(w,px)+1);}
+            for(auto& e:L.dotEffects)e->SetOpacity(0.f);}
+        else{in.visual->SetContent(nullptr);in.fill->SetContent(nullptr);
+            if(L.dotColor!=lit||!L.dotSurface){L.dotColor=lit;surface(L.dotSurface,6,6,[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(lit),&b));rt->FillEllipse(D2D1::Ellipse({3,3},2.6f,2.6f),b.Get());});}
+            for(size_t k=0;k<3;++k){L.dots[k]->SetContent(L.dotSurface.Get());L.dots[k]->SetOffsetX(std::round((1+k*9.f)*scale_));L.dots[k]->SetOffsetY(std::round((h/2-3)*scale_));}}
+        if(morph){auto rise=ease(now,9*scale_,0.f,.36),show=ease(now,0.f,1.f,.3),lift=ease(now,0.f,-9*scale_,.3),hide=ease(now,1.f,0.f,.2);
+            in.visual->SetOffsetY(rise.Get());in.effect->SetOpacity(show.Get());out.visual->SetOffsetY(lift.Get());out.effect->SetOpacity(hide.Get());}
+        else{in.visual->SetOffsetY(0.f);in.effect->SetOpacity(1.f);out.visual->SetContent(nullptr);out.fill->SetContent(nullptr);}
+        L.key=key;L.line=i;L.gap=gap;L.timing.clear();
+    }
+    // The fill and the dots run on the song's clock in the compositor; while paused they hold.
+    const auto& p=s.playback;wchar_t stamp[96];swprintf(stamp,96,L"%d.%d.%.3f.%.3f.",i,int(p.playing),p.position,p.sampledAt);const std::wstring timing=stamp+L.key;
+    if(timing==L.timing)return;L.timing=timing;
+    const double position=p.position+(p.playing?std::max(0.,now-p.sampledAt):0.);
+    if(!gap&&!reduced){auto keys=lyricFill(lines,i);std::vector<std::pair<double,double>> px;
+        auto xAt=[&](double c){const double cl=std::clamp(c,0.,double(L.xs.size()-1));const size_t k0=size_t(cl),k1=std::min(k0+1,L.xs.size()-1);return std::ceil((L.xs[k0]+(L.xs[k1]-L.xs[k0])*(cl-double(k0)))*scale_);};
+        // A point at every character edge the fill passes, so each letter lights in turn.
+        for(size_t j=0;j<keys.size();++j){const auto [t1,c1]=keys[j];
+            if(j>0){const auto [t0,c0]=keys[j-1];if(c1>c0&&t1>t0)for(double edge=std::floor(c0)+1;edge<c1;edge+=1)px.push_back({t0+(edge-c0)/(c1-c0)*(t1-t0),xAt(edge)});}
+            px.push_back({t1,xAt(c1)});}
+        auto right=track(now,position,p.playing,px);L.slots[size_t(L.front)].fillClip->SetRight(right.Get());}
+    if(gap){const double start=lines[size_t(i)].time,end=i+1<int(lines.size())?lines[size_t(i+1)].time:start+4,span=std::max(.3,(end-start)*.9);
+        for(int k=0;k<3;++k){auto o=track(now,position,p.playing,{{start+span*k/3,.28},{start+span*(k+1)/3,1}});L.dotEffects[size_t(k)]->SetOpacity(o.Get());}}
 }
 // The sung line sits in the middle of the scroller, earlier lines above it and later ones below.
 void Renderer::updateLyrics(const ContentSnapshot& s,UINT32 ink,UINT32 muted,UINT32 accent){
@@ -87,7 +119,9 @@ void Renderer::updateLyrics(const ContentSnapshot& s,UINT32 ink,UINT32 muted,UIN
         float y=0;UINT32 at=0;
         for(UINT32 k=0;k<count&&k<2;++k){const auto& lm=metrics[k];const UINT32 visible=lm.length-std::min(lm.length,lm.trailingWhitespaceLength);float w=0;
             if(visible){UINT32 hits=0;layout->HitTestTextRange(at,visible,0,0,nullptr,0,&hits);std::vector<DWRITE_HIT_TEST_METRICS> hm(hits);if(hits&&SUCCEEDED(layout->HitTestTextRange(at,visible,0,0,hm.data(),hits,&hits)))for(UINT32 r=0;r<hits;++r)w=std::max(w,hm[r].left+hm[r].width);}
-            lyricsRowsLaid_.push_back({y,lm.height,std::min(tw,std::ceil(w)+2),at,std::max(1u,visible)});y+=lm.height;at+=lm.length;}
+            // Where each of the row's characters begins, for a fill that follows words exactly.
+            std::vector<float> xs;const UINT32 count=std::max(1u,visible);for(UINT32 c=0;c<=count;++c){float px=0,py=0;DWRITE_HIT_TEST_METRICS hm{};layout->HitTestTextPosition(c<count?at+c:at+count-1,c>=count,&px,&py,&hm);xs.push_back(std::min(tw,px));}
+            lyricsRowsLaid_.push_back({y,lm.height,std::min(tw,std::ceil(w)+2),at,count,std::move(xs)});y+=lm.height;at+=lm.length;}
         h=std::max(14.f,y);
     }
     const float current=std::round(centre-h/2),previous=current-gap-row,next=current+h+gap;
@@ -155,15 +189,18 @@ void Renderer::timeLyrics(const ContentSnapshot& s,double now){
         if(a>0){check(an->AddCubic(0,from,0,0,0));check(an->AddCubic(a,from,slope,0,0));}else check(an->AddCubic(0,from+slope*float(-a),slope,0,0));
         check(an->End(b,to));return an;};
     if(!lyricsPlaced_.gap&&i>=0&&i<n&&!lyricsRowsLaid_.empty()&&!s.reducedMotion){
-        // Lyrics are timed per line, so the fill moves at a singing pace (about fourteen
-        // characters a second) and is always complete before the next line begins.
-        const double start=lines[size_t(i)].time,next=i+1<n?lines[size_t(i+1)].time:start+6;
-        UINT32 total=0;for(auto& r:lyricsRowsLaid_)total+=r.length;
-        const double span=std::min(std::max(.8,next-start),std::clamp(total*.07+.35,.8,8.));
-        UINT32 before=0;
-        for(size_t k=0;k<lyricsRowsLaid_.size()&&k<2;++k){const auto& r=lyricsRowsLaid_[k];
-            const double a=start+span*before/total-position,b=start+span*(before+r.length)/total-position;before+=r.length;
-            auto right=ramp(a,b,0,std::ceil(r.width*scale_));lyricsRowClip_[k]->SetRight(right.Get());}
+        // The fill follows lyricFill (word by word when the lyrics carry word timing); each row
+        // lights from its own first character to its last.
+        const auto keys=lyricFill(lines,i);
+        for(size_t k=0;k<lyricsRowsLaid_.size()&&k<2;++k){const auto& r=lyricsRowsLaid_[k];std::vector<std::pair<double,double>> px;
+            auto xAt=[&](double c){const double local=std::clamp(c-double(r.first),0.,double(r.length));const size_t k0=std::min(size_t(local),r.xs.size()-1),k1=std::min(k0+1,r.xs.size()-1);
+                return std::ceil((local>=double(r.length)?double(r.width):r.xs[k0]+(r.xs[k1]-r.xs[k0])*(local-std::floor(local)))*scale_);};
+            // A point wherever the lit count crosses one of this row's character edges, so the row starts
+            // when the one above has finished and each letter lights in turn (not spread over the whole line).
+            for(size_t j=0;j<keys.size();++j){const auto [t1,c1]=keys[j];
+                if(j>0){const auto [t0,c0]=keys[j-1];if(c1>c0&&t1>t0)for(UINT32 e=0;e<=r.length;++e){const double edge=double(r.first+e);if(edge>c0&&edge<c1)px.push_back({t0+(edge-c0)/(c1-c0)*(t1-t0),xAt(edge)});}}
+                px.push_back({t1,xAt(c1)});}
+            auto right=track(now,position,p.playing,px);lyricsRowClip_[k]->SetRight(right.Get());}
     }
     if(lyricsPlaced_.gap){
         // Three dots light one after another across the gap (the intro counts as one).

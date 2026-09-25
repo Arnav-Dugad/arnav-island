@@ -33,8 +33,8 @@ void Renderer::updateTabs(const ContentSnapshot& s,float x,float y,int count,int
 void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UINT32 raised,UINT32 ink){
     bool shown=s.card&&s.notice.kind;double now=seconds();cardIconEffect_->SetOpacity(shown?1.f:0.f);
     // Capture cards (9-11) have no level ring.
-    if(!shown||(s.notice.kind>=9&&s.notice.kind!=12)){cardRing_->SetContent(nullptr);cardRingKey_=-1;}
-    else{const bool privacy=(s.notice.kind>=5&&s.notice.kind<=7)||s.notice.kind==12,power=s.notice.kind==3||s.notice.kind==4;const int percent=privacy?100:power?s.battery:s.notice.device.battery;const UINT32 color=privacy?(s.notice.kind==5?0x30d158:s.notice.kind==6?0xff9f0a:s.notice.kind==12?0xbf5af2:0x0a84ff):s.notice.kind==3?0x5fd98a:accent;
+    if(!shown||(s.notice.kind>=9&&s.notice.kind!=12&&s.notice.kind!=13)){cardRing_->SetContent(nullptr);cardRingKey_=-1;}
+    else{const bool privacy=(s.notice.kind>=5&&s.notice.kind<=7)||s.notice.kind==12,power=s.notice.kind==3||s.notice.kind==4,weekly=s.notice.kind==13;const int percent=privacy?100:power?s.battery:weekly?(s.healthNow>=0?int(std::lround(s.healthNow*100)):-1):s.notice.device.battery;const UINT32 color=privacy?(s.notice.kind==5?0x30d158:s.notice.kind==6?0xff9f0a:s.notice.kind==12?0xbf5af2:0x0a84ff):s.notice.kind==3?0x5fd98a:accent;
         int ringKey=int((s.notice.kind*101+percent+1)^int(color%100003)^int(track%9973));
         if(ringKey!=cardRingKey_){cardRingKey_=ringKey;surface(cardRingSurface_,72,72,[&](auto* rt){drawRing(rt,d2d_.Get(),36,36,31,3,percent>=0?percent/100.:0,color,track);});cardRing_->SetContent(cardRingSurface_.Get());}}
     // Energy sweep sits on the ring of whichever surface shows power.
@@ -49,6 +49,8 @@ void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UI
             if(s.notice.kind==11){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({4,4,52,52},12,12),b.Get());if(s.notice.icon)drawPreview(rt,*s.notice.icon,6,6,44,44);else drawIcon(rt,d2d_.Get(),Icon::Snip,16,16,24,accent);return;}
             if((s.notice.kind>=5&&s.notice.kind<=7)||s.notice.kind==12){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());
                 if(s.notice.icon)drawPreview(rt,*s.notice.icon,12,12,32,32);else drawIcon(rt,d2d_.Get(),s.notice.kind==5?Icon::Camera:s.notice.kind==6?Icon::Microphone:s.notice.kind==12?Icon::Snip:Icon::Location,16,16,24,ink);}
+            else if(s.notice.kind>=14&&s.notice.kind<=16){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),s.notice.kind==14?Icon::Link:s.notice.kind==15?Icon::Download:Icon::Laptop,16,16,24,accent);}
+            else if(s.notice.kind==13){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),Icon::Heart,16,16,24,accent);}
             else if(s.notice.kind==3||s.notice.kind==4){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(s.notice.kind==3?0x3fcf7a:raised,s.notice.kind==3?1.f:.9f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),s.notice.kind==3?Icon::Bolt:Icon::Battery,14,14,28,s.notice.kind==3?0x0b1f12:ink);}
             else deviceBadge(rt,s.notice.device,4,4,48,raised,ink);});cardIcon_->SetContent(cardIconSurface_.Get());
         if(s.reducedMotion)cardPop_.reset(1,now);else{cardPop_.reset(.55,now);cardPop_.retarget(1,now,{.8,420,20});}
@@ -56,6 +58,42 @@ void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UI
         energize(s.reducedMotion,s.notice.kind==3);
     }
     (void)accent;
+}
+// Light running along the island's edge when an alert arrives. The outline (the free edges only,
+// when the island is attached to the screen) is stroked three ways (a bright core line, a dimmer
+// line, a soft glow); clipped windows of each, narrowest brightest, sweep outward from the middle
+// of the edge opposite the screen, so the light falls off in steps, and the glint fades in under a second.
+void Renderer::splash(float w,float h,float r,bool attached,double delay,bool reduced){
+    if(reduced||w<20||h<20)return;
+    if(!splash_){check(device_->CreateVisual(&splash_));check(device_->CreateEffectGroup(&splashEffect_));splash_->SetEffect(splashEffect_.Get());splashEffect_->SetOpacity(0.f);splash_->SetBorderMode(DCOMPOSITION_BORDER_MODE_HARD);check(body_->AddVisual(splash_.Get(),FALSE,nullptr));
+        for(size_t k=0;k<splashBands_.size();++k){check(device_->CreateVisual(&splashBands_[k]));check(device_->CreateRectangleClip(&splashClips_[k]));splashBands_[k]->SetClip(splashClips_[k].Get());check(splash_->AddVisual(splashBands_[k].Get(),FALSE,nullptr));}}
+    const int edge=edge_;r=std::min({r,w/2,h/2});
+    // The stroke sits just inside the body, where its clip keeps it.
+    const float i=.9f;ComPtr<ID2D1PathGeometry> path;check(d2d_->CreatePathGeometry(&path));{ComPtr<ID2D1GeometrySink> sink;check(path->Open(&sink));const D2D1_SIZE_F arc{r-i,r-i};
+        if(!attached){sink->BeginFigure({r,i},D2D1_FIGURE_BEGIN_HOLLOW);sink->AddLine({w-r,i});sink->AddArc({{w-i,r},arc,0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL});sink->AddLine({w-i,h-r});sink->AddArc({{w-r,h-i},arc,0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL});
+            sink->AddLine({r,h-i});sink->AddArc({{i,h-r},arc,0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL});sink->AddLine({i,r});sink->AddArc({{r,i},arc,0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL});sink->EndFigure(D2D1_FIGURE_END_CLOSED);}
+        else if(edge==0){sink->BeginFigure({i,0},D2D1_FIGURE_BEGIN_HOLLOW);sink->AddLine({i,h-r});sink->AddArc({{r,h-i},arc,0,D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,D2D1_ARC_SIZE_SMALL});sink->AddLine({w-r,h-i});sink->AddArc({{w-i,h-r},arc,0,D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,D2D1_ARC_SIZE_SMALL});sink->AddLine({w-i,0});sink->EndFigure(D2D1_FIGURE_END_OPEN);}
+        else if(edge==1){sink->BeginFigure({w,i},D2D1_FIGURE_BEGIN_HOLLOW);sink->AddLine({r,i});sink->AddArc({{i,r},arc,0,D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,D2D1_ARC_SIZE_SMALL});sink->AddLine({i,h-r});sink->AddArc({{r,h-i},arc,0,D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,D2D1_ARC_SIZE_SMALL});sink->AddLine({w,h-i});sink->EndFigure(D2D1_FIGURE_END_OPEN);}
+        else{sink->BeginFigure({0,i},D2D1_FIGURE_BEGIN_HOLLOW);sink->AddLine({w-r,i});sink->AddArc({{w-i,r},arc,0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL});sink->AddLine({w-i,h-r});sink->AddArc({{w-r,h-i},arc,0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL});sink->AddLine({0,h-i});sink->EndFigure(D2D1_FIGURE_END_OPEN);}
+        check(sink->Close());}
+    ComPtr<ID2D1StrokeStyle> round;check(d2d_->CreateStrokeStyle(D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND,D2D1_CAP_STYLE_ROUND),nullptr,0,&round));
+    // Tiers: 0 the core line, 1 a dimmer line with a faint glow, 2 the glow alone.
+    for(size_t k=0;k<3;++k){splashSurfaces_[k].Reset();surface(splashSurfaces_[k],int(std::ceil(w)),int(std::ceil(h)),[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(0xffffff,k==2?.1f:k==1?.14f:.22f),&b));
+        rt->DrawGeometry(path.Get(),b.Get(),5,round.Get());if(k<2){b->SetColor(D2D1::ColorF(0xffffff,k?.42f:.95f));rt->DrawGeometry(path.Get(),b.Get(),1.4f,round.Get());}});}
+    // Sweeps: along x for the top dock (and a floating island), along y for side docks.
+    const bool vertical=attached&&edge!=0;const float length=vertical?h:w,centre=length/2,widths[3]{34,80,150},travel=centre+150;const double start=seconds()+delay,duration=.8;
+    auto sweep=[&](float from,float to){ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(start)));const double d=duration;const float span=(to-from)*scale_;
+        check(a->AddCubic(0,from*scale_,0,float(3*span/(d*d)),float(-2*span/(d*d*d))));check(a->End(d,to*scale_));return a;};
+    // Band k: tier k/2, going outward to the right (or down) when k is odd. Each band is the window
+    // [lead-wide, lead] (or [lead, lead+wide] going back), its lead running from the middle to past the end;
+    // the tiers' windows share the lead, so the brightest light is at the front.
+    for(size_t k=0;k<splashBands_.size();++k){const size_t tier=k/2;const bool outward=k%2==1;const float wide=widths[tier];auto* c=splashClips_[k].Get();splashBands_[k]->SetContent(splashSurfaces_[tier].Get());
+        auto lead=outward?sweep(centre,centre+travel):sweep(centre,centre-travel);auto tail=outward?sweep(centre-wide,centre+travel-wide):sweep(centre+wide,centre-travel+wide);
+        if(vertical){c->SetLeft(0.f);c->SetRight(std::ceil(w*scale_));if(outward){c->SetTop(tail.Get());c->SetBottom(lead.Get());}else{c->SetTop(lead.Get());c->SetBottom(tail.Get());}}
+        else{c->SetTop(0.f);c->SetBottom(std::ceil(h*scale_));if(outward){c->SetLeft(tail.Get());c->SetRight(lead.Get());}else{c->SetLeft(lead.Get());c->SetRight(tail.Get());}}}
+    // Up quickly, a moment bright, then away.
+    ComPtr<IDCompositionAnimation> fade;check(device_->CreateAnimation(&fade));check(fade->SetAbsoluteBeginTime(ticks(start)));
+    check(fade->AddCubic(0,0,10,0,0));check(fade->AddCubic(.1,1,0,0,0));check(fade->AddCubic(.45,1,-float(1/.4),0,0));check(fade->End(.85,0));splashEffect_->SetOpacity(fade.Get());commit();
 }
 // One sweep of light around the ring: a charger connecting, or a device arriving.
 void Renderer::energize(bool reduced,bool charging){

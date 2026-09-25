@@ -1,82 +1,123 @@
-# Arnav Island v0.14 — development report
+# Arnav Island v0.15 — development report
 
 ## What changed
 
-**The glass material.**
-- **Research first.** Apple's materials are not only blur. They add vibrancy (saturation), remap the backdrop's luminosity into a narrow band, add a fine grain, light the edges and cast a soft shadow. Each was prototyped on a test bench: a generated, photo-like backdrop shown full screen, with the island grabbed live over it.
-- **The material matrix.** One Direct2D colour-matrix effect runs over the host backdrop brush:
-  - saturation 1.8 (dark) or 1.55 (light)
-  - a luminosity gain of 0.34 (dark) or 0.74 (light), less as the tint rises
-  - an offset that leans with the wallpaper's brightness
-- **Edge light.** Strips along the free edges (14 px) run the same backdrop through a brighter, more saturated matrix. Mask brushes with linear gradients fade them to nothing inside.
-- **Grain.** A 7% two-tone noise texture, drawn once into a composition drawing surface with Direct2D.
-- **Moving highlight.** The rim and glow gradients rotate about their centres. The angle is an expression of the drag and of how far the width and height still are from their targets, clamped to ±26°, so it tilts while the island moves and levels when it settles.
-- **Soft shadow.** A separate window sits under the island: layered, transparent and without a redirection bitmap, so it never takes a click. It holds one sprite, a rounded rectangle blurred with Direct2D's Gaussian blur and laid out as a nine-grid, and follows the island's size and shape.
-- **Clear glass.** The dark tint base went from 0.40 to 0.46, and the text halo from 0.34 to 0.48 (0.40 in light mode).
+**Notifications.**
+- **Drop pill.** A new `drop` spring runs from 0 (merged) to 1 (dropped).
+  - While it is out, the body is offset by `drop × 42` DIPs as a floating pill. A stub of the compact island (its width, at most 196 DIPs) stays docked with the shoulders.
+  - The body's outline starts above the screen edge and comes down twice as fast as the body (`top = min(2·dp − E, dp)`), so its corners round out as it leaves instead of popping.
+  - The shoulders and the stub move from the body's width to the stub's only after the pill has left the edge (`(dp − E/2) / 12`). The stub reaches just one DIP into the pill, so see-through glass never shows the two overlapping.
+  - The same expressions drive four renderers: DirectComposition (body offset, animated clips and wing positions through a new `curveOf` helper), the Windows.UI.Composition glass (a fourth part with its own rounded geometry, layers and rim), the shadow window (a second nine-grid sprite for the stub) and the input region (two outlines; the gap between them is click-through).
+  - Pointer mapping goes through one `bodyAt(w, h, drop)` everywhere.
+- **Edge light.** The island's outline (the free edges only when docked) is stroked into three surfaces: a core line, a dimmer line and a glow. Six clipped bands, narrowest brightest, sweep out from the middle in 0.8 s under one fade. It plays on device, power, privacy, capture, headphone and sharing cards.
+- **Privacy card.** A **Settings** button opens the capability's `ms-settings:privacy-*` page, and clicking the compact dots shows the card again.
+
+**Now Playing.**
+- **Compact controls.** Previous, play/pause and next are hit in the header's own coordinates, and hover-to-open waits while the pointer is over them, so pressing a control never opens the island.
+- **Swipe to skip.** `WM_MOUSEHWHEEL` accumulates (with a reset window), or a sideways release past 44 DIPs; the title kicks in the direction of the swipe.
+- **Fullscreen peek.** While a fullscreen app has hidden the island and something plays, the screen edge above it shows the island (a 120 ms poll that runs only then). It hides 0.8 s after the pointer leaves.
+- **Spectrum ring.** 24 ticks around a round cover, mirrored from the loopback bands.
+- **Word timing.** Enhanced-LRC `<mm:ss.xx>` tags become `LyricWord`s, kept only when in order and shifted with repeated lines and the offset. `lyricFill` turns a line into (time, characters lit) keyframes. The compact island and the Live Island now use the Command Center's two-slot morphing line.
+- **App accents.** With no artwork, the accent comes from the playing app's icon, cached per icon.
 
 **Awareness.**
-- **Screen capture.** The capability consent store's `graphicsCaptureProgrammatic` and `graphicsCaptureWithoutBorder` records are read alongside camera, microphone and location. An active capture gives a purple dot (the order is camera, microphone, screen, location) and a card (kind 12).
-- **GPU.** A PDH query reads `GPU Engine(*)\Utilization Percentage`:
-  - collected only while the Stats page, Home or the idle glance shows it
-  - each engine's load is summed across processes (instances are keyed from `luid_`), and the busiest engine is the GPU's load
-  - `gpuBusy` is a pure function with tests
+- **Weather.** Open-Meteo geocoding (once per town) and forecast (every 30 minutes) over WinHTTP, parsed by pure, tested functions. The place is stored in `weather.nexus`.
+- **Animated sky.** The Home tile's sky is DirectComposition animations looped with `AddRepeat`: rays turning, twinkling stars, drifting clouds, falling streaks and flakes, fog bands and a double storm flash. It runs for 60 s each time the tile appears, and every loop ends exactly where it is, so nothing jumps when it rests.
+- **Battery health.** `BatteryHealthLog` stores one full-charge/design reading a day. `summarizeWeek` counts charges, use per day and hours on battery from the existing 7-day history. The card shows from 9 am after three days of history, a week after the last one.
+- **Rich clipboard rows.** `linkHost` / `linkPath`, a colour swatch, `looksLikeCode` and `codeSpans` (keywords, strings, numbers, comments, punctuation) drawn in Cascadia Mono or Consolas. Site icons are opt-in and decoded from `/favicon.ico` through WIC.
+
+**Controls page.**
+- Six tiles and two sliders. Radios, dark mode and the microphone run on a worker, and their live states are polled every 2 s while the page shows.
+- Brightness goes through `WmiSetBrightness` on a setter thread, and the level HUD is suppressed for the island's own changes.
+
+**Sharing between your own PCs** (`ShareService`, Winsock + CNG).
+- **Discovery.** UDP broadcast announces an id, a port and the computer's name every 3 s. A PC unheard for 12 s is offline.
+- **Handshake.** The initiator sends its id, its P-256 public key and a *commitment* (SHA-256) to a random nonce. The responder answers with its id, key and nonce, and only then does the initiator reveal its nonce. So neither side can steer the pairing code.
+  - Session key: `SHA-256("arnav-share-v1" ‖ ECDH ‖ nonces ‖ ids)`.
+  - Pairing code: `SHA-256("arnav-pair-v1" ‖ keys ‖ nonces) mod 10⁶`.
+- **Pairing.** Both people confirm the code. Their answers are exchanged sealed, and the peer's key is stored only when both said yes.
+- **Transfers.**
+  - Sent only to a paired PC whose key matches, and only after the receiving person accepts.
+  - AES-256-GCM frames with a direction byte and counter as the nonce, 256 KB chunks, and an end frame carrying the size and SHA-256.
+  - Received as `.arnavpart`, verified, then renamed to a free name in Downloads.
+- **Names and storage.** Received names are made safe (no folders, reserved names or unsafe characters; at most 120 characters). The private key rests under DPAPI.
+
+**The island.**
+- **Chips editor.** A Settings control with drag and arrow keys. The order is stored as `chip0..chip6`.
+- **Controls in the navigation.** The Controls page joins saved navigation orders after Stats (settings v14).
+- **Adaptive text.**
+  - The monitor's wallpaper is placed as Windows places it (`IDesktopWallpaper`: fill, fit, stretch, centre, tile) into a 480-wide luminance map on a worker.
+  - A 2-DIP grid under the compact island is darkened by the Clear scrim's own alpha.
+  - `text()` sets a per-run brush on a DirectWrite layout, with the halo inverted. Icons pick their ink at their centre, and rolling digits choose between two strips per column.
+  - It applies only while no other window overlaps the island (checked on foreground and location changes and every 1.5 s).
 
 **Motion.**
-- **Odometers.** The currency answer's rolling digits became a general odometer:
-  - Where a number is drawn, its place is recorded as a *spot*, and the odometer draws it in retained columns instead.
-  - There are twelve spots: the answer, the level indicator, the focus clock, three Home statistics, the compact volume, battery and timer chips, the compact timer label, and the glance's CPU and GPU.
-  - `digitRoll` re-bases a column into the middle turn of its 30-digit strip and picks the nearest copy of the new digit, so a countdown rolls one step and a spring's overshoot never leaves the strip.
-  - Cells are whole pixels, so digits at rest sit on the pixel grid. Numbers that appear during a content cascade join their band's fade and rise.
-- **Compact lyrics.** Two layers inside a clip the size of the label. A new line rises 9 DIPs and fades in while the old one lifts and fades, on compositor-timed ease-out curves.
-- **Beat pulse.** The bass (the 50–130 Hz bands) is compared with its own half-second average, so only hits swell the cover, by up to 4%.
-  - The scale about the cover's centre is composed before its size scale in a transform group.
-  - The loopback analyzer now also runs while the Home page shows a playing cover.
-- **Liquid morph.** On opening or closing, the corner radius gets a velocity kick on a softer spring, so the outline rounds out mid-morph.
-
-**Command bar.**
-- **Space.** Arrow keys and the pointer make the selected row the island's hovered action, and the island's generic "Space activates the hovered action" then ran it. The command bar now consumes Space's key-down, and the character arrives as usual.
-- **Rows.** `commandRows` lays out the rows with an 18-DIP header before each group when the shown results span several groups. The bar's height follows the layout.
-- **Colours.** `#rgb`, `#rrggbb`, `#rrggbbaa`, `colour …` and `rgb(r, g, b)` are parsed. The row draws a swatch and shows RGB and HSL, and Enter copies the hex.
-- **Typos.** When nothing matches, the closest app (whole name or first word) and the closest command phrase are offered, by optimal-string-alignment distance: none under four letters, one edit up to six, two beyond.
-
-**Left dock.** Edge 2 mirrors the right dock throughout: outline, body origin, shoulders, window position, auto-hide band, input region and edge reveal.
+- **Digit blur.** A second strip draws each figure seven times along the roll at 20% alpha. On jumps of 2.5 figures or more, its opacity, the sharp strip's opacity and a 10% vertical stretch follow the roll's speed.
+- **Morphing icons.**
+  - `drawMorph` blends play ↔ pause quads, the speaker's waves ↔ its cross, and the microphone's slash. `drawIconAnimated` gives each icon a short celebration.
+  - Both are flipbooks: a strip of frames in one surface, its offset stepped by the compositor.
+- **Lean.**
+  - Dragged against the top edge, the root gets a shear (0.06° per DIP) and a stretch.
+  - The glass gets the same as a `TransformMatrix` expression, and the input region is transformed to match.
+  - The transform is attached only while the island leans.
+- **Rising shadow.** The shadow's margin, drop and opacity grow with the island's height.
 
 ## Bugs found while testing
 
-- **v0.13's vibrancy never ran.** Composition requires every Direct2D effect property to be supplied, and 0.13 set only the matrix, so Windows rejected the effect (`E_INVALIDARG`) and the plain blur showed instead. Its report said the effect was working, which was wrong. Now all three properties are set, and an effect factory that is still compiling is accepted.
-- **Composition drop shadows render black on a desktop window target.** Every `LayerVisual` + `DropShadow` combination tried rendered as a black box. The shadow is now a pre-blurred nine-grid sprite.
-- **The shadow window caught clicks.** A hit test over the shadow returned the shadow window. It is now layered and transparent without `SetLayeredWindowAttributes`, and the same hit test passes through to the app beneath.
-- **An 85 MB memory regression, caught before release.** The glass and shadow layers each created their own Direct3D device for their drawn surfaces, and the grain was drawn even with the Solid material. Both now share the renderer's device and draw their surfaces on first use. Private memory at idle fell from 147 MB to 73.5 MB (v0.13 measures 62.4 MB under the same conditions).
-- **The compact header dimmed every second while a timer ran.** The label was the ticking time, and each change replayed the header's entrance. A running timer's label now rolls as an odometer, and the entrance plays only for a real change of label. This bug predates 0.14.
-- **The idle glance would have sampled while tucked away.** Auto-hide now re-evaluates the providers when the island tucks or reveals.
-- **The first Space test passed without the fix.** It didn't hover a row, so nothing could be run. The stage now types a query with a harmless timer row, highlights that row, and sends real `WM_KEYDOWN`/`WM_CHAR`/`WM_KEYUP` messages. With the fix removed, it fails at that stage.
+- **The first weather sky crashed the app at startup** (`0x88980801`): DirectComposition lets only one surface draw at a time, and the sky's surfaces were drawn while the content surface was still open. They are now drawn after it closes.
+- **Two-row lyrics filled both rows at once.** Each row's fill was interpolated only between the line's own keyframes, so the second row spread across the whole line. Rows now get a keyframe at every character edge the fill crosses, and the compact line got the same. It was found by capturing the line at five moments.
+- **A one-pixel sliver at the content's right edge** appeared intermittently on the Media page. It came in about half of the runs and was traced by hiding layers one at a time. The content surface is now four DIPs wider and taller than the bands that show it, so an edge sample reads its own clear pixels.
+- **Clear glass showed the stub's outline through the pill** for a few frames. The stub now stops one DIP into the pill.
+- **The shoulders slid over a pill that hadn't left the edge yet.** They now move only after the pill detaches.
+- **"Thunderstorm" was cut off on the Home tile** (now "Storm" there). **The sun covered the end of the place name** (now smaller and in the corner). **The received-file card cut off its detail** (now the file name only).
+- **Test harness:** the auto-hide stages of the UI test left the island slid away for the stages after them (the new stages now start from a shown island). The settings test outgrew a five-minute limit (it takes 317 s).
 
 ## Verification
 
-- **Unit suites:** 4 of 4 pass.
-  - **Phase: 5,432 checks** (26 new): rolling-digit targets over every position and digit, GPU engine sums, colour parsing and HSL, edit distance, typo suggestions, row headers, screen-capture order, v12 → v13 settings and the left edge band.
-  - **Model: 2,061 checks** (222 new): the left dock's outline mirrors the right one point for point.
-- **Native UI test:** 28 stages. The three new ones type a space between words while a result is highlighted.
-- **Settings end-to-end:** 145 of 145, including the three new switches (it steps the dock edge between Top and Right; Left was checked by the unit suites and on the bench).
-- **Test bench:**
-  - Frosted and Clear, dark and light, on generated backdrops
-  - the left dock
-  - the soft shadow under Solid and glass
-  - the idle glance
-  - rolling digits caught mid-roll
-  - a lyric line caught mid-morph
-  - the cover's edge moving with a synthetic beat
-- **Idle (compact, media off, 30 s):**
-  - glance off: 0.000 s CPU, 73.5 MB private
-  - glance on: 0.094 s CPU (0.31% of one core), 76.2 MB
-  - raw data: `evidence/v0.14/idle-compact-glance-*.json`
+- **Unit suites: 5 of 5 pass.**
+  - **Phase: 5,534 checks** (102 new since 0.14), covering:
+    - word-timed lyrics (parsing, repeats, offsets and fill keyframes)
+    - link hosts and paths, code detection and colouring
+    - weather parsing, the place file, WMO codes and units, the weather command
+    - the health log and the week
+    - chips, the Controls migration and v13 → v14 settings
+    - the adaptive grid and the drop distance
+  - **Share: 49 checks** (a new suite). Two independent services with their own identities, over loopback:
+    - refusal before pairing
+    - a declined pairing, then matching codes
+    - a declined file, and two byte-exact 1 MB transfers (the second gets a free name)
+    - identity and pairing kept across a restart
+    - refusal after the other PC forgets this one
+    - safe file names
+  - **Model: 2,061 checks. Core: 11,682 checks. Provider lifecycle: pass.**
+- **Native UI test: 35 stages, 7 new.** Nothing reaches the real player, Wi-Fi or Bluetooth.
+  - The compact controls are hit where they are drawn (checked through `hit()`, no click).
+  - The Controls page lays out its tiles and sliders.
+  - The drop pill's input region covers the stub and the pill but not the gap.
+  - The Nearby tab offers Pair and Forget and chooses a target.
+  - The fullscreen peek shows and hides.
+- **Settings end-to-end: 176 of 176.** The user's settings file was byte-identical afterwards.
+- **Captures, on the island's own matte:**
+  - the drop and the return caught mid-motion on Frosted, Clear and Solid
+  - the edge light mid-sweep
+  - digits mid-blur
+  - all eight skies
+  - adaptive text over an illustrative backdrop
+  - the sharing tab and cards
+  - the sequential lyric fill
+- **Live:** a borderless fullscreen window hid the island as it should. Nothing was playing on the PC, so the peek itself was verified by the UI test's made-up track.
+- **Idle (compact, the PC's own settings, 30 s):**
+  - v0.15: 0.000 s CPU, 78.2 MB private
+  - v0.14 under the same conditions: 0.031 s, 77.0 MB
+  - raw data: `evidence/v0.15/idle-compact*.json`
 
-Screenshots in `evidence/v0.14` use a painted backdrop, the showcase track and a sample file in the Public folder.
+Screenshots in `evidence/v0.15` use the island's own matte, the showcase track, sample clips, illustrative PCs ("Studio PC", "Travel laptop") and a sample town.
 
 ## Limits
 
-- **No displacement lensing.** The host backdrop brush can't be offset, scaled or warped: a `Transform2D` over it renders black. The edges gather light instead of bending the background.
-- **Screen capture** is known only for apps that go through Windows' capture API and its consent records. Desktop-duplication or GDI capture is invisible to it.
-- **Real blur** still needs Windows' Transparency effects.
-- **Compact lyrics** are line-timed, as before.
+- **Lock screen:** apps can't draw on Windows' secure desktop.
+- **Sharing** has been verified over loopback, not between two physical PCs. Discovery is UDP broadcast on one network segment, and Windows may ask about the firewall the first time.
+- **Word-by-word lyrics** need lyrics with word tags; LRCLIB's are mostly line-timed.
+- **Adaptive text** works from the wallpaper, so it switches off when a window is behind the island. A span wallpaper is treated as fill.
+- **The drop pill** and **the lean** are top-dock only.
 - **Unsigned preview.** There is no UI Automation tree for screen readers yet.

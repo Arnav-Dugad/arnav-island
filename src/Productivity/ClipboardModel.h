@@ -28,6 +28,57 @@ inline bool isLink(const std::wstring& raw){
     for(auto scheme:{L"https://",L"http://",L"mailto:",L"ftp://"})if(lower.starts_with(scheme)&&lower.size()>wcslen(scheme)+2)return true;
     return lower.starts_with(L"www.")&&lower.find(L'.',4)!=std::wstring::npos;
 }
+// ---- Phase 5F: rich rows -----------------------------------------------------------------
+// A web address's host ("github.com": lower case, no "www.", no port or user) and its path
+// without query or fragment; both empty for anything that is not http(s).
+inline std::wstring linkHost(const std::wstring& raw){
+    std::wstring s;for(wchar_t c:raw)if(!std::iswspace(c))s+=wchar_t(std::towlower(c));
+    size_t at=s.starts_with(L"https://")?8:s.starts_with(L"http://")?7:s.starts_with(L"www.")?0:std::wstring::npos;if(at==std::wstring::npos)return {};
+    size_t end=s.find_first_of(L"/?#",at);std::wstring host=s.substr(at,end==std::wstring::npos?std::wstring::npos:end-at);
+    if(auto u=host.rfind(L'@');u!=std::wstring::npos)host=host.substr(u+1);if(auto p=host.find(L':');p!=std::wstring::npos)host.resize(p);if(host.starts_with(L"www."))host=host.substr(4);
+    if(host.empty()||host.size()>253||host.find(L'.')==std::wstring::npos)return {};for(wchar_t c:host)if(!(std::iswalnum(c)||c==L'-'||c==L'.'))return {};return host;
+}
+inline std::wstring linkPath(const std::wstring& raw){
+    size_t a=raw.find_first_not_of(L" \t\r\n");if(a==std::wstring::npos)return {};std::wstring s=raw.substr(a);size_t b=s.find_last_not_of(L" \t\r\n");s.resize(b+1);
+    size_t scheme=s.find(L"://");size_t start=s.find(L'/',scheme==std::wstring::npos?0:scheme+3);if(start==std::wstring::npos)return {};
+    std::wstring path=s.substr(start,s.find_first_of(L"?#",start)==std::wstring::npos?std::wstring::npos:s.find_first_of(L"?#",start)-start);while(path.size()>1&&path.back()==L'/')path.pop_back();return path==L"/"?std::wstring{}:path;
+}
+// Whether a copy reads as source code rather than prose: braces, statement ends, operators,
+// code keywords at a line start, markup tags and indentation each count; three signals decide.
+inline bool looksLikeCode(const std::wstring& t){
+    if(t.size()<6||t.size()>200000)return false;int score=0;auto has=[&](const wchar_t* s){return t.find(s)!=std::wstring::npos;};
+    if(has(L"{")&&has(L"}"))score+=2;if(has(L"=>")||has(L"->")||has(L"::")||has(L"==")||has(L"!=")||has(L"&&")||has(L"||")||has(L":="))++score;
+    if(has(L"</")||has(L"/>"))score+=2;if(has(L"();")||(has(L"()")&&(has(L"{")||has(L":"))))++score;
+    int ends=0,indented=0,starts=0;size_t line=0;
+    while(line<t.size()){size_t next=t.find(L'\n',line);std::wstring l=t.substr(line,next==std::wstring::npos?std::wstring::npos:next-line);if(!l.empty()&&l.back()==L'\r')l.pop_back();
+        size_t lead=0;while(lead<l.size()&&(l[lead]==L' '||l[lead]==L'\t'))++lead;if(line>0&&(lead>=2||(lead==1&&l[0]==L'\t'))&&lead<l.size())++indented;
+        size_t last=l.find_last_not_of(L" \t");if(last!=std::wstring::npos&&(l[last]==L';'||l[last]==L'{'))++ends;
+        std::wstring first;for(size_t k=lead;k<l.size()&&(std::iswalnum(l[k])||l[k]==L'_'||l[k]==L'#');++k)first+=l[k];
+        for(auto w:{L"def",L"class",L"function",L"import",L"#include",L"const",L"let",L"var",L"public",L"private",L"return",L"fn",L"func",L"package",L"using",L"SELECT",L"select",L"struct",L"enum",L"async",L"export",L"elif",L"try"})if(first==w&&lead+first.size()<l.size()&&(l[lead+first.size()]==L' '||l[lead+first.size()]==L'('||l[lead+first.size()]==L'<'))++starts;
+        if(next==std::wstring::npos)break;line=next+1;}
+    score+=std::min(2,ends)+std::min(2,starts*2)+(indented>=1?1:0);
+    return score>=3;
+}
+// Syntax colouring for one line of code: kind 1 keyword, 2 string, 3 number, 4 comment, 5 punctuation.
+struct CodeSpan {uint32_t start,length;int kind;bool operator==(const CodeSpan&)const=default;};
+inline std::vector<CodeSpan> codeSpans(const std::wstring& line){
+    std::vector<CodeSpan> spans;const size_t n=line.size();size_t i=0;
+    static const wchar_t* keywords[]={L"if",L"else",L"elif",L"for",L"while",L"do",L"return",L"break",L"continue",L"switch",L"case",L"default",L"const",L"let",L"var",L"function",L"def",L"class",L"struct",L"enum",L"public",L"private",L"protected",L"static",L"void",L"int",L"float",L"double",L"bool",L"char",L"auto",L"import",L"from",L"export",L"package",L"using",L"namespace",L"new",L"delete",L"true",L"false",L"null",L"nullptr",L"None",L"True",L"False",L"self",L"this",L"async",L"await",L"try",L"catch",L"finally",L"throw",L"lambda",L"fn",L"func",L"pub",L"impl",L"match",L"type",L"interface",L"extends",L"in",L"of",L"and",L"or",L"not",L"select",L"where",L"SELECT",L"FROM",L"WHERE",L"echo",L"print",L"#include",L"#define",L"#pragma"};
+    auto ident=[](wchar_t c){return std::iswalnum(c)||c==L'_';};
+    while(i<n){const wchar_t c=line[i];
+        if(std::iswspace(c)){++i;continue;}
+        // Comments: "//" anywhere, "#" at a word start unless it begins a directive such as #include.
+        if((c==L'/'&&i+1<n&&line[i+1]==L'/')||(c==L'#'&&(i==0||std::iswspace(line[i-1]))&&!(i+1<n&&std::iswalpha(line[i+1])&&(line.compare(i,8,L"#include")==0||line.compare(i,7,L"#define")==0||line.compare(i,7,L"#pragma")==0)))){spans.push_back({uint32_t(i),uint32_t(n-i),4});break;}
+        if(c==L'"'||c==L'\''||c==L'`'){size_t k=i+1;while(k<n&&line[k]!=c){if(line[k]==L'\\')++k;++k;}k=std::min(n,k+1);spans.push_back({uint32_t(i),uint32_t(k-i),2});i=k;continue;}
+        if(std::iswdigit(c)&&(i==0||!ident(line[i-1]))){size_t k=i;while(k<n&&(std::iswalnum(line[k])||line[k]==L'.'||line[k]==L'_'))++k;spans.push_back({uint32_t(i),uint32_t(k-i),3});i=k;continue;}
+        if(ident(c)||c==L'#'){size_t k=i+1;while(k<n&&ident(line[k]))++k;const std::wstring word=line.substr(i,k-i);for(auto w:keywords)if(word==w){spans.push_back({uint32_t(i),uint32_t(k-i),1});break;}i=k;continue;}
+        if(std::wcschr(L"{}()[];,.:=<>+-*/%!&|^~?@",c)){spans.push_back({uint32_t(i),1,5});++i;continue;}
+        ++i;}
+    return spans;
+}
+// The first line of a copy with text on it, trimmed.
+inline std::wstring firstLine(const std::wstring& t){size_t line=0;while(line<t.size()){size_t next=t.find(L'\n',line);std::wstring l=t.substr(line,next==std::wstring::npos?std::wstring::npos:next-line);
+    while(!l.empty()&&std::iswspace(l.back()))l.pop_back();size_t a=l.find_first_not_of(L" \t");if(a!=std::wstring::npos)return l.substr(a);if(next==std::wstring::npos)break;line=next+1;}return {};}
 // One tidy line for display: whitespace runs collapse, long text is shortened.
 inline std::wstring clipPreview(const std::wstring& text,size_t limit=140){
     std::wstring out;out.reserve(std::min(text.size(),limit+1));bool space=false;

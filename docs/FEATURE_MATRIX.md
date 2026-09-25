@@ -1,4 +1,4 @@
-# Feature status — v0.13 preview
+# Feature status — v0.15 preview
 
 | Area | Implemented | Limits |
 |---|---|---|
@@ -122,3 +122,19 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Beat pulse | Bass (50-130 Hz) against its half-second average; up to 4% | Needs the loopback analyzer, which runs only while the cover is shown and playing |
 | Command bar | Space types; group headers; colour swatches (hex, short hex, rgb()); "Did you mean" for apps and commands | Typos are guessed only when nothing matched, and only for four letters or more |
 | Left dock | Mirror of the right dock: shoulders, auto-hide band, input region, reveal | — |
+
+| v0.15 feature | Implemented | Limits |
+|---|---|---|
+| Drop pill | The body drops 42 DIPs as a floating pill while a docked stub (the compact width, at most 196 DIPs) keeps the shoulders; the outline peels from the edge; shoulders move in only after the pill detaches; DirectComposition, glass, shadow and input region all follow | Top dock only; side docks and floating islands grow as before |
+| Edge light | Three tiers (core, dim, glow) of the island's outline sweep out from the middle of the free edge in 0.8 s on alerts | Plays on device, power, privacy, capture, headphone and sharing cards |
+| Now Playing | Compact previous/play/next, swipe to skip (touchpad horizontal scroll or a sideways drag), fullscreen peek at the screen edge | The lock screen is off-limits to apps (a secure desktop) |
+| Spectrum ring | 24 ticks around a round compact cover, from the loopback bands | Needs the loopback analyzer (runs only while playing and shown) |
+| Word-timed lyrics | Enhanced-LRC `<mm:ss.xx>` word tags light words in the compact island, the Live Island and the Command Center | LRCLIB's lyrics are mostly line-timed; those sweep at a singing pace |
+| Weather | Opt-in; Open-Meteo geocoding once, forecast every 30 min; Home tile with an animated sky (sun, stars, clouds, rain, snow, fog, storm) for 60 s at a time; glance chip | Needs the network; one place |
+| Controls page | Wi-Fi, Bluetooth, airplane, dark mode, focus timer, microphone, volume and brightness, with live states | Brightness only on displays that expose it through WMI (built-in panels) |
+| Sharing | UDP discovery, SAS pairing (six digits, committed nonce), static ECDH P-256 + AES-256-GCM transfers, accept prompt, Downloads, 16 GB limit; 49 loopback checks | Tested over loopback, not between two physical PCs; one network segment; Windows may ask about the firewall |
+| Battery week | Daily full-charge capacity in `battery-health.nexus`; weekly card (health change, charges, use per day) from 9 am after 3 days of history | Needs a battery driver that reports capacity in mWh |
+| Rich clipboard | Link host and path, optional site icon, colour swatch, code in Cascadia Mono / Consolas with token colours | Site icons fetch `/favicon.ico` from the site (opt-in) |
+| Chips editor | Drag or arrow keys in Settings › Compact; seven chips, saved as an order | When space is short, chips on the right win |
+| Adaptive text | Wallpaper luminance (fill/fit/stretch/centre/tile) through the Clear scrim; letters, icons and rolling digits flip per glyph | Clear glass, top dock, only when no window overlaps the island; span wallpapers treated as fill |
+| Motion | Digit blur and stretch on jumps of 2.5+ figures, icon morphs (play/pause, volume/mute, microphone) and celebrations, lean with rubber band while dragged, shadow that deepens as the island grows | Lean on the top dock only |

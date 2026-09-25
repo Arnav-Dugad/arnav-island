@@ -2,16 +2,43 @@
 namespace nexus {
 Action Renderer::hit(float x,float y)const {
     if(live_)y+=18;
-    if(y>=38+navY&&y<38+navY+44){double now=seconds();for(size_t i=0;i<7;++i){auto& icon=icons_[i];if(!icon.used)continue;double left=icon.x.sample(now).position+16-icon.drawnSize/2-14;if(x>=left&&x<left+47)return icon.action;}return Action::None;}
+    if(y>=38+navY&&y<38+navY+44){double now=seconds();for(size_t i=0;i<size_t(pageCount);++i){auto& icon=icons_[i];if(!icon.used)continue;double left=icon.x.sample(now).position+16-icon.drawnSize/2-14;if(x>=left&&x<left+47)return icon.action;}return Action::None;}
     for(auto& target:targets)if(target.y<navY&&target.contains(x-20,y-38))return target.action;return Action::None;
 }
-void Renderer::icon(Action action,Icon glyph,float x,float y,float size,UINT32 color,int stableSlot){
-    if(drawingContent_){iconRequests_.push_back({action,glyph,x,y,size,color,stableSlot});return;}
+// An icon's own colour: its palette's accent (and deep shade for light islands), remembered per icon.
+std::pair<UINT32,UINT32> Renderer::iconColour(const std::shared_ptr<const Artwork>& icon){
+    for(auto& [weak,colours]:iconColours_)if(weak.lock()==icon)return colours;
+    auto p=artPalette(icon->pixels.data(),icon->pixels.size()/4);const std::pair<UINT32,UINT32> colours{p.accent,p.deep};
+    if(iconColours_.size()>=16)iconColours_.erase(iconColours_.begin());iconColours_.push_back({icon,colours});return colours;
+}
+void Renderer::createIconVisual(IconVisual& i){
+    check(device_->CreateVisual(&i.visual));check(device_->CreateVisual(&i.strip));check(device_->CreateRectangleClip(&i.clip));i.clip->SetLeft(0.f);i.clip->SetTop(0.f);i.clip->SetRight(32*scale_);i.clip->SetBottom(32*scale_);
+    // Hard borders keep neighbouring flipbook frames from fringing past the clip.
+    i.visual->SetClip(i.clip.Get());i.visual->SetBorderMode(DCOMPOSITION_BORDER_MODE_HARD);check(i.visual->AddVisual(i.strip.Get(),FALSE,nullptr));
+    check(device_->CreateScaleTransform(&i.scale));i.scale->SetCenterX(16*scale_);i.scale->SetCenterY(16*scale_);i.visual->SetTransform(i.scale.Get());check(device_->CreateEffectGroup(&i.effect));i.visual->SetEffect(i.effect.Get());
+}
+// Frames side by side in one surface; the strip steps left one frame at a time (each step a
+// flat segment of the animation), so the compositor plays it with no work on the UI thread.
+void Renderer::flip(IconVisual& item,int frames,double duration,const std::function<void(ID2D1RenderTarget*,float)>& draw){
+    item.frames.Reset();surface(item.frames,32*frames,32,[&](auto* rt){for(int k=0;k<frames;++k){D2D1_MATRIX_3X2_F m;rt->GetTransform(&m);rt->SetTransform(D2D1::Matrix3x2F::Translation(32.f*k,0)*m);rt->PushAxisAlignedClip(D2D1::RectF(0,0,32,32),D2D1_ANTIALIAS_MODE_ALIASED);draw(rt,float(k)/float(frames-1));rt->PopAxisAlignedClip();rt->SetTransform(m);}});
+    item.strip->SetContent(item.frames.Get());ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(seconds())));
+    for(int k=0;k<frames;++k)check(a->AddCubic(duration*k/(frames-1),-32.f*k*scale_,0,0,0));check(a->End(duration,-32.f*(frames-1)*scale_));item.strip->SetOffsetX(a.Get());
+}
+// The icon's picture: a still, a morph from the glyph it showed before, or its own animation.
+void Renderer::paintIcon(IconVisual& item,Icon glyph,float size,UINT32 color,bool celebrate){
+    const int key=(int(glyph)<<24)|int(color);const bool changed=item.key!=key||item.drawnSize!=size,swapped=item.key>=0&&(item.key>>24)!=int(glyph)&&item.drawnSize==size;const Icon previous=item.key>=0?Icon(item.key>>24):glyph;
+    const float at=16-size/2;
+    if(celebrate&&iconMotion_)flip(item,14,.52,[&](auto* rt,float t){drawIconAnimated(rt,d2d_.Get(),glyph,t,at,at,size,color);});
+    else if(changed&&swapped&&iconMotion_)flip(item,10,.26,[&](auto* rt,float t){drawMorph(rt,d2d_.Get(),previous,glyph,easeOutCubic(t),at,at,size,color);});
+    else if(changed){surface(item.surface,32,32,[&](auto* rt){drawIcon(rt,d2d_.Get(),glyph,at,at,size,color);});item.strip->SetContent(item.surface.Get());item.strip->SetOffsetX(0.f);}
+    item.key=key;item.drawnSize=size;
+}
+void Renderer::icon(Action action,Icon glyph,float x,float y,float size,UINT32 color,int stableSlot,bool celebrate){
+    if(drawingContent_){iconRequests_.push_back({action,glyph,x,y,size,color,stableSlot,celebrate});return;}
     size_t slot=stableSlot>=0?size_t(stableSlot):iconCursor_++;if(slot>=icons_.size())return;auto& item=icons_[slot];double now=seconds();bool initial=item.key<0||item.action!=action;item.used=true;item.action=action;int key=(int(glyph)<<24)|int(color);
-    // A new glyph in the same place (play to pause, mute to volume) pops in on a spring.
-    const bool swapped=!initial&&item.key>=0&&(item.key>>24)!=int(glyph)&&iconMotion_;
-    if(item.key!=key||item.drawnSize!=size){surface(item.surface,32,32,[&](auto* rt){drawIcon(rt,d2d_.Get(),glyph,16-size/2,16-size/2,size,color);});item.visual->SetContent(item.surface.Get());item.key=key;item.drawnSize=size;}
-    if(swapped){item.zoom.reset(.55,now);item.zoom.retarget(1,now,{1,560,22});}
+    // A new glyph in the same place (play to pause, mute to volume) morphs into it; a page just chosen plays its icon.
+    if(initial&&item.key>=0&&!celebrate){item.key=-1;}
+    paintIcon(item,glyph,size,color,celebrate);(void)key;
     float px=std::round((20+x+size/2-16)*scale_)/scale_,py=std::round((38+y+size/2-16)*scale_)/scale_;item.baseY=py;double dy=py+(iconMotion_&&action!=Action::None&&hoverAction_==action?-1.25:0);
     auto aim=[&](Spring& spring,double target){if(initial||!iconMotion_)spring.reset(target,now);else if(std::abs(spring.target()-target)>.01)spring.retarget(target,now,MotionTokens::iconPosition);};aim(item.x,px);aim(item.y,dy);
     if(initial)item.zoom.reset(1,now);item.effect->SetOpacity(1.f);

@@ -47,7 +47,7 @@ bool IslandWindow::pointerOffEdge(){
 void IslandWindow::autoHideTick(){
     if(!renderer_||!IsWindowVisible(window_))return;double now=seconds(),s=dpi_/96;POINT c{};GetCursorPos(&c);MONITORINFO mi{sizeof(mi)};GetMonitorInfoW(MonitorFromWindow(window_,MONITOR_DEFAULTTONEAREST),&mi);RECT w{};GetWindowRect(window_,&w);
     // Resting geometry, not the animated pose, so the trigger never drifts.
-    const double bw=motion_.width.target(),bh=motion_.height.target();auto origin=bodyOrigin(bw,bh,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);
+    const double bw=motion_.width.target(),bh=motion_.height.target();auto origin=bodyAt(bw,bh,motion_.drop.target());
     const double left=w.left+origin.x*s,top=w.top+origin.y*s,right=left+bw*s,bottom=top+bh*s;
     const double center=settings_.edge?(top+bottom)/2:(left+right)/2,half=(settings_.edge?bh:bw)*s/2+56*s;
     bool atEdge=atIslandEdge(c.x,c.y,mi.rcMonitor.left,mi.rcMonitor.top,mi.rcMonitor.right,mi.rcMonitor.bottom,settings_.edge,center,half);
@@ -65,13 +65,18 @@ void IslandWindow::showNotice(int kind,const BluetoothDevice& device){
     if(!renderer_||(state_!=IslandState::Compact&&state_!=IslandState::Notification))return;
     if(settings_.autoHide&&autoHide_.hidden&&!settings_.alertsReveal)return;
     content_.notice={kind,device};events_.publish({kind>=3?ActivityKind::Power:ActivityKind::Device,"notice",60,double(kind),2.4,3.2},seconds());
-    transition(IslandState::Notification);presentActivity();store_.log("Info",kind>=3?"power_card_shown":"device_card_shown");
+    transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info",kind>=3?"power_card_shown":"device_card_shown");
 }
+void IslandWindow::alertSplash(){if(settings_.edgeSplash&&renderer_)renderer_->splash(float(motion_.width.target()),float(motion_.height.target()),float(motion_.radius.target()),!settings_.floating()&&motion_.drop.target()<=0,motion_.reduced?0:.34,motion_.reduced);}
 void IslandWindow::updateBattery(){
     auto reading=battery_->reading();auto estimate=battery_->estimate();content_.power=reading;content_.toFull=estimate.minutesToFull(reading);content_.remaining=estimate.minutesRemaining(reading);
     auto history=battery_->history();content_.history.clear();const auto now=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     for(auto& sample:history.samples)if(now-sample.time<=86400){content_.history.push_back(float(1-double(now-sample.time)/86400.));content_.history.push_back(sample.percent/100.f);}
-    if((state_==IslandState::Expanded&&content_.page==Page::System&&content_.statsTab==1)||(content_.card&&(content_.notice.kind==3||content_.notice.kind==4)))refresh();
+    // The health trend, and once a week (from 9 o'clock, with at least three days of history) its card.
+    if(!testing_){auto log=battery_->health();if(auto w=log.week()){content_.healthBefore=w->first;content_.healthNow=w->second;}else{content_.healthBefore=-1;content_.healthNow=log.days.empty()?-1:BatteryHealthLog::health(log.days.back());}
+        if(settings_.batteryWeekly&&settings_.batteryHistory){if(log.lastCard==0)battery_->markWeeklyCard(now);
+            else if(now-log.lastCard>=7*86400){SYSTEMTIME t{};GetLocalTime(&t);auto week=summarizeWeek(history,now);if(t.wHour>=9&&week.days>=3&&state_==IslandState::Compact&&!(settings_.autoHide&&autoHide_.hidden)){content_.week=week;battery_->markWeeklyCard(now);showNotice(13);}}}}
+    if((state_==IslandState::Expanded&&content_.page==Page::System&&content_.statsTab==1)||(content_.card&&(content_.notice.kind==3||content_.notice.kind==4||content_.notice.kind==13)))refresh();
 }
 // Volume and brightness changes grow the resting island into a level indicator.
 void IslandWindow::levelIndicator(){
@@ -83,7 +88,7 @@ void IslandWindow::levelIndicator(){
 }
 void IslandWindow::setMixerAt(LPARAM point){
     size_t index=int(pressedAction_)-int(Action::MixerSliderBase);if(!mixer_||index>=content_.mixer.size())return;double now=seconds();
-    auto origin=bodyOrigin(motion_.width.sample(now).position,motion_.height.sample(now).position,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);
+    auto origin=bodyAt(motion_.width.sample(now).position,motion_.height.sample(now).position,motion_.drop.sample(now).position);
     float value=float(std::clamp((GET_X_LPARAM(point)*96/dpi_-origin.x-motion_.dragX.sample(now).position-20-156)/174.,0.,1.));
     auto& e=content_.mixer[index];if(std::abs(e.volume-value)<.004f)return;e.volume=value;if(e.muted&&value>0){e.muted=false;mixer_->setMute(e.pid,false);}mixer_->setVolume(e.pid,value);refresh();
 }
@@ -144,6 +149,6 @@ bool IslandWindow::showHeadphoneCard(const AudioDevice& output,const std::wstrin
     if(device.brand.empty())device.brand=std::string(deviceBrand(device.name));if(device.kind==DeviceKind::Other)device.kind=deviceKind(0,device.name);if(device.kind==DeviceKind::Other)device.kind=DeviceKind::Headphones;
     const bool back=settings_.directAudio&&std::any_of(content_.outputs.begin(),content_.outputs.end(),[&](auto& d){return d.id==fromId;});switchBackId_=back?fromId:std::wstring{};
     content_.notice={8,device,outputDisplayName(fromName),nullptr,back};
-    events_.publish({ActivityKind::Device,"headphones",60,8,2.4,6},seconds());transition(IslandState::Notification);presentActivity();store_.log("Info","headphone_card_shown");return true;
+    events_.publish({ActivityKind::Device,"headphones",60,8,2.4,6},seconds());transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info","headphone_card_shown");return true;
 }
 }

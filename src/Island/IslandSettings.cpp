@@ -150,7 +150,11 @@ void IslandWindow::settingsTestStep(){
         case SettingControl::Swatch:{int n=int(p.parts.size());expected=second?settingsTestValue_:(v+1)%n;if(!second)settingsTestValue_=v;click(p.parts[expected]);break;}
         case SettingControl::Stepper:{int n=item.hi-item.lo+1;expected=item.lo+((v-item.lo+(second?-1:1))%n+n)%n;click(p.parts[second?0:1]);break;}
         case SettingControl::Slider:{float f=second?.9f:.1f;int x=p.rect.left+int(std::lround((p.rect.right-p.rect.left)*f));float fraction=float(x-p.rect.left)/float(p.rect.right-p.rect.left);expected=std::clamp(item.lo+int(std::lround(fraction*(item.hi-item.lo)/item.step))*item.step,item.lo,item.hi);click(p.rect,f);break;}
-        case SettingControl::Order:{int slot=item.key.back()-'0';int neighbor=slot<6?slot+1:slot-1;expected=settings_.navigation[neighbor];click(p.parts[slot<6?1:0]);break;}
+        case SettingControl::Order:{int slot=item.key.back()-'0';int neighbor=slot<pageCount-1?slot+1:slot-1;expected=settings_.navigation[size_t(neighbor)];click(p.parts[slot<pageCount-1?1:0]);break;}
+        // Chips: drag the first chip two places right through the real pointer path.
+        case SettingControl::Chips:{const int to=second?0:2,from=second?2:0;expected=encodeChips(moveChip(settings_.chips,from,to));auto a=p.parts[size_t(from)],b=p.parts[size_t(to)];
+            const int ax=(a.left+a.right)/2,ay=(a.top+a.bottom)/2,bx=(b.left+b.right)/2;SendMessageW(settings,WM_MOUSEMOVE,0,MAKELPARAM(ax,ay));SendMessageW(settings,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(ax,ay));
+            for(int k=1;k<=6;++k)SendMessageW(settings,WM_MOUSEMOVE,MK_LBUTTON,MAKELPARAM(ax+(bx-ax)*k/6,ay));SendMessageW(settings,WM_LBUTTONUP,0,MAKELPARAM(bx,ay));break;}
         case SettingControl::Button:
             if(item.action==SettingAction::ResetLayout){Settings changed=settings_;int from=0;moveNavigation(changed.navigation,from,1);assignMetric(changed.homeMetrics,0,5);receiveSettings(changed);}
             click(p.rect);if(item.action==SettingAction::ResetAll)click(p.rect);break;
@@ -166,7 +170,7 @@ void IslandWindow::settingsTestStep(){
         if(!reached&&settingsTestWait_<30)return;
         std::string derived=reached?verifySetting(item):"island never applied the change";
         std::string name=item.key.empty()?narrow(item.title):item.key;log(reached&&derived.empty(),name+": "+what+(derived.empty()?"":" ("+derived+")"));
-        bool twoMoves=settingsTestPhase_==5&&(item.control==SettingControl::Toggle||item.control==SettingControl::Choice||item.control==SettingControl::Swatch||item.control==SettingControl::Stepper||item.control==SettingControl::Slider);
+        bool twoMoves=settingsTestPhase_==5&&(item.control==SettingControl::Chips||item.control==SettingControl::Toggle||item.control==SettingControl::Choice||item.control==SettingControl::Swatch||item.control==SettingControl::Stepper||item.control==SettingControl::Slider);
         settingsTestWait_=0;settingsTestPhase_=twoMoves?30:1;return;}
     case 30:{if(!settingsWindow_->settled())return;settingsTestPhase_=6;return;}
     case 20:{Settings saved=store_.load(settingsFile_);log(saved==settings_,"persistence: settings-qa.nexus matches the live island");

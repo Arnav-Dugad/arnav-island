@@ -73,9 +73,19 @@ private:
     }
 };
 // ---- Synced lyrics --------------------------------------------------------------------------
-struct LyricLine {double time=0;std::wstring text;bool operator==(const LyricLine&)const=default;};
+// A word's start (song seconds) and where it begins in its line's text (enhanced LRC).
+struct LyricWord {double time=0;uint32_t start=0;bool operator==(const LyricWord&)const=default;};
+struct LyricLine {double time=0;std::wstring text;std::vector<LyricWord> words;bool operator==(const LyricLine&)const=default;};
+// "mm:ss.xx" (or "mm:ss:xx") as seconds; nullopt for anything else.
+inline std::optional<double> lrcStamp(std::wstring_view tag){
+    size_t colon=tag.find(L':');if(colon==0||colon==std::wstring_view::npos)return std::nullopt;
+    for(size_t i=0;i<tag.size();++i)if(i!=colon&&!std::iswdigit(tag[i])&&tag[i]!=L'.'&&tag[i]!=L':')return std::nullopt;
+    try{double minutes=std::stod(std::wstring(tag.substr(0,colon)));std::wstring rest(tag.substr(colon+1));for(auto& ch:rest)if(ch==L':')ch=L'.';double secs=std::stod(rest);if(secs<60&&minutes>=0)return minutes*60+secs;}catch(...){}
+    return std::nullopt;
+}
 // LRC: "[mm:ss.xx]text", several time tags per line allowed, optional [offset:+/-ms]
-// (positive shows lines earlier). Metadata tags and untimed lines are ignored.
+// (positive shows lines earlier). Metadata tags and untimed lines are ignored. Enhanced LRC
+// word tags ("<mm:ss.xx>word") become the line's word timing; they are kept only when in order.
 inline std::vector<LyricLine> parseLrc(std::wstring_view text){
     std::vector<LyricLine> lines;double offset=0;size_t start=0;
     auto trim=[](std::wstring_view v){while(!v.empty()&&std::iswspace(v.front()))v.remove_prefix(1);while(!v.empty()&&std::iswspace(v.back()))v.remove_suffix(1);return std::wstring(v);};
@@ -83,13 +93,42 @@ inline std::vector<LyricLine> parseLrc(std::wstring_view text){
         std::vector<double> times;size_t at=0;
         while(at<line.size()&&line[at]==L'['){size_t close=line.find(L']',at);if(close==std::wstring_view::npos)break;std::wstring_view tag=line.substr(at+1,close-at-1);at=close+1;
             if(tag.size()>7&&tag.substr(0,7)==L"offset:"){try{offset=std::stod(std::wstring(tag.substr(7)))/1000.;}catch(...){}continue;}
-            size_t colon=tag.find(L':');if(colon==0||colon==std::wstring_view::npos)continue;
-            bool digits=true;for(size_t i=0;i<tag.size();++i)if(i!=colon&&!std::iswdigit(tag[i])&&tag[i]!=L'.'&&tag[i]!=L':')digits=false;if(!digits)continue;
-            try{double minutes=std::stod(std::wstring(tag.substr(0,colon)));std::wstring rest(tag.substr(colon+1));for(auto& ch:rest)if(ch==L':')ch=L'.';double secs=std::stod(rest);if(secs<60&&minutes>=0)times.push_back(minutes*60+secs);}catch(...){}}
-        if(times.empty())continue;std::wstring words=trim(line.substr(at));for(double t:times)lines.push_back({t,words});}
-    for(auto& l:lines)l.time=std::max(0.,l.time-offset);
+            if(auto t=lrcStamp(tag))times.push_back(*t);}
+        if(times.empty())continue;
+        // Word tags come out of the text; each remembers where its word begins.
+        std::wstring_view body=line.substr(at);std::wstring plain;std::vector<LyricWord> marks;
+        for(size_t k=0;k<body.size();){if(body[k]==L'<'){size_t close=body.find(L'>',k);if(close!=std::wstring_view::npos)if(auto t=lrcStamp(body.substr(k+1,close-k-1))){marks.push_back({*t,uint32_t(plain.size())});k=close+1;continue;}}plain+=body[k];++k;}
+        size_t lead=0;while(lead<plain.size()&&std::iswspace(plain[lead]))++lead;size_t tail=plain.size();while(tail>lead&&std::iswspace(plain[tail-1]))--tail;
+        std::wstring words=plain.substr(lead,tail-lead);for(auto& m:marks)m.start=uint32_t(std::clamp<long long>((long long)m.start-(long long)lead,0,(long long)words.size()));
+        if(!std::is_sorted(marks.begin(),marks.end(),[](auto& a,auto& b){return a.time<b.time;}))marks.clear();
+        // A line with several time tags repeats; its words shift with each repeat.
+        for(double t:times){LyricLine l{t,words,marks};for(auto& w:l.words)w.time+=t-times.front();lines.push_back(std::move(l));}}
+    for(auto& l:lines){l.time=std::max(0.,l.time-offset);for(auto& w:l.words)w.time=std::max(0.,w.time-offset);}
     std::stable_sort(lines.begin(),lines.end(),[](auto& a,auto& b){return a.time<b.time;});
     return lines;
+}
+// How the sung line fills over time, as (song seconds, characters lit) points to join with
+// straight lines. A word-timed line lights word by word, each word filling until the next
+// begins; any other line sweeps at a singing pace (about fourteen characters a second) and is
+// always complete before the next line starts.
+inline std::vector<std::pair<double,double>> lyricFill(const std::vector<LyricLine>& lines,int i){
+    std::vector<std::pair<double,double>> keys;if(i<0||i>=int(lines.size()))return keys;const auto& l=lines[size_t(i)];const double n=double(l.text.size());if(n<=0)return keys;
+    const double start=l.time,next=i+1<int(lines.size())?lines[size_t(i+1)].time:start+6;
+    if(!l.words.empty()&&l.words.front().start<n){
+        keys.push_back({std::min(start,l.words.front().time),0});
+        for(size_t k=0;k<l.words.size();++k){const auto& w=l.words[k];if(w.start>=n)break;
+            const bool last=k+1>=l.words.size();const double from=std::max(w.time,keys.back().first),to=last?std::max(from,std::min(next,w.time+std::max(.35,(n-w.start)*.07+.2))):std::max(from,l.words[k+1].time);
+            const double reach=last?n:std::min(n,std::max(double(w.start),double(l.words[k+1].start)));
+            keys.push_back({from,std::max(keys.back().second,double(w.start))});keys.push_back({to,std::max(keys.back().second,reach)});}
+        if(keys.back().second<n)keys.push_back({std::max(keys.back().first,std::min(next,keys.back().first+.3)),n});
+        return keys;}
+    const double span=std::min(std::max(.8,next-start),std::clamp(n*.07+.35,.8,8.));keys={{start,0},{start+span,n}};return keys;
+}
+// Straight-line value of `keys` at time t (held before the first point and after the last).
+inline double keyedAt(const std::vector<std::pair<double,double>>& keys,double t){
+    if(keys.empty())return 0;if(t<=keys.front().first)return keys.front().second;
+    for(size_t k=1;k<keys.size();++k)if(t<=keys[k].first){auto [t0,v0]=keys[k-1];auto [t1,v1]=keys[k];return t1>t0?v0+(v1-v0)*(t-t0)/(t1-t0):v1;}
+    return keys.back().second;
 }
 // The line being sung at `position` (seconds), or -1 before the first one.
 inline int lyricIndex(const std::vector<LyricLine>& lines,double position){

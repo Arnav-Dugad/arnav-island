@@ -61,6 +61,15 @@ rates published by the European Central Bank (https://www.ecb.europa.eu/stats/
 policy_and_exchange_rates/euro_reference_exchange_rates/). The rates are shown
 as published; the ECB reference rates are for information purposes only.
 
+Weather (off by default) uses Open-Meteo's geocoding and forecast APIs
+(https://open-meteo.com). Weather data by Open-Meteo.com, licensed under
+Creative Commons Attribution 4.0 (CC BY 4.0); the island credits it where the
+weather is chosen ("from Open-Meteo").
+
+Sharing with your PCs uses only Windows' own Winsock, CNG (bcrypt: ECDH P-256,
+AES-GCM, SHA-256) and DPAPI; no third-party networking or cryptography code is
+included.
+
 The Windows.Devices.Radios, OLE DB and Windows Search interfaces are the
 declarations shipped with MinGW-w64 and Windows; the composition path and
 effect interop interfaces in `src/Composition/WinCompAbi.h` were written from

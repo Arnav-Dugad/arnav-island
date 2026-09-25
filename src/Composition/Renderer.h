@@ -29,10 +29,17 @@
 
 #include "Design/Accent.h"
 #include "Media/Lyrics.h"
+#include "Productivity/Weather.h"
+#include "Design/Backdrop.h"
+#include "Productivity/ShareService.h"
 namespace nexus {
 struct ContentSnapshot {
     Page page=Page::Overview;bool expanded=false,live=false,dropHover=false,light=false,blur=true;int layoutSlot=0;bool reducedMotion=false;int settingsPage=0,shelfOffset=0,audioOffset=0;std::wstring activity;std::vector<ShelfItem> shelf;std::vector<AudioDevice> outputs;std::wstring feedback;Action hovered=Action::None;bool pinned=false;
     MediaSnapshot playback;SystemSnapshot system;Settings settings;FocusClock focus;ScrubGesture scrub;
+    // Adaptive text: what is behind the compact island (Clear glass over bare wallpaper only), else null.
+    std::shared_ptr<const LumaGrid> adapt;
+    // Sharing: your PCs on this network, the paired one sends go to, and this PC's name.
+    std::vector<SharePeer> nearby;std::string nearbyTarget;std::wstring shareName;
     std::wstring headline=L"Your space, in rhythm.";
     std::wstring detail=L"A quieter home for the things happening now.";
     std::wstring media=L"No media session";
@@ -46,9 +53,11 @@ struct ContentSnapshot {
     // Notice kinds 5-7: camera, microphone and location use (app and icon below).
     // Kind 8: sound moved to headphones (device = the output, app = the previous output, switchBack offered).
     // Kinds 9-11: a colour was picked, text was copied from the screen, a snip went to the Shelf (detail and colour describe it).
-    struct Notice{int kind=0;BluetoothDevice device;std::wstring app;std::shared_ptr<const Artwork> icon;bool switchBack=false;std::wstring detail;uint32_t colour=0;} notice;
+    struct Notice{int kind=0;BluetoothDevice device;std::wstring app;std::shared_ptr<const Artwork> icon;bool switchBack=false;std::wstring detail;uint32_t colour=0;std::wstring path;} notice;
     // Phase 4: clipboard history on the Shelf, privacy indicators and the command bar.
-    int shelfTab=0,clipOffset=0;bool clipsPaused=false;std::wstring clipStatus;double clipStatusUntil=0;struct Clip{uint64_t id=0;int kind=0;std::wstring preview,meta;std::shared_ptr<const Artwork> thumbnail,icon;bool pinned=false,secret=false;};std::vector<Clip> clips;
+    int shelfTab=0,clipOffset=0;bool clipsPaused=false;std::wstring clipStatus;double clipStatusUntil=0;struct Clip{uint64_t id=0;int kind=0;std::wstring preview,meta;std::shared_ptr<const Artwork> thumbnail,icon;bool pinned=false,secret=false;
+        // Phase 5F, rich rows: a colour code's colour, code (preview is then its first line), a link's host and path and its site icon.
+        bool hasColour=false,code=false;uint32_t colour=0;std::wstring host,path;std::shared_ptr<const Artwork> favicon;};std::vector<Clip> clips;
     // Phase 5C: one Shelf item opened for its actions, and what it is.
     int shelfDetail=-1;bool shelfBusy=false;std::wstring shelfStatus;double shelfStatusUntil=0;
     struct ShelfInfo{std::wstring kind,size,folder,extension;bool image=false,directory=false;int width=0,height=0;} shelfInfo;
@@ -58,6 +67,13 @@ struct ContentSnapshot {
     std::shared_ptr<const std::vector<LyricLine>> lyrics;int lyricsState=0,lyricLine=-1;bool lyricsView=true;
     float seekHover=-1;unsigned detentPulse=0;int appVolume=-1;std::wstring appVolumeName;bool micMuted=false,micAvailable=false;
     // Clipboard mode ("clip ..." or Alt+Shift+V) lists copies and shows more rows.
+    // Phase 5F: the weather at the chosen place (Open-Meteo, opt-in), when known.
+    struct Weather{bool valid=false;double temperature=0;int code=-1;bool day=true;std::wstring place;} weather;
+    // Phase 5F: the Controls page. Radios and dark mode: 1 on, 0 off, -1 unknown, -2 none. busy: switches
+    // being changed (1 Wi-Fi, 2 Bluetooth, 4 airplane, 8 dark mode).
+    struct Controls{int wifi=-1,bluetooth=-1,dark=-1,busy=0;} controls;
+    // Phase 5F: the weekly battery card (notice kind 13): the week summarised, and health now and a week ago.
+    BatteryWeek week;double healthNow=-1,healthBefore=-1;
     struct Command{bool clips=false,paste=false;bool active=false,armed=false,error=false;std::wstring text,status;size_t caret=0;int selected=0;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;} command;
 };
 
@@ -74,15 +90,22 @@ class Renderer {
     ComPtr<IDCompositionSurface> baseSurface_,innerSurface_,headerSurface_,contentSurface_,barSurface_,artSurface_,leftSurface_,rightSurface_,pulseSurface_,hoverSurface_;
     ComPtr<IDCompositionScaleTransform> artScale_,leftScale_,rightScale_,hoverScale_;
     int cachedEdge_=-1,edge_=0;bool attached_=true,expanded_=false,live_=false;UINT32 baseColor_=0,accentColor_=0;int material_=-1;GlassBackdrop glass_,shadow_;std::shared_ptr<const Artwork> artwork_;
-        struct IconVisual {ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionSurface> surface;ComPtr<IDCompositionScaleTransform> scale;ComPtr<IDCompositionEffectGroup> effect;Spring x{0},y{0},lift{0},zoom{1};Action action=Action::None;int key=-1;float drawnSize=0,baseY=0;bool used=false;};
-    struct IconRequest{Action action;Icon glyph;float x,y,size;UINT32 color;int slot;};std::vector<IconRequest> iconRequests_;bool drawingContent_=false;
-    std::array<IconVisual,64> icons_;size_t iconCursor_=7;bool iconMotion_=true;Action hoverAction_=Action::None;bool pressing_=false;
+        // strip: the icon itself, or (Phase 5F) a flipbook of frames stepped behind the visual's one-frame clip.
+        struct IconVisual {ComPtr<IDCompositionVisual> visual,strip;ComPtr<IDCompositionRectangleClip> clip;ComPtr<IDCompositionSurface> frames;ComPtr<IDCompositionSurface> surface;ComPtr<IDCompositionScaleTransform> scale;ComPtr<IDCompositionEffectGroup> effect;Spring x{0},y{0},lift{0},zoom{1};Action action=Action::None;int key=-1;float drawnSize=0,baseY=0;bool used=false;};
+    struct IconRequest{Action action;Icon glyph;float x,y,size;UINT32 color;int slot;bool celebrate=false;};std::vector<IconRequest> iconRequests_;bool drawingContent_=false;
+    std::array<IconVisual,64> icons_;size_t iconCursor_=pageCount;bool iconMotion_=true;Action hoverAction_=Action::None;bool pressing_=false;
     ComPtr<IDCompositionVisual> iconLayer_,artFrom_,artTo_,nav_,rings_,batteryDot_,timerDot_;
     ComPtr<IDCompositionSurface> artFromSurface_,artToSurface_,navSurface_,ringsSurface_,dotSurface_;
     ComPtr<IDCompositionEffectGroup> iconEffect_,incomingEffect_,navEffect_,ringsEffect_,batteryDotEffect_,timerDotEffect_;
     ComPtr<IDCompositionRotateTransform> batteryRotation_,timerRotation_;
     ArtworkHandoff handoff_;Spring navX{4},batteryAngle{0},timerAngle{0};bool ringsEnabled_=true;int ringCount_=2;double ringBattery_=-2,ringTimer_=-2;int ringFlags_=-1;UINT32 ringColor_=0,ringTrack_=0;
-    void icon(Action,Icon,float,float,float,UINT32,int stableSlot=-1);
+    // celebrate: play the glyph's own animation once (a page just chosen, a switch just turned on).
+    void icon(Action,Icon,float,float,float,UINT32,int stableSlot=-1,bool celebrate=false);
+    // Phase 5F: an icon visual's picture, as a still or a flipbook stepped on compositor time.
+    void paintIcon(IconVisual&,Icon,float size,UINT32 color,bool celebrate);void flip(IconVisual&,int frames,double duration,const std::function<void(ID2D1RenderTarget*,float)>& draw);void createIconVisual(IconVisual&);
+    int celebratedPage_=-1;std::array<bool,6> controlOn_{};
+    // The colour an app's icon lends when there is no album art (cached per icon).
+    std::vector<std::pair<std::weak_ptr<const Artwork>,std::pair<UINT32,UINT32>>> iconColours_;std::pair<UINT32,UINT32> iconColour(const std::shared_ptr<const Artwork>&);
     void updateArtwork(const ContentSnapshot&,UINT32);
     void updateAtmosphere(const ContentSnapshot&);void updatePeek(const ContentSnapshot&);
     std::array<ComPtr<IDCompositionVisual>,3> atmosphere_;std::array<ComPtr<IDCompositionEffectGroup>,3> atmosphereEffect_;std::array<ComPtr<IDCompositionSurface>,3> atmosphereSurface_;std::array<Spring,3> atmosphereColor_;
@@ -128,7 +151,7 @@ class Renderer {
     Spring lyricsScroll_{0},lyricsFade_{0},bubbleOpacity_{0};std::wstring lyricsKey_,lyricsTiming_,bubbleKey_;UINT32 bubbleColors_[3]{};UINT32 lyricsDotColor_=1;float lyricsWidth_=0;
     // Where the last drawn lines sat (DIPs from the scroller's top), so the next change can travel from there.
     struct LyricsPlacement{int line=-2;bool gap=false;float current=0,height=0,previous=0,next=0;};LyricsPlacement lyricsPlaced_;
-    struct LyricRow{float top,height,width;UINT32 first,length;};std::vector<LyricRow> lyricsRowsLaid_;
+    struct LyricRow{float top,height,width;UINT32 first,length;std::vector<float> xs;};std::vector<LyricRow> lyricsRowsLaid_;
     ComPtr<IDWriteTextLayout> lyricLayout(const std::wstring&,float size,float width,float height,DWRITE_FONT_WEIGHT);void drawLyric(ID2D1RenderTarget*,IDWriteTextLayout*,float x,float y,UINT32 color,float alpha);
     void timeLyrics(const ContentSnapshot&,double now);
     // Phase 5D, command bar v2: matched letters in titles, and answers whose digits roll into place.
@@ -140,17 +163,53 @@ class Renderer {
     // 6-8 compact volume, battery and timer, 9 the compact timer label, 10-11 the idle glance CPU and GPU.
     // box: the height the text is centred in (0: top-aligned).
     struct OdometerSpot{int id;std::wstring text;float x,y,size;DWRITE_FONT_WEIGHT weight;UINT32 ink;float box=0;bool trailing=false,spin=false;};
-    struct OdometerColumn{ComPtr<IDCompositionVisual> column,strip;ComPtr<IDCompositionRectangleClip> clip;Spring roll{10};int digit=-1;};
-    struct Odometer{ComPtr<IDCompositionVisual> root;ComPtr<IDCompositionEffectGroup> effect;std::vector<OdometerColumn> columns;ComPtr<IDCompositionSurface> digits;std::map<wchar_t,ComPtr<IDCompositionSurface>> glyphs;
-        float size=0,cell=0,top=0,line=0;int weight=0;UINT32 ink=1;float halo=-1;std::wstring shown;float x=0,y=0,box=0;bool trailing=false;};
-    std::array<Odometer,12> odometers_;std::vector<OdometerSpot> contentSpots_,headerSpots_;float answerY_=-1;std::wstring answerText_;double cascadeStart_=-10;
+    // blur: a copy of the strip smeared along the roll, faded in with the roll's speed on big jumps; stretch: the column lengthens with it.
+    struct OdometerColumn{ComPtr<IDCompositionVisual> column,strip,blur;ComPtr<IDCompositionRectangleClip> clip;ComPtr<IDCompositionEffectGroup> sharpFade,blurFade;ComPtr<IDCompositionScaleTransform> stretch;Spring roll{10};int digit=-1;};
+    struct Odometer{ComPtr<IDCompositionVisual> root;ComPtr<IDCompositionEffectGroup> effect;std::vector<OdometerColumn> columns;ComPtr<IDCompositionSurface> digits,blurDigits;std::map<wchar_t,ComPtr<IDCompositionSurface>> glyphs;
+        float size=0,cell=0,top=0,line=0;int weight=0;UINT32 ink=1;float halo=-1;std::wstring shown;float x=0,y=0,box=0;bool trailing=false;
+        // Adaptive text: the same figures in the ink for a bright backdrop, used by the columns over one.
+        ComPtr<IDCompositionSurface> altDigits,altBlur;std::map<wchar_t,ComPtr<IDCompositionSurface>> altGlyphs;UINT32 altInk=0;int serial=-1;};
+    std::array<Odometer,13> odometers_;std::vector<OdometerSpot> contentSpots_,headerSpots_;float answerY_=-1;std::wstring answerText_;double cascadeStart_=-10;
     void odometer(Odometer&,IDCompositionVisual* parent,const OdometerSpot*,bool reduced);void placeOdometers(const std::vector<OdometerSpot>&,std::initializer_list<int> ids,IDCompositionVisual* parent,bool reduced);
     // The fade and rise of content band k in a cascade that began at `start`.
     void bandCascade(double start,size_t k,ComPtr<IDCompositionAnimation>& fade,ComPtr<IDCompositionAnimation>& rise);
-    // The sung line in the compact island: two layers, so a new line rises in as the last one lifts away.
-    struct CompactLyric{ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionSurface> surface;ComPtr<IDCompositionEffectGroup> effect;};
-    std::array<CompactLyric,2> compactLyric_;ComPtr<IDCompositionVisual> compactLyricHost_;ComPtr<IDCompositionRectangleClip> compactLyricClip_;int compactFront_=0;std::wstring compactLyricShown_,compactLyricKey_;
-    void updateCompactLyric(const std::wstring& line,float x,float w,UINT32 ink,bool reduced);
+    // Phase 5F: the sung line on one row, as the compact island and the Live Island show it, with
+    // the Command Center's look: a dim line lit by a fill that follows the song (word by word when
+    // the lyrics are word-timed), the next line rising in as the last lifts away, and three dots
+    // across instrumental gaps. Two slots let a line morph into the next.
+    struct LineLyric{ComPtr<IDCompositionVisual> host,dotLayer;ComPtr<IDCompositionRectangleClip> clip;
+        struct Slot{ComPtr<IDCompositionVisual> visual,fill;ComPtr<IDCompositionSurface> base,lit;ComPtr<IDCompositionEffectGroup> effect;ComPtr<IDCompositionRectangleClip> fillClip;};std::array<Slot,2> slots;
+        std::array<ComPtr<IDCompositionVisual>,3> dots;std::array<ComPtr<IDCompositionEffectGroup>,3> dotEffects;ComPtr<IDCompositionSurface> dotSurface;UINT32 dotColor=1;
+        int front=0,line=-2;bool gap=false;std::wstring key,timing;std::vector<float> xs;};
+    LineLyric compactLyric_,liveLyric_;
+    void lineLyric(LineLyric&,IDCompositionVisual* parent,const ContentSnapshot&,bool visible,float x,float y,float w,float h,float size,UINT32 lit,bool reduced);
+    // A value following (song seconds, value) points while the song plays from `position`; held while paused.
+    ComPtr<IDCompositionAnimation> track(double now,double position,bool playing,const std::vector<std::pair<double,double>>& keys);
+    // Phase 5F: the spectrum ring around the compact cover (24 ticks, one per band, mirrored left and
+    // right), the cover turning round while it shows, and a nudge of the header when a swipe changes track.
+    struct RingTick{ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionScaleTransform> scale;ComPtr<IDCompositionRotateTransform> rotate;Glide glide{.22,0,.22,0,0};};
+    std::array<RingTick,24> ringTicks_;ComPtr<IDCompositionVisual> ring_;ComPtr<IDCompositionEffectGroup> ringEffect_;ComPtr<IDCompositionSurface> ringSurface_;UINT32 spectrumRingColor_=1;bool ringOn_=false;float artRound_=-1;
+    ComPtr<IDCompositionTranslateTransform> headerKick_;Spring kick_{0};
+    // The lean while dragged (top dock): a shear about the top edge and a stretch about the top centre.
+    ComPtr<IDCompositionSkewTransform> leanSkew_;ComPtr<IDCompositionScaleTransform> leanScale_;ComPtr<IDCompositionTransform> leanGroup_;bool leaning_=false;
+    // The docked stub of the island while a notification pill has dropped out of it (solid material; glass draws its own).
+    ComPtr<IDCompositionVisual> stub_;ComPtr<IDCompositionRectangleClip> stubClip_;ComPtr<IDCompositionEffectGroup> stubEffect_;
+    // The Home weather tile's animated sky (Sky.cpp).
+    struct SkyPart{ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionEffectGroup> effect;};std::array<SkyPart,14> skyParts_;
+    ComPtr<IDCompositionVisual> sky_;ComPtr<IDCompositionRectangleClip> skyClip_;ComPtr<IDCompositionEffectGroup> skyEffect_;ComPtr<IDCompositionRotateTransform> skyRays_;
+    ComPtr<IDCompositionSurface> skySun_,skyStreak_,skyFlake_,skyCloud_,skyFog_,skyStar_,skyFlash_;std::wstring skyKey_;bool skyShown_=false,skyWanted_=false;float skyX_=0;
+    void skyScene(const ContentSnapshot&,float x);void skyHide();
+    // Adaptive text, while the compact header draws: the backdrop grid, where the header sits in the canvas, and the inks it flips.
+    std::shared_ptr<const LumaGrid> adapt_;const LumaGrid* adaptSeen_=nullptr;int adaptSerial_=0;float adaptX_=0;UINT32 adaptInk_=0,adaptMuted_=0;
+    // 1 over a bright backdrop, 0 over a dark one, -1 when not adapting (header-local DIPs).
+    int backdropAt(float x,float y)const{return adapt_?(adapt_->at(adaptX_+x,y)>brightBackdrop?1:0):-1;}
+    UINT32 adaptVariant(UINT32 c,bool bright)const{return c==adaptInk_?(bright?0x15171cu:0xf5f7fau):c==adaptMuted_?(bright?0x3f4651u:0xbcc3ceu):c;}
+    UINT32 adaptInk(UINT32 c,float x,float y)const{const int b=backdropAt(x,y);return b<0?c:adaptVariant(c,b==1);}
+    // A curve that follows any function of time (sampled with its slope) until `settled`.
+    ComPtr<IDCompositionAnimation> curveOf(const std::function<double(double)>& value,double now,const std::function<bool(double)>& settled);
+    // Phase 5F: light that runs along the island's edge when an alert arrives: a bright core inside a dimmer and a soft tier
+    // sweeping out from the middle of the free edge, over a stroke of the outline.
+    ComPtr<IDCompositionVisual> splash_;std::array<ComPtr<IDCompositionVisual>,6> splashBands_;std::array<ComPtr<IDCompositionRectangleClip>,6> splashClips_;ComPtr<IDCompositionEffectGroup> splashEffect_;std::array<ComPtr<IDCompositionSurface>,3> splashSurfaces_;void updateRing(const ContentSnapshot&,UINT32 accent);
     // Ease-out cubic from `from` to `to` over `duration`, beginning at `start`.
     ComPtr<IDCompositionAnimation> ease(double start,float from,float to,double duration);
     void ensureNowPlaying();void updateLyrics(const ContentSnapshot&,UINT32 ink,UINT32 muted,UINT32 accent);void updateBubble(const ContentSnapshot&);
@@ -165,10 +224,18 @@ class Renderer {
     // Shoulders drawn 1:1 for a radius: wingAlong_ px along the edge (plus a 1 px overlap into the body), wingDepth_ px deep.
     void wings(float radius);float wingRadius_=0;int wingAlong_=0,wingDepth_=0;
     void text(ID2D1RenderTarget*,const std::wstring&,float,float,float,float,UINT32,DWRITE_FONT_WEIGHT=DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT=DWRITE_TEXT_ALIGNMENT_LEADING,float height=0);
+    // Phase 5F: one line of code in a monospaced face, coloured by kind of token.
+    void codeText(ID2D1RenderTarget*,const std::wstring&,float x,float y,float w,float size,UINT32 ink,UINT32 muted,bool light);
 public:
     static constexpr float canvasWidth=680,canvasHeight=500;
     std::vector<HitTarget> targets;
     Action hit(float x,float y)const;
+    // Phase 5F: the compact island's own targets (media controls), in header coordinates.
+    std::vector<HitTarget> compactTargets;Action compactHit(float x,float y)const{for(auto& t:compactTargets)if(t.contains(x,y))return t.action;return Action::None;}
+    // The compact header slides the way a swipe went, then springs back.
+    void trackSkip(int direction,bool reduced);
+    // Runs a glint around an island of this size (the outline it will have), after `delay` seconds.
+    void splash(float width,float height,float radius,bool attached,double delay,bool reduced);
     unsigned commits=0,redraws=0; bool software=false;
     // shadow: the click-through window under the island that shows its soft drop shadow (optional).
     void initialize(HWND,float,HWND shadow=nullptr);

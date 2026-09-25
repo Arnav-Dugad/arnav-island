@@ -1,52 +1,90 @@
-# Arnav Island 0.14.0-preview.1 — New glass, a screen-capture dot, live GPU, a left dock
+# Arnav Island 0.15.0-preview.1 — A pill that drops, a sky that moves, your PCs within reach
 
-Phase 5E:
-- Frosted and Clear glass are rebuilt as a real material.
-- The island tells you when an app is capturing your screen, and shows live GPU use.
-- It can dock on the left.
-- Numbers, lyrics and the artwork move with the music.
+Phase 5F:
+- Notifications drop out of the island as their own glass pill.
+- A weather glance plays the sky.
+- Files go between your own PCs.
+- Control the music from the compact island, and control Wi-Fi, Bluetooth and brightness from a new Controls page.
+- Lyrics light up word by word, numbers blur on big jumps, icons morph, and the island leans when you drag it.
 
-## Glass, rebuilt
-- **A real material.** Frosted glass now shapes the blurred backdrop the way Apple's materials do. It boosts the colour behind it, then remaps its brightness into a calm band, so text stays readable over any wallpaper and the glass still glows with what's behind it.
-- **Light along the edges.** Where the glass meets open space, a brighter band of the material catches the light, like the thick edge of a pane.
-- **A highlight that moves.** The specular rim and inner glow tilt as the island stretches and moves, like light on a sheet of glass.
-- **Fine grain.** A faint, even texture separates frosted glass from a flat tint and hides colour banding.
-- **A soft shadow.** A gentle shadow under the island lifts it off the desktop, on Solid and glass alike. It never catches clicks. You can turn it off in Settings › Appearance.
-- **Tinted to your wallpaper.** The glass leans lighter or darker to match your wallpaper.
-- **Clear glass is easier to read.** It has a slightly deeper tint and a stronger text halo.
-- **An honest fix:** version 0.13 said Frosted glass boosted colour, but Windows rejected that effect, so it never ran. This release fixes that and applies the material on the GPU.
+## Notifications
+- **A pill that drops.** A card no longer grows the island. It drops out below as its own glass pill, settles with a small bounce, and rises back in when it's done. The island stays docked above it, at compact size, and the space between them is click-through. Choose *Grow the island* under Settings › Appearance › Alerts to get the old style back. Drop needs the top dock; on side docks and a floating island, cards still grow the island.
+- **Light runs along the edge.** When an alert arrives, a glint sweeps out along the island's edge from the middle and fades (Settings › Appearance › *Light along the edge*).
+- **Which app is using the camera.** The camera, microphone, screen-capture and location card now has a **Settings** button that opens that permission's page in Windows Settings. Clicking the coloured dots in the compact island brings the card back.
 
-## Awareness
-- **A purple dot when an app is capturing your screen.** It sits with the green camera, orange microphone and blue location dots, and a card names the app. It covers apps that capture through Windows' screen-capture API, such as browsers sharing your screen and the Snipping Tool's recorder.
-- **Live GPU use:**
-  - on the Stats page, with a history line
-  - as a Home statistic you can choose
-  - in the idle glance
-- **An idle glance.** When nothing else is showing, the compact island shows today's date, plus CPU and GPU use where there's room. You can turn it off in Settings › Compact › Glance when idle.
+## Now Playing
+- **Control the music from the compact island.** Previous, play/pause and next sit at the end of the compact island (Settings › Compact).
+- **Swipe to skip.** Swipe sideways on a touchpad over the compact island, or drag it sideways and let go, to skip a track. The title kicks in the direction you swiped.
+- **Over fullscreen apps.** While the island is hidden for a fullscreen game or video, touch the top edge of the screen above it to bring back the compact island, with its controls and swipe. It hides again 0.8 s after you move away.
+- **A spectrum ring.** The compact artwork turns round and a ring of 24 ticks pulses around it with the music. You can go back to bars in Settings › Compact › Live audio style.
+- **Lyrics everywhere, word by word.** The compact island and the Live Island use the Command Center's lyric line: it lights up as it's sung and morphs to the next line. When the lyrics carry word timing, each word lights as it's sung.
+- **Accent colours from the app.** With no artwork, the island takes its accent from the playing app's icon (Settings › Appearance › App colours).
 
-## Motion
-- **Numbers roll.** Volume, battery, the focus timer, the Home statistics and the level indicator roll digit by digit, the short way round (9 → 0 is one step, as on a counter).
-- **Lyrics morph in the compact island.** Each new line rises into place as the last one lifts away.
-- **The artwork pulses to the beat.** The cover swells gently with the bass of what's playing (Settings › Media & sound).
-- **Liquid shape changes.** Corners swell a little as the island grows or shrinks, so it flows between shapes like a drop of liquid.
+## Weather
+- **A weather glance.** Type *weather* and a town in the command bar (for example, *weather Paris*). The temperature then shows on Home and in the compact island's idle glance.
+- **A sky that moves.** On Home the weather tile plays the conditions for a minute each time it appears, then comes to rest: sun rays turning, stars twinkling, clouds drifting, rain streaks, snow, fog and storm flashes.
+- **Off until you ask.** Weather is off until you type a town or turn it on in Settings. It then sends the town once (to find it), and afterwards only its rounded coordinates every 30 minutes, to Open-Meteo.
 
-## Command bar
-- **Space works.** Pressing Space between words used to run the highlighted result. It now types a space.
-- **Group headers.** When results mix kinds, small headers separate them: Apps, Files, Answer, Actions.
-- **Colour codes.** Type #3A7BD5, #39f or rgb(58, 123, 213) to see a swatch with its RGB and HSL values. Enter copies it.
-- **Did you mean…?** A misspelt app or command ("spotfy", "bluetoth") offers the closest match.
+## Controls page
+- **A new page.** Tiles for Wi-Fi, Bluetooth, airplane mode, dark mode, the island's focus timer and your microphone, plus volume and brightness sliders. Tiles show their real state and light up with an animated icon when switched on.
 
-## Dock on the left
-Settings › Island › Dock edge now has **Left**, with the same shoulders, auto-hide and edge reveal as the right.
+## Sharing between your own PCs
+- **Send a Shelf file to your other PC.** Turn on *Share with my PCs* (Settings › Privacy & productivity) on both PCs, on the same network.
+  - Open Shelf › **Nearby** and press **Pair** next to the other PC.
+  - Both PCs show the same six-digit code. Check that it matches and press **Pair** on both.
+  - Then open a file on the Shelf and press the **Send** button. The other PC asks you to **Accept**, and the file lands in Downloads.
+- **Private by design.**
+  - Files go only between paired PCs, and only after the receiving PC accepts.
+  - Files and their names are encrypted end to end (AES-256-GCM, with keys agreed by ECDH P-256). Only the PC's name and that sharing is on are announced on the network.
+  - **Forget** unpairs a PC.
+- **Firewall.** The first time you turn it on, Windows may ask to let the island through the firewall. Allow it on private networks only.
 
-## Settings (version 13)
-New switches, all on by default:
-- **Soft shadow** (Appearance)
-- **Glance when idle** (Compact)
-- **Artwork pulses to the beat** (Media & sound)
+## Battery
+- **Health trends.** The island records your battery's full-charge capacity once a day, on this PC only.
+- **A weekly summary card.** Once a week, in the morning, a card shows:
+  - your battery's health, and how much it changed since last week
+  - how many times you charged
+  - how much of the battery a typical day uses
+
+## Clipboard
+- **Rich previews.**
+  - A link shows its site and path (and the site's icon, if you turn on *Site icons*).
+  - A colour code shows a swatch.
+  - Code shows in a monospaced font with syntax colouring.
+
+## Compact island
+- **Arrange the chips.** Drag the chips (clock, volume, battery, timer, CPU, GPU, weather) into your own order in Settings › Compact. The arrow keys work too.
+- **Adaptive text on Clear glass.** On Clear glass, each letter turns dark over a bright part of your wallpaper and light over a dark one. This works only when no window is behind the island. When one is, the island keeps its usual colours.
+
+## Motion and icons
+- **Numbers stretch and blur on big jumps.** A digit that rolls a long way smears along its roll and stretches a little, then lands sharp.
+- **Icons morph.** Play turns into pause, and the speaker's waves turn into a cross, instead of swapping. Navigation and control icons play a short animation when chosen or switched on.
+- **The island leans.** Drag it against the top of the screen and it leans the way you pull and stretches a little, then springs back. The glass leans with it.
+- **A shadow that rises.** As the island grows, its shadow drops further and deepens, as if it were lifting off the desktop.
+
+## Settings (version 14)
+- **New and on by default:**
+  - compact media controls
+  - swipe to skip
+  - Now Playing over fullscreen apps
+  - accent from the app's icon
+  - the weekly battery card
+  - rich clipboard rows
+  - light along the edge
+  - adaptive text
+  - the drop pill
+  - the spectrum ring
+- **New and off by default:**
+  - weather
+  - site icons
+  - sharing with your PCs
+- **Controls** joins the page order after Stats.
+- The chip order is saved.
 
 ## Limits
-- **No true lens bending.** Windows gives apps the blurred backdrop only as a brush that can't be offset or warped (a shifted copy renders black), so the edges gather light instead of refracting the background.
-- **Screen capture detection** relies on Windows' capture consent records, so it misses apps that capture by other means, such as older desktop-duplication recorders.
-- **Real blur** still needs Windows' Transparency effects (Settings › Personalization › Colors).
-- **GPU use** comes from Windows' own GPU performance counters (the ones Task Manager uses). It is the busiest engine's load, summed across apps.
+- **Not on the lock screen.** Windows draws the lock screen on a secure desktop that apps can't draw on, so Now Playing there stays Windows' own.
+- **Word-by-word lyrics** need lyrics that carry word timing. Most lyrics on LRCLIB are timed by line, and those fill smoothly across the line instead.
+- **Sharing** was tested end to end between two PCs simulated on this machine (over loopback), not yet between two physical PCs. Discovery uses UDP broadcast, so both PCs must be on the same network segment, and some guest or public Wi-Fi networks block it.
+- **Adaptive text** reads your wallpaper, not what's actually behind the island, so it switches off whenever a window is behind the island. With a span wallpaper across several monitors, it treats the picture as *Fill*.
+- **Drop pill** is for the top dock only.
+- **Real blur** still needs Windows' Transparency effects.

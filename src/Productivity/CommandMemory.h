@@ -22,7 +22,7 @@ class CommandMemory {
 public:
     static constexpr size_t limit=40,pinLimit=6;
     // Answers, pastes and one-off maintenance are not worth offering again.
-    static bool memorable(CommandKind k){switch(k){case CommandKind::None:case CommandKind::ClipPaste:case CommandKind::Currency:case CommandKind::Colour:case CommandKind::SaveWorkspace:case CommandKind::DeleteWorkspace:case CommandKind::ClearClipboard:return false;default:return true;}}
+    static bool memorable(CommandKind k){switch(k){case CommandKind::None:case CommandKind::ClipPaste:case CommandKind::Currency:case CommandKind::Colour:case CommandKind::Weather:case CommandKind::SaveWorkspace:case CommandKind::DeleteWorkspace:case CommandKind::ClearClipboard:return false;default:return true;}}
     const std::vector<RememberedCommand>& items()const{return items_;}
     static CommandMemory of(std::vector<RememberedCommand> items){CommandMemory m;m.items_=std::move(items);m.trim();return m;}
     void record(const CommandResult& r,const std::wstring& phrase,int64_t now){
@@ -58,7 +58,7 @@ public:
         CommandMemory m;std::string line;if(!std::getline(in,line)||line!="commands 1")return m;
         while(std::getline(in,line)){if(!line.empty()&&line.back()=='\r')line.pop_back();std::vector<std::string> f;size_t a=0;for(;;){size_t b=line.find('\t',a);f.push_back(line.substr(a,b==std::string::npos?std::string::npos:b-a));if(b==std::string::npos)break;a=b+1;}
             if(f.size()!=9)continue;auto text=[](const std::string& s){std::wstring w=fromUtf8(s),o;for(size_t i=0;i<w.size();++i){if(w[i]==L'\\'&&i+1<w.size()){wchar_t c=w[++i];o+=c==L't'?L'\t':c==L'n'?L'\n':c==L'r'?L'\r':c;}else o+=w[i];}return o;};
-            try{RememberedCommand r;const int kind=std::stoi(f[0]);if(kind<=0||kind>int(CommandKind::Colour))continue;r.kind=CommandKind(kind);r.value=std::stoi(f[1]);r.last=std::stoll(f[2]);r.count=std::max(0,std::stoi(f[3]));r.pinned=f[4]=="1";
+            try{RememberedCommand r;const int kind=std::stoi(f[0]);if(kind<=0||kind>int(CommandKind::Weather))continue;r.kind=CommandKind(kind);r.value=std::stoi(f[1]);r.last=std::stoll(f[2]);r.count=std::max(0,std::stoi(f[3]));r.pinned=f[4]=="1";
                 r.phrase=text(f[5]);r.title=text(f[6]);r.detail=text(f[7]);r.target=text(f[8]);if(r.title.empty()||!memorable(r.kind))continue;
                 if(std::none_of(m.items_.begin(),m.items_.end(),[&](auto& i){return i.key()==r.key();}))m.items_.push_back(std::move(r));}catch(...){}}
         m.trim();return m;

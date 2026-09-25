@@ -41,17 +41,22 @@ BatteryReading BatteryProvider::query(){
 }
 BatteryProvider::BatteryProvider(HWND w,std::filesystem::path file,bool keep):window_(w),stop_(CreateEventW(nullptr,TRUE,FALSE,nullptr)),wake_(CreateEventW(nullptr,FALSE,FALSE,nullptr)),historyFile_(std::move(file)){
     if(!stop_||!wake_)throw std::runtime_error("Battery event creation failed");keepHistory_=keep;
-    if(!historyFile_.empty()){if(keep){std::ifstream in(historyFile_);if(in)history_=BatteryHistory::read(in);}else{std::error_code ec;std::filesystem::remove(historyFile_,ec);}}
+    if(!historyFile_.empty()){healthFile_=historyFile_.parent_path()/L"battery-health.nexus";
+        if(keep){{std::ifstream in(historyFile_);if(in)history_=BatteryHistory::read(in);}{std::ifstream in(healthFile_);if(in)health_=BatteryHealthLog::read(in);}}
+        else{std::error_code ec;std::filesystem::remove(historyFile_,ec);std::filesystem::remove(healthFile_,ec);}}
     worker_=std::thread([this]{run();});
 }
+void BatteryProvider::saveHealth(const BatteryHealthLog& log){if(healthFile_.empty()||!keepHistory_)return;auto temp=healthFile_;temp+=L".tmp";{std::ofstream out(temp);log.write(out);}MoveFileExW(temp.c_str(),healthFile_.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);}
 BatteryProvider::~BatteryProvider(){SetEvent(stop_);if(worker_.joinable())worker_.join();CloseHandle(stop_);CloseHandle(wake_);}
 void BatteryProvider::run(){
     for(;;){
-        auto r=query();bool appended=false,erase=false;BatteryHistory copy;
+        auto r=query();bool appended=false,erase=false,logged=false;BatteryHistory copy;BatteryHealthLog healthCopy;
         {std::lock_guard lock(mutex_);estimate_.observe(r);reading_=r;
-            if(!keepHistory_&&!history_.samples.empty()){history_=BatteryHistory{};erase=true;}
-            if(keepHistory_&&r.percent>=0&&!historyFile_.empty()){auto now=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();appended=history_.add(now,r.percent,r.charging);if(appended)copy=history_;}}
-        if(erase&&!historyFile_.empty()){std::error_code ec;std::filesystem::remove(historyFile_,ec);}
+            if(!keepHistory_&&(!history_.samples.empty()||!health_.days.empty())){history_=BatteryHistory{};health_=BatteryHealthLog{};erase=true;}
+            if(keepHistory_&&r.percent>=0&&!historyFile_.empty()){auto now=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();appended=history_.add(now,r.percent,r.charging);if(appended)copy=history_;
+                logged=health_.add(now,r);if(logged)healthCopy=health_;}}
+        if(erase&&!historyFile_.empty()){std::error_code ec;std::filesystem::remove(historyFile_,ec);std::filesystem::remove(healthFile_,ec);}
+        if(logged)saveHealth(healthCopy);
         if(appended){auto temp=historyFile_;temp+=L".tmp";{std::ofstream out(temp);copy.write(out);}MoveFileExW(temp.c_str(),historyFile_.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);}
         PostMessageW(window_,BatteryMessage,0,0);
         HANDLE h[]={stop_,wake_};if(WaitForMultipleObjects(2,h,FALSE,fast_.load()?5000:60000)==WAIT_OBJECT_0)break;

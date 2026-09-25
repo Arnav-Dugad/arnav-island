@@ -16,7 +16,9 @@ enum class CommandKind { None,Volume,VolumeStep,Mute,Unmute,Play,Pause,Next,Prev
     // Phase 5D: system actions (value 1 = on / dark, 0 = off / light, -1 = toggle), files and answers.
     DarkMode,Bluetooth,WiFi,Airplane,EmptyBin,Sleep,Restart,ShutDown,OpenFile,Currency,
     // Phase 5E: a colour code, previewed as a swatch; value holds 0xRRGGBB.
-    Colour };
+    Colour,
+    // Phase 5F: "weather <town>" chooses the weather's place (and turns weather on); target is the town.
+    Weather };
 struct InstalledApp {std::wstring name,id;};
 struct CommandResult {
     CommandKind kind=CommandKind::None;std::wstring title,detail,target;int value=0;
@@ -279,6 +281,10 @@ inline std::vector<CommandResult> parseCommand(const std::wstring& typed,const s
     if(first==L"find"||first==L"search"||first==L"files"||first==L"file"){auto rest=after(1);if(rest.empty()){add(CommandKind::None,L"Search your files",L"For example “find budget pdfs from last month”");return out;}
         auto q=fileQuery(rest);if(q.aqs.empty()){add(CommandKind::None,L"Search your files",L"Add a word to look for");return out;}
         add(CommandKind::SearchFiles,L"Find "+q.description,L"File Explorer search in your user folder",0,searchUri(q.aqs,scope));return out;}
+    // Weather: "weather London" (or "weather in London") chooses the place.
+    if(first==L"weather"||first==L"forecast"){std::wstring town=after(1);for(auto lead:{L"in ",L"for ",L"at "})if(lowered(town).starts_with(lead)){town=trimmed(town.substr(wcslen(lead)));break;}
+        if(town.size()<2){add(CommandKind::None,L"Weather",L"Add a town, such as \u201cweather London\u201d");return out;}
+        if(town.size()>60)town.resize(60);add(CommandKind::Weather,L"Show the weather for "+town,L"In the island\u2019s glance and on Home  \u00b7  from Open-Meteo; only the town is sent",0,town);return out;}
     // A colour code previews itself.
     if(auto colour=parseColourCode(text)){CommandResult r;r.kind=CommandKind::Colour;r.value=int(*colour);r.title=colourHex(*colour);r.answer=r.title;r.detail=colourDetail(*colour);r.target=r.title;out.push_back(std::move(r));return out;}
     // Apps.

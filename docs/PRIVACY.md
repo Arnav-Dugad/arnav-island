@@ -111,3 +111,19 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **GPU use** is read from Windows' performance counters on this PC, once a second and only while it's shown.
 - **The beat pulse** uses the same loopback analysis as the waveform: each audio buffer is folded into band levels and discarded, and nothing is recorded, stored or sent. It runs only while a playing cover is shown.
 - **The idle glance** shows the date and your own CPU and GPU use; nothing is stored.
+
+## v0.15 weather, sharing and the week
+
+- **Weather** (off by default) goes online only after you choose a town (the `weather` command) or turn it on. The town you type is sent once to Open-Meteo's geocoding service to find it; afterwards only its coordinates, rounded to two decimals (about a kilometre), are sent to Open-Meteo's forecast service every 30 minutes while weather is on. Like any web request, this reveals your IP address to Open-Meteo. The place is kept in `weather.nexus`; turning weather off deletes it.
+- **Site icons** (off by default) fetch `/favicon.ico` from the site a copied link points to, which tells that site your IP address and that its link was copied. Nothing else is sent, and icons are kept in memory only.
+- **Sharing with your PCs** (off by default):
+  - While on, the island announces this PC's name, a random device id and a port on your local network every 3 seconds (UDP broadcast). It listens for your other PCs on TCP port 47820.
+  - Pairing exchanges public keys, and both people confirm the same six-digit code.
+  - Files go only to and from paired PCs, only after the receiving person accepts, and they are encrypted end to end (AES-256-GCM under a key agreed by ECDH P-256, with fresh nonces from both PCs for each connection). A PC that isn't paired, or whose key doesn't match its pairing, is refused.
+  - This PC's private key is kept in `share-identity.nexus`, encrypted with Windows DPAPI for your account. Paired PCs' public keys and names are kept in `share-peers.nexus`.
+  - Received files are saved in Downloads. Nothing goes through any server.
+- **Battery health** is read once a day from Windows' battery driver and kept in `battery-health.nexus` on this PC: the day, full-charge and design capacity, and cycle count. The weekly card is worked out from it and from the charge history already kept locally.
+- **Adaptive text** reads your wallpaper file and the positions of open windows, on this PC only, to decide each letter's colour. Nothing is stored or sent. Public screenshots use an illustrative backdrop, never the real wallpaper.
+- **Brightness and the Controls page** change Wi-Fi, Bluetooth, airplane mode, dark mode, brightness and the microphone only when you press them.
+- **Fullscreen peek** watches the pointer at the screen edge only while a fullscreen app has hidden the island and something is playing.
+- Public screenshots use illustrative PCs ("Studio PC", "Travel laptop"), a sample town and an illustrative backdrop; test runs never start sharing, weather or site icons.

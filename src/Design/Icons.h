@@ -2,8 +2,14 @@
 #include "Common/Win32.h"
 #include <d2d1.h>
 #include <cmath>
+#include <array>
+#include <optional>
 namespace nexus {
-enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous,Next,Pin,Close,Plus,Minus,Muted,Volume,Battery,Processor,Memory,Download,Upload,Disk,Clock,File,Text,Check,Chevron,ArrowLeft,ArrowRight,Reset,Sun,Spark,Power,Link,Island,Info,Sliders,ArrowUp,ArrowDown,Brightness,Apps,Earbuds,Speaker,Phone,Keyboard,Mouse,Gamepad,Watch,Bluetooth,Bolt,Heart,Gauge,Shield,Camera,Microphone,Location,Clipboard,Search,Lock,Image,Workspace,MicOff,Lyrics,Snip,Eyedropper,Folder,Copy,Archive,Resize,Convert,Trash,External,Moon,Wifi,Plane,Exchange};
+enum class Icon {Home,Music,Stats,Focus,Shelf,Audio,Settings,Play,Pause,Previous,Next,Pin,Close,Plus,Minus,Muted,Volume,Battery,Processor,Memory,Download,Upload,Disk,Clock,File,Text,Check,Chevron,ArrowLeft,ArrowRight,Reset,Sun,Spark,Power,Link,Island,Info,Sliders,ArrowUp,ArrowDown,Brightness,Apps,Earbuds,Speaker,Phone,Keyboard,Mouse,Gamepad,Watch,Bluetooth,Bolt,Heart,Gauge,Shield,Camera,Microphone,Location,Clipboard,Search,Lock,Image,Workspace,MicOff,Lyrics,Snip,Eyedropper,Folder,Copy,Archive,Resize,Convert,Trash,External,Moon,Wifi,Plane,Exchange,
+    // Phase 5F: weather skies.
+    Cloud,Rain,Snow,Storm,Fog,PartlyCloudy,
+    // Phase 5F: sharing with your own PCs.
+    Laptop,Send};
 // Original 24-unit optical grid. Rounded stroke ends are consistent at every DPI.
 inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float x,float y,float size,UINT32 color,float opacity=1){
     D2D1_MATRIX_3X2_F saved;rt->GetTransform(&saved);rt->SetTransform(D2D1::Matrix3x2F::Scale(size/24,size/24)*D2D1::Matrix3x2F::Translation(x,y)*saved);
@@ -88,6 +94,8 @@ inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float
         s->BeginFigure({12-r*k,19.5f-r*k},D2D1_FIGURE_BEGIN_HOLLOW);s->AddArc(D2D1::ArcSegment({12+r*k,19.5f-r*k},D2D1::SizeF(r,r),0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL));s->EndFigure(D2D1_FIGURE_END_OPEN);s->Close();rt->DrawGeometry(g.Get(),brush.Get(),1.65f,stroke.Get());}
         dot(12,19.5f,1.5f);break;}
     case Icon::Plane:path({{12,2.5f},{13.6f,4.4f},{13.6f,9.4f},{21,13.8f},{21,15.8f},{13.6f,13.6f},{13.6f,18.4f},{16.2f,20.4f},{16.2f,21.6f},{12,20.6f},{7.8f,21.6f},{7.8f,20.4f},{10.4f,18.4f},{10.4f,13.6f},{3,15.8f},{3,13.8f},{10.4f,9.4f},{10.4f,4.4f}},true);break;
+    case Icon::Laptop:rect(4.5f,5,19.5f,15.5f,2);line(2,19,22,19);break;
+    case Icon::Send:path({{3,11},{21,3},{14,21},{11,13}},true);line(11,13,21,3);break;
     case Icon::Exchange:line(4,8.5f,19,8.5f);path({{15.5f,5},{19,8.5f},{15.5f,12}});line(20,15.5f,5,15.5f);path({{8.5f,12},{5,15.5f},{8.5f,19}});break;
     case Icon::Trash:line(4,6.5f,20,6.5f);path({{9,6.5f},{9.6f,4},{14.4f,4},{15,6.5f}});path({{6,6.5f},{7,20},{17,20},{18,6.5f}});line(10,10,10,16.5f);line(14,10,14,16.5f);break;
     case Icon::Workspace:rect(3,3.5f,10.5f,10.5f,2);rect(13.5f,3.5f,21,10.5f,2);rect(3,13.5f,10.5f,20.5f,2);rect(13.5f,13.5f,21,20.5f,2);break;
@@ -95,8 +103,82 @@ inline void drawIcon(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float
     case Icon::Heart:path({{12,20},{4,12},{3.2f,8},{5,5},{8.5f,4.5f},{12,8},{15.5f,4.5f},{19,5},{20.8f,8},{20,12},{12,20}},true);break;
     case Icon::Gauge:path({{4,17},{3,13},{4.5f,8.5f},{8,5.5f},{12,4.5f},{16,5.5f},{19.5f,8.5f},{21,13},{20,17}});line(12,14,16,9);dot(12,14,1.4f);break;
     case Icon::Apps:rect(4,4,10,10,2);rect(14,4,20,10,2);rect(4,14,10,20,2);rect(14,14,20,20,2);break;
+    // Weather: a cloud outline (raised when something falls from it), the sun peeking behind one, fog in bands.
+    case Icon::Cloud:case Icon::Rain:case Icon::Snow:case Icon::Storm:case Icon::PartlyCloudy:{const float lift=icon==Icon::Cloud?0.f:icon==Icon::PartlyCloudy?-.5f:-4.f,sx=icon==Icon::PartlyCloudy?-1.f:0.f;
+        if(icon==Icon::PartlyCloudy){circle(16,8,3.2f);for(int i=0;i<5;++i){float a=-3.14159265f*(.95f-i*.24f);line(16+std::cos(a)*5.4f,8+std::sin(a)*5.4f,16+std::cos(a)*7.2f,8+std::sin(a)*7.2f);}}
+        path({{6.5f+sx,18.5f+lift},{4+sx,17+lift},{3.5f+sx,14.5f+lift},{5+sx,12.3f+lift},{7.5f+sx,11.6f+lift},{8.6f+sx,8.6f+lift},{11.5f+sx,6.6f+lift},{15+sx,6.8f+lift},{17.6f+sx,9.2f+lift},{18.3f+sx,11.6f+lift},{20.3f+sx,12.6f+lift},{21+sx,15+lift},{20+sx,17.6f+lift},{17.5f+sx,18.5f+lift}},true);
+        if(icon==Icon::Rain){line(8,17.5f,6.8f,21);line(12,17.5f,10.8f,21);line(16,17.5f,14.8f,21);}
+        if(icon==Icon::Snow){dot(8,19,1.1f);dot(12,20.5f,1.1f);dot(16,19,1.1f);}
+        if(icon==Icon::Storm)path({{12.5f,15},{10.2f,18.6f},{13,18.6f},{11.2f,22.2f}});break;}
+    case Icon::Fog:line(4,8,20,8);line(3,12,17,12);line(6,16,21,16);line(5,20,14,20);break;
     }
     rt->SetTransform(saved);
+}
+// ---- Phase 5F: icons in motion ---------------------------------------------------------------
+// Draws `icon` with a transform `a` in its own 24-unit grid (rotate or bounce it about its centre).
+inline void drawIconTransformed(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,const D2D1::Matrix3x2F& a,float x,float y,float size,UINT32 color,float opacity=1){
+    D2D1::Matrix3x2F saved;rt->GetTransform(&saved);auto place=D2D1::Matrix3x2F::Scale(size/24,size/24)*D2D1::Matrix3x2F::Translation(x,y);auto back=place;if(!back.Invert()){drawIcon(rt,factory,icon,x,y,size,color,opacity);return;}
+    rt->SetTransform(back*a*place*saved);drawIcon(rt,factory,icon,x,y,size,color,opacity);rt->SetTransform(saved);
+}
+inline float easeOutCubic(float t){t=std::clamp(t,0.f,1.f);return 1-(1-t)*(1-t)*(1-t);}
+inline float easeOutBack(float t){t=std::clamp(t,0.f,1.f);const float c=1.70158f;return 1+(c+1)*std::pow(t-1,3.f)+c*std::pow(t-1,2.f);}
+// One frame (t from 0 to 1) of an icon changing into another. Play and pause share a shape
+// (two quads: the bars fold into the triangle); the speaker keeps its body while its waves
+// give way to a cross; the microphone's slash draws across; anything else turns and blends.
+inline void drawMorph(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon from,Icon to,float t,float x,float y,float size,UINT32 color){
+    if(t<=0){drawIcon(rt,factory,from,x,y,size,color);return;}if(t>=1||from==to){drawIcon(rt,factory,to,x,y,size,color);return;}
+    D2D1_MATRIX_3X2_F saved;rt->GetTransform(&saved);ComPtr<ID2D1SolidColorBrush> brush;rt->CreateSolidColorBrush(D2D1::ColorF(color),&brush);
+    ComPtr<ID2D1StrokeStyle> stroke;auto style=D2D1::StrokeStyleProperties();style.startCap=style.endCap=D2D1_CAP_STYLE_ROUND;style.lineJoin=D2D1_LINE_JOIN_ROUND;factory->CreateStrokeStyle(style,nullptr,0,&stroke);
+    auto grid=[&]{rt->SetTransform(D2D1::Matrix3x2F::Scale(size/24,size/24)*D2D1::Matrix3x2F::Translation(x,y)*saved);};
+    auto quads=[](Icon i)->std::optional<std::array<D2D1_POINT_2F,8>>{
+        if(i==Icon::Pause)return std::array<D2D1_POINT_2F,8>{{{6,4},{10,4},{10,20},{6,20},{14,4},{18,4},{18,20},{14,20}}};
+        if(i==Icon::Play)return std::array<D2D1_POINT_2F,8>{{{8,4},{14,7.5f},{14,16.5f},{8,20},{14,7.5f},{20,12},{20,12},{14,16.5f}}};return std::nullopt;};
+    const float e=easeOutCubic(t);
+    if(auto a=quads(from),b=quads(to);a&&b){grid();
+        for(int q=0;q<2;++q){ComPtr<ID2D1PathGeometry> g;factory->CreatePathGeometry(&g);ComPtr<ID2D1GeometrySink> s;g->Open(&s);
+            for(int k=0;k<4;++k){auto pa=(*a)[size_t(q*4+k)],pb=(*b)[size_t(q*4+k)];D2D1_POINT_2F p{pa.x+(pb.x-pa.x)*e,pa.y+(pb.y-pa.y)*e};if(k==0)s->BeginFigure(p,D2D1_FIGURE_BEGIN_FILLED);else s->AddLine(p);}
+            s->EndFigure(D2D1_FIGURE_END_CLOSED);s->Close();rt->FillGeometry(g.Get(),brush.Get());}
+        rt->SetTransform(saved);return;}
+    auto speaker=[](Icon i){return i==Icon::Volume||i==Icon::Muted;};
+    if(speaker(from)&&speaker(to)){const float cross=to==Icon::Muted?e:1-e;grid();
+        ComPtr<ID2D1PathGeometry> g;factory->CreatePathGeometry(&g);ComPtr<ID2D1GeometrySink> s;g->Open(&s);s->BeginFigure({3,9},D2D1_FIGURE_BEGIN_HOLLOW);for(auto p:{D2D1_POINT_2F{7,9},{12,5},{12,19},{7,15},{3,15}})s->AddLine(p);s->EndFigure(D2D1_FIGURE_END_CLOSED);s->Close();rt->DrawGeometry(g.Get(),brush.Get(),1.65f,stroke.Get());
+        // The waves shrink back into the speaker as the cross grows out of the same point.
+        brush->SetOpacity(1-cross);for(auto [x0,x1,x2,y0]:{std::array<float,4>{16,18,16,8},std::array<float,4>{19,22,19,5}}){const float k=1-cross*.6f;
+            ComPtr<ID2D1PathGeometry> w;factory->CreatePathGeometry(&w);ComPtr<ID2D1GeometrySink> ws;w->Open(&ws);ws->BeginFigure({13+(x0-13)*k,12+(y0-12)*k},D2D1_FIGURE_BEGIN_HOLLOW);ws->AddLine({13+(x1-13)*k,12+((y0+2)-12)*k});ws->AddLine({13+(x1-13)*k,12+((24-y0-2)-12)*k});ws->AddLine({13+(x2-13)*k,12+((24-y0)-12)*k});ws->EndFigure(D2D1_FIGURE_END_OPEN);ws->Close();rt->DrawGeometry(w.Get(),brush.Get(),1.65f,stroke.Get());}
+        brush->SetOpacity(1);if(cross>0){const float r=3*cross;rt->DrawLine({19.5f-r,12-r},{19.5f+r,12+r},brush.Get(),1.65f,stroke.Get());rt->DrawLine({19.5f-r,12+r},{19.5f+r,12-r},brush.Get(),1.65f,stroke.Get());}
+        rt->SetTransform(saved);return;}
+    auto mic=[](Icon i){return i==Icon::Microphone||i==Icon::MicOff;};
+    if(mic(from)&&mic(to)){drawIcon(rt,factory,Icon::Microphone,x,y,size,color);const float k=to==Icon::MicOff?e:1-e;if(k>0){grid();rt->DrawLine({3.5f,3},{3.5f+17*k,3+18*k},brush.Get(),1.65f,stroke.Get());rt->SetTransform(saved);}return;}
+    // Otherwise the old icon turns away and shrinks as the new one turns in.
+    drawIconTransformed(rt,factory,from,D2D1::Matrix3x2F::Rotation(40*e,{12,12})*D2D1::Matrix3x2F::Scale(1-.4f*e,1-.4f*e,{12,12}),x,y,size,color,1-e);
+    drawIconTransformed(rt,factory,to,D2D1::Matrix3x2F::Rotation(-40*(1-e),{12,12})*D2D1::Matrix3x2F::Scale(.6f+.4f*e,.6f+.4f*e,{12,12}),x,y,size,color,e);
+}
+// One frame (phase 0 to 1) of an icon's own little animation, played when its page is chosen
+// or its switch turns on. Each has a character: the house hops, bars grow, the gear turns,
+// the stopwatch hand sweeps, sliders glide, Wi-Fi arcs light outward, the plane takes off.
+inline void drawIconAnimated(ID2D1RenderTarget* rt,ID2D1Factory* factory,Icon icon,float phase,float x,float y,float size,UINT32 color){
+    const float p=std::clamp(phase,0.f,1.f),hump=std::sin(p*3.14159265f),e=easeOutCubic(p);
+    auto T=[](float dx,float dy){return D2D1::Matrix3x2F::Translation(dx,dy);};auto R=[](float a){return D2D1::Matrix3x2F::Rotation(a,{12,12});};auto S=[](float k){return D2D1::Matrix3x2F::Scale(k,k,{12,12});};
+    D2D1_MATRIX_3X2_F saved;rt->GetTransform(&saved);ComPtr<ID2D1SolidColorBrush> brush;rt->CreateSolidColorBrush(D2D1::ColorF(color),&brush);
+    ComPtr<ID2D1StrokeStyle> stroke;auto style=D2D1::StrokeStyleProperties();style.startCap=style.endCap=D2D1_CAP_STYLE_ROUND;style.lineJoin=D2D1_LINE_JOIN_ROUND;factory->CreateStrokeStyle(style,nullptr,0,&stroke);
+    auto grid=[&]{rt->SetTransform(D2D1::Matrix3x2F::Scale(size/24,size/24)*D2D1::Matrix3x2F::Translation(x,y)*saved);};
+    auto line=[&](float a,float b,float c,float d){rt->DrawLine({a,b},{c,d},brush.Get(),1.65f,stroke.Get());};
+    switch(icon){
+    case Icon::Home:drawIconTransformed(rt,factory,icon,T(0,-2.6f*hump)*S(1+.06f*hump),x,y,size,color);break;
+    case Icon::Music:drawIconTransformed(rt,factory,icon,R(-12*hump)*T(0,-1.6f*hump),x,y,size,color);break;
+    case Icon::Settings:drawIconTransformed(rt,factory,icon,R(90*e),x,y,size,color);break;
+    case Icon::Shelf:drawIconTransformed(rt,factory,icon,T(0,2.2f*hump),x,y,size,color);break;
+    case Icon::Audio:drawIconTransformed(rt,factory,icon,S(1+.14f*hump),x,y,size,color);break;
+    case Icon::Moon:case Icon::Sun:drawIconTransformed(rt,factory,icon,R((icon==Icon::Moon?-30:45)*(1-e))*S(.7f+.3f*easeOutBack(p)),x,y,size,color);break;
+    case Icon::Plane:drawIconTransformed(rt,factory,icon,T(3*hump,-3*hump)*R(8*hump),x,y,size,color);break;
+    case Icon::Bluetooth:case Icon::Microphone:case Icon::Focus:case Icon::Snip:drawIconTransformed(rt,factory,icon,S(.72f+.28f*easeOutBack(p)),x,y,size,color);break;
+    case Icon::Stats:{grid();const float tops[]={12,5,9};for(int i=0;i<3;++i){const float h=easeOutBack(std::clamp(p*1.7f-i*.3f,0.f,1.f));const float cx=5+7.f*i;if(h>0)line(cx,18,cx,18-(18-tops[i])*h);}line(3,22,21,22);rt->SetTransform(saved);break;}
+    case Icon::Sliders:{grid();line(4,7,20,7);line(4,17,20,17);const float k=hump*4;rt->DrawEllipse(D2D1::Ellipse({9+k,7},2.4f,2.4f),brush.Get(),1.65f,stroke.Get());rt->DrawEllipse(D2D1::Ellipse({15-k,17},2.4f,2.4f),brush.Get(),1.65f,stroke.Get());rt->SetTransform(saved);break;}
+    case Icon::Wifi:{grid();rt->FillEllipse(D2D1::Ellipse({12,19.5f},1.5f,1.5f),brush.Get());int n=0;for(float r:{3.6f,7.6f,11.6f}){const float a=std::clamp(p*3.2f-n*.7f,0.f,1.f);++n;if(a<=0)continue;brush->SetOpacity(a);
+        ComPtr<ID2D1PathGeometry> g;factory->CreatePathGeometry(&g);ComPtr<ID2D1GeometrySink> s;g->Open(&s);const float k=.7071f;s->BeginFigure({12-r*k,19.5f-r*k},D2D1_FIGURE_BEGIN_HOLLOW);s->AddArc(D2D1::ArcSegment({12+r*k,19.5f-r*k},D2D1::SizeF(r,r),0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL));s->EndFigure(D2D1_FIGURE_END_OPEN);s->Close();rt->DrawGeometry(g.Get(),brush.Get(),1.65f,stroke.Get());}
+        rt->SetTransform(saved);break;}
+    default:drawIconTransformed(rt,factory,icon,S(1+.16f*hump),x,y,size,color);break;
+    }
 }
 inline void drawRing(ID2D1RenderTarget* rt,ID2D1Factory* factory,float x,float y,float radius,float thickness,double progress,UINT32 foreground,UINT32 track){
     ComPtr<ID2D1SolidColorBrush> brush;rt->CreateSolidColorBrush(D2D1::ColorF(track),&brush);rt->DrawEllipse(D2D1::Ellipse({x,y},radius,radius),brush.Get(),thickness);progress=std::clamp(progress,0.,1.);if(progress<=0)return;brush->SetColor(D2D1::ColorF(foreground));if(progress>=.9999){rt->DrawEllipse(D2D1::Ellipse({x,y},radius,radius),brush.Get(),thickness);return;}

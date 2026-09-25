@@ -169,3 +169,11 @@ The larger request and API capability boundaries are recorded in DELIVERY_PHASES
 **Loopback spectrum.** `LoopbackAnalyzer` runs shared-mode loopback on the default console endpoint in a worker, polls every 10 ms, downmixes float/16/24/32-bit PCM, and feeds `Spectrum` (Hann window, radix-2 FFT, 24 bands, 50 Hz–14 kHz, dB mapping, attack/release). Frames post at most ~120/s; each updates bar scale with a cubic Hermite `Glide`, which DirectComposition evaluates at display cadence with continuous velocity.
 
 **Mixer and brightness.** `SessionMixer` tracks sessions by instance identifier with per-session event callbacks, groups by process, and samples peaks at 20 Hz only while the Apps tab is visible. `BrightnessProvider` uses semi-synchronous WMI notification queries, so no COM callbacks enter the process.
+
+**Phase 5F modules.**
+- **`Productivity/ShareService`** holds a shared core that its own threads keep alive: discovery (UDP), a listener (TCP) and one detached thread per session. The window only calls the API and drains events after `ShareMessage`. `Island/IslandShare.cpp` turns those events into cards and the Shelf's Nearby tab. `tests/ShareTests.cpp` runs two services over loopback.
+- **`Productivity/WeatherService`** runs one worker: geocoding, then a forecast every 30 minutes, posting `WeatherMessage`. `Productivity/SiteIcons` is a queue of hosts fetched on a worker.
+- **`Composition/Sky.cpp`** is the weather tile's sky: 14 retained parts under a rounded clip in `content_`. Its surfaces are drawn after the content surface closes, because DirectComposition draws one surface at a time.
+- **`Design/Backdrop.h`** decodes the wallpaper's luminance map. `IslandWindow::adaptBackdrop` projects it under the compact island, and the renderer applies it per glyph while the header draws.
+- **The drop pill** is a `drop` spring in `MotionEngine`, applied in four places: `Renderer::animate` (body offset, clips, wings and the `stub_` visual), `GlassBackdrop::layout` (expressions over the properties `d`, `sw`, `sr` and `sh`), the shadow window, and `IslandWindow::updateRegion`. `IslandWindow::bodyAt` is the one mapping from the pointer to the body.
+- **`Renderer::curveOf`** turns any function of time into a DirectComposition animation (cubic segments until a settle test passes). The drop pill's derived curves use it.

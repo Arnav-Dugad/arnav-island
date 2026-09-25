@@ -146,3 +146,27 @@ Deviations, each deliberate:
 - **"Live widgets"**, the earlier name for this phase, is partly covered by the idle glance; weather and calendar widgets remain candidates.
 
 Found and fixed along the way: 0.13's vibrancy effect never ran (now it does), and an 85 MB memory regression from extra GPU devices was caught before release.
+
+## Status after v0.15 — Phase 5F, Now Playing, awareness, sharing and motion — 2026-09-25
+
+Shipped, as asked:
+- **Now Playing:** compact media controls, swipe to skip, fullscreen peek, the spectrum ring around the compact cover, and the Command Center's lyric line in the compact island and the Live Island, lit word by word when the lyrics carry word timing.
+- **Awareness:** the weather glance with an animated sky, which app is using the camera with a one-click route to its privacy page, battery health trends with a weekly card, and rich clipboard rows.
+- **Sharing:** between your own PCs on the local network.
+- **The island:** the Controls page, the compact chips editor, per-app accent colours, the drop pill, light along the edge on alerts, and adaptive per-letter text on Clear glass.
+- **Motion:** rolling numbers that blur and stretch, the lean with a rubber band, morphing and celebrating icons, and a shadow that deepens as the island grows.
+- **Checks:** an alignment pass over the islands.
+
+Deviations, each deliberate:
+- **Now Playing on the lock screen** isn't possible: Windows draws the lock screen on a secure desktop apps can't draw on. The fullscreen peek covers the other half of the request.
+- **Word-by-word lyrics** light up only when the lyrics carry word tags; LRCLIB's are mostly line-timed.
+- **Sharing** was verified over loopback between two independent services (pairing, refusals, byte-exact transfers, persistence), not yet between two physical PCs.
+- **Adaptive text** works from the wallpaper, so it steps aside when a window is behind the island; reading the real screen behind the island would mean hiding the island from screenshots.
+- **The drop pill** needs the top dock; side docks and floating islands keep growing.
+
+Found and fixed along the way:
+- The island's own surfaces can't draw while another is open (DirectComposition draws one surface at a time), which made the first weather sky fail at startup.
+- The auto-hide stages of the UI test left the island slid away for the stages after them.
+- On see-through glass, the stub and the pill overlapped for a few frames.
+- The shoulders slid over a pill that hadn't yet left the edge.
+- "Thunderstorm" was cut off on the Home tile.

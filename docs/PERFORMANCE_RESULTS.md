@@ -186,3 +186,14 @@ Compact island, media off, measured for 30 s after a 3 s settle on the developme
 | v0.13, same conditions | 0.031 s | 0.10% | 62.4 MB |
 
 The extra 11 MB over v0.13 is the soft shadow's window and compositor. Before release, a build that gave the glass and the shadow their own Direct3D devices measured 147 MB; both now share the renderer's device, and their surfaces are drawn on first use.
+
+## v0.15 idle measurements
+
+Compact island with the development PC's own settings (Live Island at 560 DIPs, Frosted glass, compact clock, auto-hide), nothing playing, measured for 30 s after a 6 s settle; the installed v0.14 measured the same way straight after. Raw data: `evidence/v0.15`.
+
+| Build | CPU time | One-core equivalent | Private memory | Threads |
+|---|---:|---:|---:|---:|
+| v0.15 | 0.000 s | below counter resolution | 78.2 MB | 23 |
+| v0.14, same settings | 0.031 s | 0.10% | 77.0 MB | 21 |
+
+v0.15 has two more threads than v0.14, both waiting when idle. One is the brightness setter behind the Controls page's slider, which waits until a level is set. Sharing, weather, site icons and the adaptive-text wallpaper reader start no threads until they are turned on. The weather sky and the edge light are compositor animations, so they cost the app no CPU while they play; the sky plays for 60 s at a time and then rests, so an open Home page doesn't keep the compositor busy.

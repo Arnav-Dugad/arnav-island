@@ -10,7 +10,7 @@ ComPtr<IDCompositionAnimation> glideAnimation(IDCompositionDevice* device,const 
 }
 void Renderer::updateSpectrumLayout(const ContentSnapshot& s,UINT32 accent){
     int mode=-1;const bool playing=s.settings.waveform&&s.playback.playing&&s.waveform&&s.hud==0;
-    if(playing){if(!s.expanded){if(edge_==0&&s.settings.compactMedia)mode=s.settings.uiMode==0?1:0;}else if(s.card)mode=-1;else if(s.live)mode=2;else if(s.page==Page::Media&&!lyricsPanel(s))mode=3;}// lyric lines take the bars' place
+    if(playing){if(!s.expanded){if(edge_==0&&s.settings.compactMedia)mode=s.settings.uiMode==0?1:s.settings.waveformStyle==1?-1:0;}else if(s.card)mode=-1;else if(s.live)mode=2;else if(s.page==Page::Media&&!lyricsPanel(s))mode=3;}// lyric lines take the bars' place
     if(barColor_!=accent||!spectrumSurface_){barColor_=accent;surface(spectrumSurface_,3,20,[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(accent),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,3,20},1.5f,1.5f),b.Get());});}
     int count=mode==3?16:mode==1?4:mode>=0?5:barCount_;float pitch=mode==3?6.f:mode==1?5.f:5.4f;float span=(count-1)*pitch+3;
     float inset=mode==1?12:mode==2?22:(ringsEnabled_&&!s.expanded?(ringCount_==2?66.f:42.f):14.f);
@@ -22,6 +22,30 @@ void Renderer::updateSpectrumLayout(const ContentSnapshot& s,UINT32 accent){
     barInset_=inset+span;
     float top=mode==3?136.f:mode==2?21.f:7.f;spectrum_->SetOffsetY(std::round(top*scale_));if(mode==3)spectrum_->SetOffsetX(std::round((20+380-span)*scale_));
     double target=mode>=0?1:0;if(std::abs(spectrumOpacity_.target()-target)>.001){if(s.reducedMotion)spectrumOpacity_.reset(target,now);else spectrumOpacity_.retarget(target,now,MotionTokens::artworkOpacity);auto o=animation(spectrumOpacity_,now);spectrumEffect_->SetOpacity(o.Get());}
+}
+// The spectrum ring around the compact cover (or app logo), and the cover turning round while it shows.
+void Renderer::updateRing(const ContentSnapshot& s,UINT32 accent){
+    constexpr float r0=12.5f,tick=4;
+    if(!ring_){check(device_->CreateVisual(&ring_));check(device_->CreateEffectGroup(&ringEffect_));ring_->SetEffect(ringEffect_.Get());ringEffect_->SetOpacity(0.f);check(body_->AddVisual(ring_.Get(),TRUE,artFrame_.Get()));
+        ring_->SetOffsetX(std::round(23*scale_));ring_->SetOffsetY(std::round(17*scale_));
+        for(size_t k=0;k<ringTicks_.size();++k){auto& t=ringTicks_[k];check(device_->CreateVisual(&t.visual));check(device_->CreateScaleTransform(&t.scale));check(device_->CreateRotateTransform(&t.rotate));
+            t.scale->SetCenterX(1*scale_);t.scale->SetCenterY(tick*scale_);t.rotate->SetCenterX(1*scale_);t.rotate->SetCenterY((r0+tick)*scale_);t.rotate->SetAngle(float(k)*15.f);
+            IDCompositionTransform* chain[]={t.scale.Get(),t.rotate.Get()};ComPtr<IDCompositionTransform> group;check(device_->CreateTransformGroup(chain,2,&group));t.visual->SetTransform(group.Get());
+            t.visual->SetOffsetX(-1*scale_);t.visual->SetOffsetY(-(r0+tick)*scale_);t.scale->SetScaleY(.22f);check(ring_->AddVisual(t.visual.Get(),FALSE,nullptr));}}
+    const bool mark=bool(s.playback.artwork)||(s.settings.appIcons&&s.playback.available);
+    const bool on=!s.expanded&&edge_==0&&s.settings.uiMode!=0&&s.settings.compactMedia&&s.settings.waveformStyle==1&&s.settings.waveform&&s.playback.playing&&s.waveform&&s.hud==0&&mark;
+    if(spectrumRingColor_!=accent||!ringSurface_){spectrumRingColor_=accent;surface(ringSurface_,2,4,[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(accent),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,2,4},1,1),b.Get());});for(auto& t:ringTicks_)t.visual->SetContent(ringOn_?ringSurface_.Get():nullptr);}
+    const double now=seconds();
+    // Off, the ticks hold no picture at all, so nothing of the ring can linger on screen.
+    if(on!=ringOn_){ringOn_=on;for(auto& t:ringTicks_)t.visual->SetContent(on?ringSurface_.Get():nullptr);if(!on)for(auto& t:ringTicks_){t.glide.to(.22,now,0);auto a=glideAnimation(device_.Get(),t.glide,now,1,0);t.scale->SetScaleY(a.Get());}}
+    // The cover is round inside the ring (its clip radius is in the 256-DIP cover's own units).
+    const float round=on&&s.playback.artwork?128.f:32.f;
+    if(round!=artRound_){const float from=artRound_<0?round:artRound_;artRound_=round;auto* c=artClip_.Get();
+        if(s.reducedMotion||from==round){const float r=round*scale_;c->SetTopLeftRadiusX(r);c->SetTopLeftRadiusY(r);c->SetTopRightRadiusX(r);c->SetTopRightRadiusY(r);c->SetBottomLeftRadiusX(r);c->SetBottomLeftRadiusY(r);c->SetBottomRightRadiusX(r);c->SetBottomRightRadiusY(r);}
+        else{auto a=ease(now,from*scale_,round*scale_,.32);c->SetTopLeftRadiusX(a.Get());c->SetTopLeftRadiusY(a.Get());c->SetTopRightRadiusX(a.Get());c->SetTopRightRadiusY(a.Get());c->SetBottomLeftRadiusX(a.Get());c->SetBottomLeftRadiusY(a.Get());c->SetBottomRightRadiusX(a.Get());c->SetBottomRightRadiusY(a.Get());}}
+}
+void Renderer::trackSkip(int direction,bool reduced){
+    if(reduced)return;const double now=seconds();kick_.reset(direction>0?-16:16,now);kick_.retarget(0,now,{1,380,24});auto a=animation(kick_,now,scale_);headerKick_->SetOffsetX(a.Get());commit();
 }
 void Renderer::waveform(const std::array<float,64>& heights,bool reduced){
     if(!wave_)return;const double now=seconds();bool changed=false;
@@ -45,7 +69,12 @@ void Renderer::setArtPulse(bool on){
     if(on==artPulseOn_)return;artPulseOn_=on;if(on)return;const double now=seconds();artBeat_.to(1,now,.12);auto a=glideAnimation(device_.Get(),artBeat_,now,1,0);artPulse_->SetScaleX(a.Get());artPulse_->SetScaleY(a.Get());
 }
 void Renderer::spectrum(const SpectrumFrame& frame){
-    beat(frame);if(barMode_<0||barCount_<=0){if(artPulseOn_)commit();return;}double now=seconds();const float lo=.15f,hi=barMode_==3?1.f:barMode_==1?.62f:.78f;
+    beat(frame);
+    // The ring: tick k (clockwise from the top) shows band 2j, where j is its distance from the top,
+    // so the bass lifts the crown and the treble the bottom, the same on both sides.
+    if(ringOn_){const double now=seconds();for(size_t k=0;k<ringTicks_.size();++k){auto& t=ringTicks_[k];const size_t j=k<=12?k:24-k;const float v=frame.resting?0.f:std::pow(std::clamp(frame.bands[std::min<size_t>(Spectrum::bandCount-1,j*2)],0.f,1.f),.85f);
+        t.glide.to(.22+.78*v,now,.06);auto a=glideAnimation(device_.Get(),t.glide,now,1,0);t.scale->SetScaleY(a.Get());}}
+    if(barMode_<0||barCount_<=0){if(artPulseOn_||ringOn_)commit();return;}double now=seconds();const float lo=.15f,hi=barMode_==3?1.f:barMode_==1?.62f:.78f;
     for(int i=0;i<barCount_;++i){int a=i*Spectrum::bandCount/barCount_,b=std::max(a+1,(i+1)*Spectrum::bandCount/barCount_);float v=0;for(int k=a;k<b;++k)v=std::max(v,frame.bands[k]);
         if(barMode_!=3)v=std::pow(v,.8f);float target=frame.resting?lo:lo+(hi-lo)*v;auto& bar=bars_[i];bar.glide.to(target,now,.055);auto anim=glideAnimation(device_.Get(),bar.glide,now,1,0);bar.scale->SetScaleY(anim.Get());}
     commit();

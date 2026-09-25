@@ -135,6 +135,12 @@ inline DigitRoll digitRoll(double position,int digit){
     const double base=position-10*std::floor(position/10)+10;double target=10.+digit;
     for(double c:{double(digit),20.+digit})if(std::abs(c-base)<std::abs(target-base))target=c;return {base,target};
 }
+// Phase 5F: dragged against the screen edge, the island leans (a shear about its top edge,
+// 0.06 degrees per DIP of sideways pull, so at most 6) and stretches a little when pulled down.
+inline constexpr double leanDegreesPerDip=.06,stretchPerDip=.001,narrowPerDip=.0005;
+// Phase 5F: a notification drops out of the top-docked island as its own pill, this far (DIPs)
+// below the screen edge (the compact island's height and a gap), while a stub of the island stays docked.
+inline constexpr double dropDistance=42;
 inline double rubberBand(double displacement,double limit=90) {
     return std::copysign(limit*(1-1/(std::abs(displacement)/limit+1)),displacement);
 }
@@ -161,6 +167,8 @@ struct MotionEngine {
     SpringSpec body=preset(MotionPreset::Balanced);
     bool reduced=false,live=false,card=false;int edge=0;double compactWidth=196,corner=22,commandHeight=224;
     Spring artX{12},artY{6},artSize{22},artOpacity{0},pulse{0},hoverX{20},hoverY{38},hoverW{40},hoverH{26},hoverOpacity{0},contentShift{0},swipe{0},level{0},slide{0};
+    // The drop pill: 0 merged, 1 dropped dropDistance below the edge. The stub is the compact island left docked meanwhile.
+    Spring drop{0};double stubWidth=196,stubHeight=34,stubRadius=17;
     // Auto-hide fades the island only in the last part of its slide.
     PhysicalState stageOpacity(double now)const{auto s=slide.sample(now);double q=std::clamp((s.position-.45)/.55,0.,1.),dq=(s.position>.45&&s.position<1)?s.velocity/.55:0;return {1-q*q*(3-2*q),-6*q*(1-q)*dq};}
     // A short sideways kick to the resting width when something new arrives.

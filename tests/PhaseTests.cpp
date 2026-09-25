@@ -23,6 +23,9 @@
 #include "Productivity/FileSearch.h"
 #include "Productivity/CommandMemory.h"
 #include "Hardware/GpuModel.h"
+#include "Productivity/Weather.h"
+#include "Design/Backdrop.h"
+#include "Animation/MotionEngine.h"
 #include <iostream>
 #include <random>
 #include <set>
@@ -86,8 +89,9 @@ int main(){try{
     // Every persisted preference is reachable from the Settings window model.
     Settings defaults;std::stringstream written;defaults.write(written);std::set<std::string> keys;std::string key;double value;while(written>>key>>value)if(key!="version")keys.insert(key);
     auto items=settingItems(2);std::set<std::string> covered;for(auto& i:items)if(!i.key.empty())covered.insert(i.key);
-    for(auto& k:keys)test(covered.contains(k),"settings window exposes every persisted preference");
-    for(auto& item:items){if(item.control==SettingControl::Button||item.control==SettingControl::Note||item.control==SettingControl::Order||item.control==SettingControl::Preview||item.control==SettingControl::Actions)continue;
+    // The seven chip positions are one control ("chips").
+    for(auto& k:keys)test(covered.contains(k)||(k.starts_with("chip")&&covered.contains("chips")),"settings window exposes every persisted preference");
+    for(auto& item:items){if(item.control==SettingControl::Chips||item.control==SettingControl::Button||item.control==SettingControl::Note||item.control==SettingControl::Order||item.control==SettingControl::Preview||item.control==SettingControl::Actions)continue;
         // Slow motion is a study aid and is deliberately never saved.
         if(item.key!="labSpeed")for(int v=item.lo;v<=item.hi;v+=std::max(1,(item.hi-item.lo)/12)){Settings s;item.set(s,v);std::stringstream io;s.write(io);auto back=Settings::parse(io);test(item.get(back)==item.get(s),"each control value round-trips through the settings file");}
         if(item.control==SettingControl::Slider||item.control==SettingControl::Choice||item.control==SettingControl::Swatch){Settings s;item.set(s,item.hi+1000);test(item.get(s)<=item.hi,"controls clamp above range");item.set(s,item.lo-1000);test(item.get(s)>=item.lo,"controls clamp below range");}}
@@ -475,5 +479,52 @@ int main(){try{
     {std::stringstream v12("version 12\nedge 1\n");auto s=Settings::parse(v12);test(s.version==Settings::currentVersion&&s.edge==1&&s.shadow&&s.compactGlance&&s.artPulse,"v12 settings gain the shadow, the idle glance and the beat pulse");
         std::stringstream left("version 13\nedge 2\n"),beyond("version 13\nedge 3\n");test(Settings::parse(left).edge==2&&Settings::parse(beyond).edge==2,"the left dock is kept, beyond it clamped");
         Settings off;off.shadow=off.compactGlance=off.artPulse=false;std::stringstream io;off.write(io);auto back=Settings::parse(io);test(!back.shadow&&!back.compactGlance&&!back.artPulse,"the new switches round-trip");}
+    // ---- Phase 5F: word-timed lyrics ----------------------------------------------------------------
+    {auto w=parseLrc(L"[00:10.00]<00:10.00>Hello <00:10.50>bright <00:11.20>world\n[00:14.00]Next line\n");
+        test(w.size()==2&&w[0].text==L"Hello bright world"&&w[0].words.size()==3&&w[0].words[1].start==6&&w[0].words[2].start==13&&std::abs(w[0].words[1].time-10.5)<1e-9&&w[1].words.empty(),"word tags become word timing");
+        auto k=lyricFill(w,0);test(std::abs(keyedAt(k,10.25)-3)<1e-9&&std::abs(keyedAt(k,10.5)-6)<1e-9&&std::abs(keyedAt(k,11.2)-13)<1e-9&&std::abs(keyedAt(k,11.75)-18)<1e-9&&keyedAt(k,20)==18&&keyedAt(k,5)==0,"a word-timed line lights word by word");
+        auto plain=lyricFill(w,1);test(plain.size()==2&&plain[0]==std::pair{14.,0.}&&plain[1].second==9&&plain[1].first>14,"an untimed line sweeps at a singing pace");
+        test(parseLrc(L"[00:01.00]<00:02.00>a <00:01.50>b")[0].words.empty(),"out-of-order word tags are dropped");
+        auto twice=parseLrc(L"[00:01.00][00:05.00]<00:01.00>la <00:01.50>la");test(twice.size()==2&&std::abs(twice[1].words[0].time-5)<1e-9&&std::abs(twice[1].words[1].time-5.5)<1e-9,"a repeated line's words shift with it");
+        auto early=parseLrc(L"[offset:+500]\n[00:02.00]<00:02.00>go <00:02.40>on");test(std::abs(early[0].time-1.5)<1e-9&&std::abs(early[0].words[1].time-1.9)<1e-9,"the offset moves word timing too");}
+    // ---- Phase 5F: rich clipboard rows ------------------------------------------------------------------
+    {test(linkHost(L"https://www.GitHub.com:443/user/repo?tab=1#x")==L"github.com"&&linkPath(L"https://www.GitHub.com:443/user/repo?tab=1#x")==L"/user/repo","a link's host and path");
+        test(linkHost(L"https://user@host.example.org/")==L"host.example.org"&&linkPath(L"https://example.com/").empty()&&linkHost(L"mailto:a@b.com").empty()&&linkHost(L"https://localhost/").empty(),"hosts are plain names");
+        test(looksLikeCode(L"int main() {\n  return 0;\n}")&&looksLikeCode(L"def add(a, b):\n    return a + b")&&!looksLikeCode(L"Meet me at the station at five, then dinner.")&&!looksLikeCode(L"Hi"),"code is told from prose");
+        const auto spans=codeSpans(L"return x == \"hi\"; // done");auto has=[&](CodeSpan c){return std::find(spans.begin(),spans.end(),c)!=spans.end();};
+        test(has({0,6,1})&&has({12,4,2})&&has({9,1,5})&&has({18,7,4})&&!has({7,1,1}),"code is coloured by kind");
+        test(codeSpans(L"#include <x>")[0].kind==1&&codeSpans(L"# a note")[0].kind==4,"a directive is not a comment");}
+    // ---- Phase 5F: weather ---------------------------------------------------------------------------------
+    {auto p=parseGeocode(R"({"results":[{"name":"Paris","country":"France","latitude":48.8566,"longitude":2.3522}]})");test(p&&p->name==L"Paris, France"&&p->latitude==48.86&&p->longitude==2.35,"a town becomes a place, rounded to about a kilometre");
+        test(!parseGeocode(R"({"results":[]})")&&!parseGeocode(R"({"results":[{"name":"X","latitude":95,"longitude":0}]})")&&!parseGeocode("not json"),"no match, no place");
+        auto now=parseForecast(R"({"current":{"temperature_2m":14.4,"weather_code":61,"is_day":0}})");test(now&&now->temperature==14.4&&now->code==61&&!now->day,"the current sky");
+        test(!parseForecast("{}")&&!parseForecast(R"({"current":{"temperature_2m":500,"weather_code":1}})"),"impossible weather is refused");
+        std::stringstream io;writePlace(io,{L"Z\u00fcrich, Switzerland",47.37,8.54});auto back=readPlace(io);test(back&&back->name==L"Z\u00fcrich, Switzerland"&&back->latitude==47.37,"the place is kept");
+        std::stringstream bad("weather 1\n95 0\nNowhere\n");test(!readPlace(bad),"a damaged place file is ignored");
+        test(skyOf(0)==Sky::Clear&&skyOf(2)==Sky::PartlyCloudy&&skyOf(45)==Sky::Fog&&skyOf(53)==Sky::Drizzle&&skyOf(81)==Sky::Rain&&skyOf(73)==Sky::Snow&&skyOf(96)==Sky::Storm,"WMO codes");
+        test(std::wstring(skyLabel(Sky::Storm))==L"Storm"&&std::wstring(skyLabel(Sky::PartlyCloudy))==L"Partly cloudy"&&temperatureText(-.4,0)==L"0\u00b0"&&temperatureText(20,1)==L"68\u00b0","the tile's words and degrees");
+        const std::vector<InstalledApp> apps;auto c=parseCommand(L"weather in Paris",apps,{},L"C:\\");test(!c.empty()&&c[0].kind==CommandKind::Weather&&c[0].detail.find(L"only the town is sent")!=std::wstring::npos&&!CommandMemory::memorable(CommandKind::Weather),"the weather command");
+        c=parseCommand(L"weather",apps,{},L"C:\\");test(!c.empty()&&c[0].kind!=CommandKind::Weather,"the weather command needs a town");}
+    // ---- Phase 5F: battery health and the week ---------------------------------------------------------
+    {BatteryHealthLog log;BatteryReading r;r.fullMwh=45000;r.designMwh=50000;r.cycles=10;const int64_t day=86400;
+        test(log.add(100*day,r)&&!log.add(100*day+3600,r),"one health reading a day");r.relative=true;test(!log.add(101*day,r),"relative readings carry no capacity");r.relative=false;
+        r.fullMwh=44500;test(log.add(107*day,r),"a week later");auto w=log.week();test(w&&std::abs(w->first-.9)<1e-9&&std::abs(w->second-.89)<1e-9,"health now and a week ago");
+        log.lastCard=123;std::stringstream io;log.write(io);auto back=BatteryHealthLog::read(io);test(back.days==log.days&&back.lastCard==123,"the health log is kept");
+        std::stringstream bad("battery_health 1\ncard 0\n5 100 90 1\n4 100 90 1\n");test(BatteryHealthLog::read(bad).days.empty(),"a log out of order is refused");
+        BatteryHistory h;const int64_t t0=10*day;for(int i=0;i<12;++i)h.add(t0+i*300,90-i,false);h.add(t0+3600,80,true);
+        auto week=summarizeWeek(h,t0+3700);test(week.charges==1&&std::abs(week.usedPerDay-11)<1e-9&&std::abs(week.hoursOnBattery-11*300/3600.)<1e-9,"the week on battery");
+        test(summarizeWeek({},t0).usedPerDay==-1,"no history, no summary");}
+    // ---- Phase 5F: chips, the Controls page, settings v14 --------------------------------------------------
+    {test(withControls({0,1,2,3,4,5,6})==std::array<int,pageCount>{0,1,2,7,3,4,5,6}&&withControls({0,0,2,3,4,5,6})==defaultNavigation,"Controls joins a saved order after Stats");
+        test(decodeChips(encodeChips(defaultChips))==defaultChips&&moveChip(defaultChips,0,2)==std::array<int,chipCount>{5,4,6,3,2,1,0}&&moveChip(moveChip(defaultChips,0,2),2,0)==defaultChips,"chips move and round-trip");
+        test(!validChips({0,0,1,2,3,4,5})&&validChips(defaultChips),"a chip order has each chip once");
+        std::stringstream v13("version 13\nnav0 1\nnav1 0\nnav2 2\nnav3 3\nnav4 5\nnav5 6\nnav6 4\n");auto s=Settings::parse(v13);
+        test(s.version==Settings::currentVersion&&s.navigation==std::array<int,pageCount>{1,0,2,7,3,5,6,4}&&s.chips==defaultChips&&!s.weather&&!s.siteIcons&&!s.sharing&&s.notifyStyle==1&&s.waveformStyle==1,"v13 settings gain Controls; online features stay off");
+        Settings custom;custom.chips=moveChip(defaultChips,1,5);custom.sharing=true;custom.notifyStyle=0;std::stringstream io;custom.write(io);auto back=Settings::parse(io);
+        test(back.chips==custom.chips&&back.sharing&&back.notifyStyle==0,"v14 settings round-trip");
+        std::stringstream broken("version 14\nchip0 1\nchip1 1\n");test(Settings::parse(broken).chips==defaultChips,"a broken chip order falls back");}
+    // ---- Phase 5F: the adaptive text grid and the drop ----------------------------------------------------
+    {LumaGrid g;g.cols=4;g.rows=2;g.x0=10;g.cell=2;g.luma={1,2,3,4,5,6,7,8};test(g.at(10,0)==1&&g.at(13.9f,0)==2&&g.at(15,3)==7&&g.at(-50,-50)==1&&g.at(500,500)==8,"the backdrop grid clamps to its edges");
+        test(LumaGrid{}.at(0,0)==0&&brightBackdrop>127,"an empty grid reads dark");test(dropDistance>34&&dropDistance<60,"a dropped pill clears the compact island");}
     std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery, auto-hide, command, clipboard, workspace, privacy, waveform, lab, accent, lyrics, palette, seeking, audio-route, currency, system-action, completion, file-search, command-memory, rolling-digit, GPU, colour, typo, row-group and left-dock checks\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

@@ -112,7 +112,7 @@ void IslandWindow::startCapture(CaptureMode mode){
 void IslandWindow::captureCard(int kind,std::wstring title,std::wstring detail,std::shared_ptr<const Artwork> icon,uint32_t colour){
     if(!renderer_)return;if(state_!=IslandState::Compact&&state_!=IslandState::Notification){content_.shelfStatus=title;content_.shelfStatusUntil=seconds()+3;refresh();return;}
     content_.notice={kind,{},std::move(title),std::move(icon),false,std::move(detail),colour};
-    events_.publish({ActivityKind::Notification,"capture",65,double(kind),2.2,kind==11?5:3.2},seconds());transition(IslandState::Notification);presentActivity();
+    events_.publish({ActivityKind::Notification,"capture",65,double(kind),2.2,kind==11?5:3.2},seconds());transition(IslandState::Notification);presentActivity();alertSplash();
 }
 // Puts text on the clipboard (the island owns the copy) and keeps it in history when that is on.
 void IslandWindow::copyText(const std::wstring& text,bool keep){

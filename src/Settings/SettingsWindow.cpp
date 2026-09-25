@@ -47,6 +47,8 @@ private:
     ComPtr<IDCompositionDevice> composition_;ComPtr<IDCompositionTarget> target_;ComPtr<IDCompositionVisual> visual_;ComPtr<ID2D1SolidColorBrush> brush_;
     std::map<int,ComPtr<IDWriteTextFormat>> formats_;float dpi_=96;UINT width_=0,height_=0;bool mica_=false,keyboard_=false;
     Spring navY_{0},page_{1},scroll_{0};double scrollTarget_=0;std::map<int,Spring> knobs_,hovers_,pillX_,pillW_,thumbs_,rings_;
+    // A chip being dragged in the Chips control: its slot, where it was grabbed and the pointer.
+    int chipDrag_=-1;float chipGrab_=0,chipX_=0;int chipTarget(const Row&)const;
     Hit hover_,press_,focus_;int dragItem_=-1;double confirmUntil_=0;int confirmItem_=-1;bool tracking_=false;
     // Animation Lab: a spring that plays the island's own motion in miniature.
     Spring preview_{0};double previewStart_=-10;bool previewForward_=false;void replay();void drawPreview(const D2D1_RECT_F& area,const Palette& p,float alpha);
@@ -101,7 +103,7 @@ std::vector<Row> SettingsUi::layout(float& contentHeight,std::vector<D2D1_RECT_F
     if(nav)*nav=navRects();
     std::vector<Row> rows;const float left=Sidebar+20,right=W()-32,R=right-Pad,scroll=float(at(scroll_));float y=CardTop-scroll+(about()?92:0);
     for(size_t index=0;index<items_.size();++index){auto& item=items_[index];if(item.section!=section_||(item.action==SettingAction::OpenArmoury&&!context_.armoury))continue;
-        Row row;row.item=int(index);float h=item.control==SettingControl::Order?52:item.control==SettingControl::Preview?216:64;row.row={left,y,right,y+h};float cy=y+h/2;
+        Row row;row.item=int(index);float h=item.control==SettingControl::Order?52:item.control==SettingControl::Preview?216:item.control==SettingControl::Chips?122:64;row.row={left,y,right,y+h};float cy=y+h/2;
         switch(item.control){
         case SettingControl::Toggle:row.control={R-44,cy-11,R,cy+11};row.parts={row.control};break;
         case SettingControl::Slider:row.control={R-220,cy-12,R,cy+12};row.parts={row.control};break;
@@ -111,6 +113,8 @@ std::vector<Row> SettingsUi::layout(float& contentHeight,std::vector<D2D1_RECT_F
         case SettingControl::Button:{float w=std::max(96.f,measure(confirmItem_==int(index)?L"Click again to confirm":item.options.front(),13,DWRITE_FONT_WEIGHT_MEDIUM)+36);row.control={R-w,cy-16,R,cy+16};row.parts={row.control};break;}
         case SettingControl::Order:row.control={R-72,cy-15,R,cy+15};row.parts={{R-72,cy-15,R-40,cy+15},{R-32,cy-15,R,cy+15}};break;
         case SettingControl::Preview:row.control={left+Pad,y+44,R,y+h-14};row.parts={row.control};break;
+        // A strip like the compact island, with the chips in their order.
+        case SettingControl::Chips:{const float x0=left+Pad;row.control={x0,y+62,R,y+106};const float gap=6,w=(R-x0-12-gap*(chipCount-1))/chipCount;for(int k=0;k<chipCount;++k){float x=x0+6+k*(w+gap);row.parts.push_back({x,y+68,x+w,y+100});}break;}
         case SettingControl::Actions:{float total=0;std::vector<float> widths;for(auto& o:item.options){float w=std::max(74.f,measure(o,13,DWRITE_FONT_WEIGHT_MEDIUM)+32);widths.push_back(w);total+=w+8;}total-=8;float x=R-total;row.control={x,cy-16,R,cy+16};for(float w:widths){row.parts.push_back({x,cy-16,x+w,cy+16});x+=w+8;}break;}
         default:break;
         }
@@ -135,6 +139,8 @@ void SettingsUi::publish(){
     bool still=!animating();
     std::lock_guard lock(shared_.mutex);shared_.probes=std::move(probes);shared_.settled=still;shared_.section=section_;
 }
+// The slot a dragged chip would land in: under the chip's centre.
+int SettingsUi::chipTarget(const Row& row)const{if(row.parts.empty())return 0;const float w=row.parts[0].right-row.parts[0].left,step=chipCount>1?row.parts[1].left-row.parts[0].left:w;const float centre=chipX_-chipGrab_+w/2;return std::clamp(int(std::floor((centre-row.parts[0].left+(step-w)/2)/step)),0,chipCount-1);}
 void SettingsUi::post(){++posted_;auto copy=std::make_unique<Settings>(s_);if(PostMessageW(island_,SettingsChangedMessage,posted_,reinterpret_cast<LPARAM>(copy.get())))copy.release();}
 void SettingsUi::apply(int index,int value){
     auto& item=items_[index];if(!enabled(item))return;
@@ -185,7 +191,8 @@ void SettingsUi::key(WPARAM k){
         if(item.control==SettingControl::Slider)apply(focus_.item,std::clamp(v+d*item.step,item.lo,item.hi));
         else if(item.control==SettingControl::Choice||item.control==SettingControl::Swatch){apply(focus_.item,std::clamp(v+d,item.lo,item.hi));focus_.part=item.get(s_);}
         else if(item.control==SettingControl::Stepper)activate({focus_.item,d>0?1:0,-1},0);
-        else if(item.control==SettingControl::Order)apply(focus_.item,d);}
+        else if(item.control==SettingControl::Order)apply(focus_.item,d);
+        else if(item.control==SettingControl::Chips){auto order=moveChip(s_.chips,focus_.part,focus_.part+d);apply(focus_.item,encodeChips(order));focus_.part=std::clamp(focus_.part+d,0,chipCount-1);}}
     else if(k==VK_SPACE||k==VK_RETURN){if(focus_.section>=0)selectSection(focus_.section);else if(focus_.item>=0){auto& item=items_[focus_.item];if(item.control==SettingControl::Toggle||item.control==SettingControl::Button)activate({focus_.item,0,-1},0);else if(item.control==SettingControl::Actions||item.control==SettingControl::Preview)activate({focus_.item,std::max(0,focus_.part),-1},0);}}
     // Keep the focused row inside the viewport.
     if(focus_.item>=0){float height;for(auto& row:layout(height))if(row.item==focus_.item){float top=row.row.top,bottom=row.row.bottom;if(top<CardTop-10)scrollTarget_-=CardTop-10-top;else if(bottom>H()-20)scrollTarget_+=bottom-(H()-20);float max=std::max(0.f,height-H());scrollTarget_=std::clamp(scrollTarget_,0.,double(max));aim(scroll_,scrollTarget_,Scroll);}}
@@ -264,9 +271,10 @@ void SettingsUi::render(){
         if(row.row.bottom<0||row.row.top>H()+20)continue;
         if(r>0){brush_->SetColor(D2D1::ColorF(p.border));dc_->DrawLine({row.row.left+Pad,row.row.top},{row.row.right-Pad,row.row.top},brush_.Get(),1);}
         auto& rowHover=spring(hovers_,row.item*100+98,0);aim(rowHover,hover_.item==row.item&&on?1:0,Hover);fill({row.row.left+4,row.row.top+4,row.row.right-4,row.row.bottom-4},7,p.light?0x000000:0xffffff,float(at(rowHover))*(p.light?.02f:.025f));
-        float textRight=row.control.left-16;
+        float textRight=item.control==SettingControl::Chips?row.row.right-Pad:row.control.left-16;
         if(item.control==SettingControl::Preview){text(item.title,{row.row.left+Pad,row.row.top+12,row.row.right-Pad,row.row.top+32},14,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);text(detail(item),{row.row.left+Pad,row.row.top+12,row.row.right-Pad,row.row.top+32},12,p.muted,alpha,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
-        else if(item.control==SettingControl::Order){int page=item.get(s_);text(item.title,{row.row.left+Pad,row.row.top+6,textRight,row.row.top+22},11,p.muted,alpha);drawIcon(dc_.Get(),factory_.Get(),std::array<Icon,7>{Icon::Home,Icon::Music,Icon::Stats,Icon::Focus,Icon::Settings,Icon::Shelf,Icon::Audio}[page],row.row.left+Pad,row.row.top+25,16,p.ink);text(item.options[page],{row.row.left+Pad+24,row.row.top+22,textRight,row.row.top+44},14,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);}
+        else if(item.control==SettingControl::Order){int page=item.get(s_);text(item.title,{row.row.left+Pad,row.row.top+6,textRight,row.row.top+22},11,p.muted,alpha);drawIcon(dc_.Get(),factory_.Get(),std::array<Icon,pageCount>{Icon::Home,Icon::Music,Icon::Stats,Icon::Focus,Icon::Settings,Icon::Shelf,Icon::Audio,Icon::Sliders}[size_t(std::clamp(page,0,pageCount-1))],row.row.left+Pad,row.row.top+25,16,p.ink);text(item.options[page],{row.row.left+Pad+24,row.row.top+22,textRight,row.row.top+44},14,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);}
+        else if(item.control==SettingControl::Chips){text(item.title,{row.row.left+Pad,row.row.top+12,textRight,row.row.top+32},14,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);text(detail(item),{row.row.left+Pad,row.row.top+33,textRight,row.row.top+52},12,p.muted,alpha);}
         else{bool hasDetail=!detail(item).empty();text(item.title,{row.row.left+Pad,hasDetail?row.row.top+12:cy-11,textRight,hasDetail?row.row.top+32:cy+11},14,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);if(hasDetail)text(detail(item),{row.row.left+Pad,row.row.top+33,textRight,row.row.top+52},12,p.muted,alpha);}
         int value=item.get?item.get(s_):0;auto hovered=[&](int part){return hover_.item==row.item&&(hover_.part==part||hover_.part==99);};
         switch(item.control){
@@ -291,8 +299,20 @@ void SettingsUi::render(){
         case SettingControl::Button:{auto r=row.control;bool confirm=confirmItem_==row.item&&now<confirmUntil_;auto& h=spring(thumbs_,100000+row.item*10,0);aim(h,press_.item==row.item?2:hovered(0)?1:0,Hover);float g=float(at(h));
             if(confirm){fill(r,7,0xd9434b,alpha);text(L"Click again to confirm",r,13,0xffffff,alpha,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_CENTER);}
             else{fill(r,7,p.ink,(.07f+std::min(g,1.f)*.05f-std::max(0.f,g-1)*.04f)*alpha);stroke(r,7,p.ink,.08f*alpha,1);text(item.options.front(),r,13,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER);}break;}
-        case SettingControl::Order:{int slot=row.item;for(int b=0;b<2;++b){auto r=row.parts[b];bool possible=b?item.key!="nav6":item.key!="nav0";auto& h=spring(thumbs_,100000+slot*10+b,0);aim(h,press_.item==row.item&&press_.part==b?2:hovered(b)?1:0,Hover);float g=float(at(h));fill(r,15,p.ink,(.06f+std::min(g,1.f)*.06f)*(possible?1:.4f));drawIcon(dc_.Get(),factory_.Get(),b?Icon::ArrowDown:Icon::ArrowUp,r.left+8,r.top+8,14,p.ink,possible?1:.35f);}break;}
+        case SettingControl::Order:{int slot=row.item;for(int b=0;b<2;++b){auto r=row.parts[b];bool possible=b?item.key!="nav"+std::to_string(pageCount-1):item.key!="nav0";auto& h=spring(thumbs_,100000+slot*10+b,0);aim(h,press_.item==row.item&&press_.part==b?2:hovered(b)?1:0,Hover);float g=float(at(h));fill(r,15,p.ink,(.06f+std::min(g,1.f)*.06f)*(possible?1:.4f));drawIcon(dc_.Get(),factory_.Get(),b?Icon::ArrowDown:Icon::ArrowUp,r.left+8,r.top+8,14,p.ink,possible?1:.35f);}break;}
         case SettingControl::Preview:drawPreview(row.control,p,alpha);break;
+        case SettingControl::Chips:{
+            // The strip, then each chip where its spring has it; a dragged chip follows the pointer and the others make room.
+            fill(row.control,16,p.light?0x15171c:0x0b0c0f,alpha);const Icon glyphs[]={Icon::Clock,Icon::Volume,Icon::Battery,Icon::Focus,Icon::Processor,Icon::Gauge,Icon::Sun};
+            auto order=s_.chips;int dragged=-1;if(chipDrag_>=0&&press_.item==row.item){dragged=order[size_t(chipDrag_)];order=moveChip(order,chipDrag_,chipTarget(row));}
+            const float w=row.parts[0].right-row.parts[0].left;
+            auto chipAt=[&](int id,float x,bool lifted){D2D1_RECT_F r{x,row.parts[0].top-(lifted?2.f:0.f),x+w,row.parts[0].bottom-(lifted?2.f:0.f)};
+                if(lifted){fill({r.left+1,r.top+3,r.right+1,r.bottom+4},10,0x000000,.35f*alpha);fill(r,10,p.accent,alpha);}else fill(r,10,0xffffff,.08f*alpha);
+                const UINT32 ink=lifted?p.onAccent:0xf1f3f7;const float label=measure(item.options[size_t(id)],12,DWRITE_FONT_WEIGHT_MEDIUM),total=16+6+label,start=r.left+std::max(6.f,(w-total)/2);
+                drawIcon(dc_.Get(),factory_.Get(),glyphs[id],start,(r.top+r.bottom)/2-8,16,ink,alpha);text(item.options[size_t(id)],{start+22,r.top,r.right-4,r.bottom},12,ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);};
+            for(int k=0;k<chipCount;++k){const int id=order[size_t(k)];auto& sx=spring(pillX_,300000+id,row.parts[size_t(k)].left);if(id==dragged)continue;aim(sx,row.parts[size_t(k)].left,Pill);chipAt(id,float(at(sx)),false);}
+            if(dragged>=0){const float x=std::clamp(chipX_-chipGrab_,row.control.left,row.control.right-w);auto& sx=spring(pillX_,300000+dragged,x);sx.reset(x,now);chipAt(dragged,x,true);}
+            break;}
         case SettingControl::Actions:{for(size_t b=0;b<row.parts.size();++b){auto r=row.parts[b];auto& h=spring(thumbs_,200000+row.item*10+int(b),0);aim(h,press_.item==row.item&&press_.part==int(b)?2:hovered(int(b))?1:0,Hover);float g=float(at(h));
             fill(r,8,b==0?p.accent:p.ink,(b==0?.9f+std::min(g,1.f)*.1f:.07f+std::min(g,1.f)*.05f-std::max(0.f,g-1)*.04f)*alpha);if(b)stroke(r,8,p.ink,.08f*alpha,1);text(item.options[b],r,13,b==0?p.onAccent:p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER);}break;}
         default:break;
@@ -343,15 +363,20 @@ LRESULT SettingsUi::message(HWND h,UINT m,WPARAM w,LPARAM l){
     case RefreshMessage:refresh();return 0;
     case ShowMessage:ShowWindow(h,IsIconic(h)?SW_RESTORE:SW_SHOW);SetForegroundWindow(h);refresh();return 0;
     case WM_TIMER:if(w==1){KillTimer(h,1);dirty=true;}return 0;
-    case WM_MOUSEMOVE:{auto [x,y]=point();if(!tracking_){TRACKMOUSEEVENT t{sizeof(t),TME_LEAVE,h,0};TrackMouseEvent(&t);tracking_=true;}if(dragItem_>=0){slide(dragItem_,x);return 0;}auto next=hit(x,y);if(!(next==hover_)){hover_=next;dirty=true;}return 0;}
+    case WM_MOUSEMOVE:{auto [x,y]=point();if(!tracking_){TRACKMOUSEEVENT t{sizeof(t),TME_LEAVE,h,0};TrackMouseEvent(&t);tracking_=true;}if(dragItem_>=0){slide(dragItem_,x);return 0;}if(chipDrag_>=0){chipX_=x;dirty=true;return 0;}auto next=hit(x,y);if(!(next==hover_)){hover_=next;dirty=true;}return 0;}
     case WM_MOUSELEAVE:tracking_=false;if(dragItem_<0){hover_={};dirty=true;}return 0;
-    case WM_LBUTTONDOWN:{auto [x,y]=point();keyboard_=false;press_=hit(x,y);SetCapture(h);if(press_.item>=0&&items_[press_.item].control==SettingControl::Slider&&press_.part==0&&enabled(items_[press_.item])){dragItem_=press_.item;slide(dragItem_,x);}if(press_.item>=0||press_.section>=0)focus_=press_.section>=0?press_:Hit{press_.item,std::max(0,press_.part),-1};dirty=true;return 0;}
+    case WM_LBUTTONDOWN:{auto [x,y]=point();keyboard_=false;press_=hit(x,y);SetCapture(h);if(press_.item>=0&&items_[press_.item].control==SettingControl::Slider&&press_.part==0&&enabled(items_[press_.item])){dragItem_=press_.item;slide(dragItem_,x);}
+        if(press_.item>=0&&items_[press_.item].control==SettingControl::Chips&&press_.part>=0){float height;for(auto& row:layout(height))if(row.item==press_.item){chipDrag_=press_.part;chipGrab_=x-row.parts[size_t(press_.part)].left;chipX_=x;}}if(press_.item>=0||press_.section>=0)focus_=press_.section>=0?press_:Hit{press_.item,std::max(0,press_.part),-1};dirty=true;return 0;}
     case WM_LBUTTONUP:{
         // ReleaseCapture sends WM_CAPTURECHANGED synchronously, which clears the press.
-        auto [x,y]=point();Hit pressed=press_;bool dragging=dragItem_>=0;ReleaseCapture();auto up=hit(x,y);
+        auto [x,y]=point();Hit pressed=press_;bool dragging=dragItem_>=0;
+        // A chip dropped in a new slot reorders the chips.
+        if(chipDrag_>=0&&pressed.item>=0){chipX_=x;float height;for(auto& row:layout(height))if(row.item==pressed.item){const int to=chipTarget(row);if(to!=chipDrag_)apply(pressed.item,encodeChips(moveChip(s_.chips,chipDrag_,to)));focus_={pressed.item,to,-1};}
+            chipDrag_=-1;ReleaseCapture();press_={};hover_=hit(x,y);dirty=true;return 0;}
+        ReleaseCapture();auto up=hit(x,y);
         if(!dragging&&(up==pressed||(up.item==pressed.item&&pressed.item>=0&&items_[pressed.item].control==SettingControl::Toggle)))activate(pressed,x);
         dragItem_=-1;press_={};hover_=up;dirty=true;return 0;}
-    case WM_CAPTURECHANGED:dragItem_=-1;press_={};dirty=true;return 0;
+    case WM_CAPTURECHANGED:dragItem_=-1;chipDrag_=-1;press_={};dirty=true;return 0;
     case WM_MOUSEWHEEL:{float height;layout(height);float max=std::max(0.f,height-H());scrollTarget_=std::clamp(scrollTarget_-GET_WHEEL_DELTA_WPARAM(w)*.9,0.,double(max));aim(scroll_,scrollTarget_,Scroll);dirty=true;return 0;}
     case WM_KEYDOWN:key(w);return 0;
     case WM_CLOSE:DestroyWindow(h);return 0;

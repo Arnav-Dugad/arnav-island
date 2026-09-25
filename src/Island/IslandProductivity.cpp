@@ -42,7 +42,15 @@ void IslandWindow::syncProductivity(){
     // Command history follows its setting; turning it off forgets it (the file too).
     if(settings_.commandHistory){if(!commandMemoryLoaded_)loadCommandMemory();}
     else if(commandMemoryLoaded_||!commandMemory_.items().empty()){commandMemory_.forget();commandMemoryLoaded_=false;std::error_code ignored;std::filesystem::remove(store_.directory/L"commands.nexus",ignored);}
-    syncHotkey();
+    syncHotkey();syncWeather();
+    // Site icons run only while that setting (and rich rows) is on; turning it off forgets them.
+    const bool icons=settings_.siteIcons&&settings_.richClips&&!testing_;if(icons&&!siteIcons_)siteIcons_=std::make_unique<SiteIcons>(window_);else if(!icons&&siteIcons_){siteIcons_.reset();clipViews();}
+}
+// Weather runs only while it is on; turning it off forgets the place too.
+void IslandWindow::syncWeather(){
+    const bool want=settings_.weather&&!testing_;
+    if(want&&!weather_)weather_=std::make_unique<WeatherService>(window_,store_.directory/L"weather.nexus");
+    else if(!want&&weather_){weather_.reset();content_.weather={};std::error_code ignored;std::filesystem::remove(store_.directory/L"weather.nexus",ignored);if(renderer_)refresh();}
 }
 void IslandWindow::syncHotkey(){
     const int want=testing_?0:settings_.commandShortcut;if(want==hotkeyChoice_)return;
@@ -76,7 +84,11 @@ void IslandWindow::clipViews(){
         switch(e.kind){
         case ClipEntry::Kind::Image:c.preview=L"Image  ·  "+std::to_wstring(e.imageWidth)+L" × "+std::to_wstring(e.imageHeight);break;
         case ClipEntry::Kind::Files:{auto& f=e.files.front();auto slash=f.find_last_of(L"\\/");c.preview=slash==std::wstring::npos?f:f.substr(slash+1);if(e.files.size()>1)c.preview+=L" and "+std::to_wstring(e.files.size()-1)+L" more";break;}
-        default:c.preview=clipPreview(e.text,90);}
+        default:c.preview=clipPreview(e.text,90);
+            // Rich rows: a colour code, code, or a link's site.
+            if(settings_.richClips&&e.kind==ClipEntry::Kind::Text&&!c.secret){if(e.text.size()<=40)if(auto colour=parseColourCode(e.text)){c.hasColour=true;c.colour=*colour;c.preview=colourHex(*colour)+L"  \u00b7  "+colourDetail(*colour).substr(0,colourDetail(*colour).find(L"  "));}
+                if(!c.hasColour&&looksLikeCode(e.text)){c.code=true;c.preview=firstLine(e.text).substr(0,160);}}
+            if(settings_.richClips&&e.kind==ClipEntry::Kind::Link){c.host=linkHost(e.text);c.path=linkPath(e.text);if(settings_.siteIcons&&siteIcons_&&!c.host.empty())c.favicon=siteIcons_->get(c.host);}}
         c.meta=(e.source.empty()?std::wstring(L"Copied"):e.source)+L"  ·  "+ageText(now-e.time);content_.clips.push_back(std::move(c));}
     content_.clipOffset=std::clamp(content_.clipOffset,0,std::max(0,int(content_.clips.size())-4));
 }
@@ -102,7 +114,7 @@ void IslandWindow::showPrivacyNotice(const PrivacyUse& u){
     if(settings_.autoHide&&autoHide_.hidden&&!settings_.alertsReveal)return;
     content_.notice={u.capability==Capability::Camera?5:u.capability==Capability::Microphone?6:u.capability==Capability::ScreenCapture?12:7,{},u.app,u.icon};
     events_.publish({ActivityKind::Notification,"privacy",70,double(content_.notice.kind),2.4,3.4},seconds());
-    transition(IslandState::Notification);presentActivity();store_.log("Info","privacy_card_shown");
+    transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info","privacy_card_shown");
 }
 // ---- Command bar -----------------------------------------------------------
 void IslandWindow::openCommand(){
@@ -232,6 +244,8 @@ void IslandWindow::runCommand(size_t index){
         else commandStatus(restart?L"Windows did not restart":L"Windows did not shut down",true);return;}
     case CommandKind::Currency:copyText(r.target);commandStatus(L"Copied "+r.answer);return;
     case CommandKind::Colour:copyText(r.target);commandStatus(L"Copied "+r.target);return;
+    // Choosing a place is the consent to fetch weather for it.
+    case CommandKind::Weather:{if(!settings_.weather){Settings next=settings_;next.weather=true;receiveSettings(next);}if(!weather_){commandStatus(L"Weather is not available in test runs",true);return;}weather_->choose(r.target);weatherAsked_=true;commandStatus(L"Finding "+r.target+L"\u2026",false,false);return;}
     case CommandKind::OpenFile:if(shell(r.target))done();else commandStatus(L"Windows could not open that file",true);return;
     case CommandKind::None:commandShake();return;
     case CommandKind::Volume:if(audio_){audio_->setVolume(r.value);if(audio_->muted)audio_->toggleMute();}done();return;

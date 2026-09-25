@@ -1,5 +1,6 @@
 #pragma once
 #include "Composition/Renderer.h"
+#include "Productivity/ShareService.h"
 #include "Events/EventOrchestrator.h"
 #include "TelemetryLocal/LocalStore.h"
 #include "Audio/AudioProvider.h"
@@ -26,6 +27,8 @@
 #include "Capture/CaptureOverlay.h"
 #include "Capture/Ocr.h"
 #include "FileShelf/ShelfStore.h"
+#include "Productivity/WeatherService.h"
+#include "Productivity/SiteIcons.h"
 #include <map>
 #include <memory>
 #include <thread>
@@ -34,6 +37,7 @@
 #include <shellapi.h>
 
 namespace nexus {
+constexpr UINT ControlStateMessage=WM_APP+40,WallpaperLumaMessage=WM_APP+44;
 enum class InteractionState { Rest,Hover,Pressed,Dragging };
 class IslandWindow {
     HWND window_=nullptr,qaMatte_=nullptr;HBRUSH qaBrush_=nullptr;HINSTANCE instance_{};HWINEVENTHOOK foregroundHook_=nullptr,locationHook_=nullptr;
@@ -47,7 +51,7 @@ class IslandWindow {
     // Phase 4: clipboard history (memory only), privacy indicators, command bar and workspaces.
     ClipboardWatcher clipboard_;ClipboardHistory clips_;int clipRetries_=0;std::map<std::wstring,std::shared_ptr<const Artwork>> clipIcons_;std::wstring copyLabel_;
     void onClipboard();void clipViews();void clearClips();void copyClip(size_t index);
-    std::unique_ptr<PrivacyProvider> privacy_;std::vector<PrivacyUse> privacyUses_;void updatePrivacy();void showPrivacyNotice(const PrivacyUse&);
+    std::unique_ptr<PrivacyProvider> privacy_;std::vector<PrivacyUse> privacyUses_,qaLater_;void updatePrivacy();void showPrivacyNotice(const PrivacyUse&);
     std::unique_ptr<CommandService> commands_;WorkspaceStore workspaces_;bool hotkey_=false;int hotkeyChoice_=0;HWND commandReturn_=nullptr;uint64_t commandSeq_=0;
     void syncProductivity();void syncHotkey();void openCommand();void closeCommand(bool restoreFocus=true);bool commandKey(WPARAM);void commandChar(wchar_t);void commandQuery(bool refreshState=false);void commandResults();
     // Phase 5D: what the command bar remembers (recent and pinned commands, file opens), background system actions.
@@ -65,7 +69,27 @@ class IslandWindow {
     void openShelfItem(int index);void shelfAction(Action a);void shelfChanged();void loadShelfFile();void savePinnedClips();void loadPinnedClips();
     void clipResults();void clipSearch(bool picker);void pasteClip(size_t row,bool copyOnly);void syncCaptureHotkeys();bool captureMessage(UINT,WPARAM,LPARAM,LRESULT&);
     void qaBackdrop();int qaOverlay_=-1;std::vector<uint64_t> ids_;int captureHotkeys_=-1;std::wstring captureTaken_;bool jobRunning_=false,pinsLoaded_=false,pinnedShelfWas_=false;bool showHeadphoneCard(const AudioDevice& output,const std::wstring& fromId,const std::wstring& fromName);
-    bool edgeHold_=false;bool pointerOffEdge();double swipeAccumulator_=0,swipeTime_=0;bool mediaReachable_=false;
+    bool edgeHold_=false;bool pointerOffEdge();double swipeAccumulator_=0,swipeTime_=0,hwheelAt_=0;
+    // Phase 5F: track swipes in the compact island, and Now Playing over fullscreen apps.
+    // The Controls page: switch jobs on workers, and the brightness slider.
+    void controlJob(int which,int target,int busy=0);void toggleControl(Action);void setBrightnessAt(LPARAM);std::shared_ptr<std::atomic<bool>> controlQuery_=std::make_shared<std::atomic<bool>>(false);double brightnessRequestAt_=-10;
+    // Weather (opt-in): the service runs only while weather is on; a command may be waiting on its answer.
+    std::unique_ptr<WeatherService> weather_;bool weatherAsked_=false;void syncWeather();
+    // Site icons for copied links (opt-in), kept in memory while the setting is on.
+    std::unique_ptr<SiteIcons> siteIcons_;
+    // The glint along the island's edge for an alert, once its shape is known.
+    void alertSplash();
+    // Adaptive text: the wallpaper's luminance map (loaded off the UI thread), and the grid under the compact island
+    // it gives while nothing but the wallpaper is behind it. qaBackdrop_: an illustrative map for captures.
+    // Sharing with your own PCs (IslandShare.cpp): the service while its setting is on, the offer a card answers, where Send goes.
+    std::unique_ptr<ShareService> share_;uint32_t shareOffer_=0;std::string shareTarget_;
+    void syncSharing();void shareEvents();bool shareAction(Action);void shareCard(int kind,const std::wstring& title,const std::wstring& detail,const std::wstring& path,double duration);
+    std::shared_ptr<const WallpaperLuma> wallLuma_;bool wallLoading_=false,qaBackdrop_=false;void loadWallpaperLuma();void adaptBackdrop();bool backdropCovered()const;
+    // The body's top-left in the canvas (DIPs), including how far a notification pill has dropped (drop: 0..1).
+    PointD bodyAt(double w,double h,double drop)const{auto o=bodyOrigin(w,h,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);if(settings_.edge==0)o.y+=drop*dropDistance;return o;}
+    // Whether a notification pill is out of the island (or on its way back) at time t.
+    bool dropped(double t)const{return settings_.edge==0&&!settings_.floating()&&(motion_.drop.target()>0||std::abs(motion_.drop.sample(t).position)>1e-4);}
+    void skipTrack(int direction);bool fullscreenHidden_=false,peeking_=false,peekTimer_=false;double peekIdle_=0;void syncPeek();void peekTick();bool mediaReachable_=false;
     void updateSessions();void switchSession(int delta,bool absolute=false);void updateProviders();void levelIndicator();void setMixerAt(LPARAM);long glanceShown_=-2;bool systemRequested_=false,contentDirty_=true;Action pressedAction_=Action::None;
     void setVolumeAt(LPARAM);void scrubAt(LPARAM,bool begin=false);void endScrub(bool commit);void requestPreviews(const std::vector<ShelfItem>& incoming={});void perform(Action);Action hit(LPARAM);void refresh();void clockTimer();
     std::unique_ptr<ShelfPreviews> previews_;RouteConfirmation route_;std::wstring routeName_;ComPtr<ShelfDropTarget> dropTarget_;bool visibilityAudit_=false,testing_=false,positioning_=false,motionStudy_=false;unsigned motionStudyStep_=0;

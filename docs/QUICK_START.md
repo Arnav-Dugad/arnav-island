@@ -144,3 +144,27 @@ Larger requested integrations are tracked honestly in DELIVERY_PHASES.md in the 
 **Command bar.** Space between words works as you'd expect. Type a colour code (#3A7BD5, #39f, rgb(58, 123, 213)) to see it; Enter copies the hex. A misspelt app or command offers the closest match.
 
 **The artwork pulses to the beat** while music plays (Settings › Media & sound › *Artwork pulses to the beat*).
+
+## v0.15 Now Playing, weather, sharing and the Controls page
+
+**Music from the compact island.** Previous, play/pause and next sit at the end of the compact island while something plays. Swipe sideways with two fingers on a touchpad (or drag the island sideways and let go) to skip. Over a fullscreen game or video, touch the top edge of the screen to bring the island back for a moment.
+
+**Weather.** Open the command bar and type *weather* and your town (*weather Lisbon*), then Enter. The temperature shows in the idle glance, and on Home when you choose Weather as a statistic (Settings › Home & navigation). The Home tile plays the sky for a minute each time it appears.
+
+**Controls page.** Open it from the navigation bar. Wi-Fi, Bluetooth, airplane mode, dark mode, the focus timer and the microphone are tiles; volume and brightness are sliders.
+
+**Share a file with your other PC.**
+1. On both PCs: Settings › Privacy & productivity › *Share with my PCs*. Allow the island through the firewall on private networks if Windows asks.
+2. On one PC: Shelf › Nearby › **Pair** next to the other PC. Both PCs show a six-digit code. If it's the same, press **Pair** on both.
+3. Drop a file on the Shelf, open it, and press **Send** (the paper plane). The other PC shows the file; press **Accept** and it's saved in Downloads. **Show** opens it in its folder.
+Click a paired PC in Nearby to make it where Send goes. **Forget** unpairs it.
+
+**Alerts.** Cards drop out of the island as a pill (Settings › Appearance › Alerts: *Grow the island* brings back the old style). A glint runs along the edge when one arrives (*Light along the edge*). On a privacy card, **Settings** opens that permission's page in Windows.
+
+**Arrange the compact island.** Settings › Compact › *Arrange the compact island*: drag the chips, or select one and use the arrow keys. *Live audio style* switches between the spectrum ring and bars.
+
+**Adaptive text.** With Settings › Appearance › Material › *Clear glass*, letters turn dark over bright parts of your wallpaper and light over dark ones (Settings › Appearance › *Text that adapts to the wallpaper*; the wallpaper is read on this PC only).
+
+**Battery week.** Once a week, in the morning, a card summarises your battery's health, charges and daily use (Settings › Devices & power › *Weekly battery summary*).
+
+**Clipboard.** Links show their site and path, colour codes a swatch and code is highlighted. *Site icons for links* (off by default) fetches each link's icon from its site.

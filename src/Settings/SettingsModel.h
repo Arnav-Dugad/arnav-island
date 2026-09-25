@@ -9,7 +9,8 @@ namespace nexus {
 // it, the island applies it, and tests walk it to prove each value is reachable,
 // persisted and bounded. Keys match the names written by Settings::write.
 // Preview is the Animation Lab's live spring; Actions is a row of one-shot buttons.
-enum class SettingControl { Toggle,Slider,Choice,Stepper,Swatch,Button,Order,Note,Preview,Actions };
+// Chips: the compact island's chips, dragged into order (v14).
+enum class SettingControl { Toggle,Slider,Choice,Stepper,Swatch,Button,Order,Note,Preview,Actions,Chips };
 enum class SettingAction { None,OpenLab,ResetAll,OpenLogs,ClearLogs,TransparencySettings,ResetLayout,DisplaySettings,SoundSettings,BluetoothSettings,PowerSettings,OpenArmoury,ClearClipboard,PrivacySettings,ClearWorkspaces,OpenCommand,LabPlay,ClearLyrics };
 struct SettingItem {
     int section=0;std::wstring title,detail;SettingControl control=SettingControl::Toggle;std::string key;
@@ -24,9 +25,9 @@ inline SpringSpec bodySpring(const Settings& s){
     // Slowing by k keeps the shape of the motion: stiffness / k squared, damping / k.
     const double k=s.labSpeed==2?4:s.labSpeed==1?2:1;spec.stiffness/=k*k;spec.damping/=k;return spec;
 }
-inline const std::vector<std::wstring>& pageNames(){static const std::vector<std::wstring> names{L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio"};return names;}
-inline const std::vector<std::wstring>& metricNames(){static const std::vector<std::wstring> names{L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime",L"GPU"};return names;}
-inline void assignMetric(std::array<int,3>& metrics,int slot,int value){value=std::clamp(value,0,7);for(int i=0;i<3;++i)if(i!=slot&&metrics[i]==value)metrics[i]=metrics[slot];metrics[slot]=value;}
+inline const std::vector<std::wstring>& pageNames(){static const std::vector<std::wstring> names{L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio",L"Controls"};return names;}
+inline const std::vector<std::wstring>& metricNames(){static const std::vector<std::wstring> names{L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime",L"GPU",L"Weather"};return names;}
+inline void assignMetric(std::array<int,3>& metrics,int slot,int value){value=std::clamp(value,0,metricCount-1);for(int i=0;i<3;++i)if(i!=slot&&metrics[i]==value)metrics[i]=metrics[slot];metrics[slot]=value;}
 inline std::vector<SettingItem> settingItems(int monitors=1){
     std::vector<SettingItem> v;
     auto toggle=[&](int section,std::wstring title,std::wstring detail,std::string key,bool Settings::*field){SettingItem i;i.section=section;i.title=std::move(title);i.detail=std::move(detail);i.key=std::move(key);i.control=SettingControl::Toggle;i.get=[field](const Settings& s){return int(s.*field);};i.set=[field](Settings& s,int x){s.*field=x!=0;};v.push_back(std::move(i));};
@@ -58,6 +59,10 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     number(2,C::Swatch,L"Accent",L"Used when artwork colors are off \u00b7 the last one follows your wallpaper","accent",&Settings::accent,0,4,1,{L"Mint",L"Sky",L"Lilac",L"Peach",L"Wallpaper"});
     toggle(2,L"Artwork colors",L"Tint controls and a soft glow from the current cover","albumAccents",&Settings::albumAccents);
     toggle(2,L"Soft shadow",L"A gentle shadow under the island lifts it off the desktop","shadow",&Settings::shadow);
+    toggle(2,L"App colours",L"With no album art, controls take their colour from the playing app\u2019s icon","appAccents",&Settings::appAccents);
+    toggle(2,L"Text that adapts to the wallpaper",L"On Clear glass, each letter turns light or dark to stand out from the wallpaper behind it","adaptiveText",&Settings::adaptiveText);
+    number(2,C::Choice,L"Alerts",L"How device, charging and privacy alerts appear","notifyStyle",&Settings::notifyStyle,0,1,1,{L"Grow the island",L"Drop a pill"});
+    toggle(2,L"Light along the edge",L"A glint runs around the island when an alert arrives","edgeSplash",&Settings::edgeSplash);
     number(3,C::Choice,L"Motion character",L"","preset",&Settings::preset,0,5,1,{L"Balanced",L"Fluid",L"Playful",L"Snappy",L"Calm",L"Custom"});
     // Choosing a preset shows its values on the sliders below; moving a slider makes the spring Custom.
     v.back().set=[](Settings& s,int x){s.preset=std::clamp(x,0,5);if(s.preset<5){auto p=preset(MotionPreset(s.preset));s.springStiffness=int(std::lround(p.stiffness));s.springDamping=int(std::lround(p.damping));s.springMass=int(std::lround(p.mass*100));}};
@@ -80,6 +85,13 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(4,L"Battery",L"Charge level and charging state","compactBattery",&Settings::compactBattery);
     toggle(4,L"Timer",L"Focus and break countdowns","compactTimer",&Settings::compactTimer);
     toggle(4,L"Clock",L"Time of day","compactClock",&Settings::compactClock);
+    {SettingItem i;i.section=4;i.control=SettingControl::Chips;i.key="chips";i.title=L"Arrange the compact island";i.detail=L"Drag a chip to move it. When space is short, the chips on the right stay";i.lo=0;i.hi=0;
+        i.options={L"Clock",L"Volume",L"Battery",L"Timer",L"CPU",L"GPU",L"Weather"};i.get=[](const Settings& s){return encodeChips(s.chips);};i.set=[](Settings& s,int x){auto c=decodeChips(x);if(validChips(c))s.chips=c;};v.push_back(std::move(i));}
+    toggle(4,L"Media controls",L"Previous, play and next at the end of the island while something plays","compactControls",&Settings::compactControls);
+    toggle(4,L"Swipe to change track",L"Swipe sideways on the island (two fingers, or drag) for the next or previous track","swipeSkip",&Settings::swipeSkip);
+    number(4,C::Choice,L"Live audio style",L"How the playing sound moves in the compact island","waveformStyle",&Settings::waveformStyle,0,1,1,{L"Bars",L"Ring"});
+    toggle(4,L"Weather",L"In the idle glance and as a Home statistic. Type \u201cweather\u201d and a town in the command bar to choose the place. From Open-Meteo, a free service; only that place is sent","weather",&Settings::weather);
+    number(4,C::Choice,L"Temperature",L"","weatherUnit",&Settings::weatherUnit,0,1,1,{L"Celsius",L"Fahrenheit"});
     toggle(4,L"Glance when idle",L"With nothing else to show: today\u2019s date, and CPU and GPU use where there is room","compactGlance",&Settings::compactGlance);
     number(4,C::Choice,L"Glance rings",L"Progress rings at the end of the island","glanceRings",&Settings::glanceRings,0,3,1,{L"Off",L"Battery",L"Timer",L"Both"});
     toggle(4,L"Volume and brightness indicator",L"The island grows to show level changes","hud",&Settings::hud);
@@ -87,6 +99,7 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(5,L"Waveform timeline",L"The Media timeline draws the track\u2019s loudness, filling in as it plays","waveTimeline",&Settings::waveTimeline);
     toggle(5,L"Synced lyrics",L"From LRCLIB, a free lyrics library. Only the song title and artist are sent; lyrics are saved on this PC","lyrics",&Settings::lyrics);
     toggle(5,L"Lyrics in the compact island",L"Show the line being sung while music plays","lyricsCompact",&Settings::lyricsCompact);
+    toggle(5,L"Now Playing over fullscreen apps",L"While the island is hidden for a fullscreen app, touch its edge to see and control what is playing","fullscreenPeek",&Settings::fullscreenPeek);
     toggle(5,L"Artwork pulses to the beat",L"The cover swells gently with the bass of what Windows is playing","artPulse",&Settings::artPulse);
     button(5,L"Saved lyrics",L"Remove the lyrics kept on this PC",L"Clear",SettingAction::ClearLyrics);
     toggle(5,L"App logos",L"Show the real icon of the app that is playing","appIcons",&Settings::appIcons);
@@ -98,16 +111,19 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(6,L"Headphone switch card",L"When Windows moves your sound to headphones, offer to switch back","headphoneCards",&Settings::headphoneCards);
     toggle(6,L"Charging card",L"Charge level, rate and time to full when you plug in or unplug","powerCards",&Settings::powerCards);
     toggle(6,L"Keep charge history",L"A week of battery levels, stored only on this device","batteryHistory",&Settings::batteryHistory);
+    toggle(6,L"Weekly battery summary",L"Once a week, a card with your battery\u2019s health and how you used it","batteryWeekly",&Settings::batteryWeekly);
     button(6,L"Bluetooth devices",L"Pair, remove and manage devices",L"Open",SettingAction::BluetoothSettings);
     button(6,L"Power and battery",L"Power mode, battery saver and screen timeouts",L"Open",SettingAction::PowerSettings);
     button(6,L"Armoury Crate",L"Performance profiles, GPU mode and lighting on ASUS ROG",L"Open",SettingAction::OpenArmoury);
-    for(int slot=0;slot<7;++slot){SettingItem i;i.section=7;i.control=SettingControl::Order;i.key="nav"+std::to_string(slot);i.lo=0;i.hi=6;i.options=pageNames();i.title=L"Position "+std::to_wstring(slot+1);
-        i.get=[slot](const Settings& s){return s.navigation[slot];};i.set=[slot](Settings& s,int direction){int from=slot;moveNavigation(s.navigation,from,direction<0?-1:1);};v.push_back(std::move(i));}
-    for(int slot=0;slot<3;++slot){SettingItem i;i.section=7;i.control=SettingControl::Stepper;i.key="home"+std::to_string(slot);i.lo=0;i.hi=7;i.options=metricNames();i.title=std::wstring(L"Home statistic ")+wchar_t(L'1'+slot);i.detail=L"Values never repeat";
+    for(int slot=0;slot<pageCount;++slot){SettingItem i;i.section=7;i.control=SettingControl::Order;i.key="nav"+std::to_string(slot);i.lo=0;i.hi=pageCount-1;i.options=pageNames();i.title=L"Position "+std::to_wstring(slot+1);
+        i.get=[slot](const Settings& s){return s.navigation[size_t(slot)];};i.set=[slot](Settings& s,int direction){int from=slot;moveNavigation(s.navigation,from,direction<0?-1:1);};v.push_back(std::move(i));}
+    for(int slot=0;slot<3;++slot){SettingItem i;i.section=7;i.control=SettingControl::Stepper;i.key="home"+std::to_string(slot);i.lo=0;i.hi=metricCount-1;i.options=metricNames();i.title=std::wstring(L"Home statistic ")+wchar_t(L'1'+slot);i.detail=L"Values never repeat";
         i.get=[slot](const Settings& s){return s.homeMetrics[slot];};i.set=[slot](Settings& s,int x){assignMetric(s.homeMetrics,slot,x);};v.push_back(std::move(i));}
     button(7,L"Restore navigation and statistics",L"Other preferences stay as they are",L"Reset layout",SettingAction::ResetLayout);
     toggle(8,L"Clipboard history",L"Your last 24 copies, in memory only (pins are saved encrypted). Password managers are skipped","clipboardHistory",&Settings::clipboardHistory);
     toggle(8,L"Hide passwords and codes",L"Copies that look like a password, one-time code or key stay hidden until you point at them","hideSecrets",&Settings::hideSecrets);
+    toggle(8,L"Rich clipboard rows",L"Links show their site, colours show a swatch and code is highlighted","richClips",&Settings::richClips);
+    toggle(8,L"Site icons for links",L"Fetches a copied link\u2019s icon from that site itself; nothing else is sent","siteIcons",&Settings::siteIcons);
     toggle(8,L"Copy confirmation",L"The island briefly shows what you copied","clipboardConfirm",&Settings::clipboardConfirm);
     button(8,L"Clear clipboard history",L"Forget every kept copy now, pinned ones too",L"Clear",SettingAction::ClearClipboard);
     toggle(8,L"Privacy indicators",L"Dots when an app uses the camera, microphone or location","privacyDots",&Settings::privacyDots);
@@ -118,6 +134,7 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(8,L"Remember recent commands",L"The empty command bar shows your pinned and recent commands; kept only on this PC","commandHistory",&Settings::commandHistory);
     toggle(8,L"Currency conversion",L"Type \u201c100 usd to inr\u201d. Fetches the European Central Bank\u2019s public daily rates, at most twice a day; nothing about you is sent","currency",&Settings::currency);
     toggle(8,L"Capture and clipboard shortcuts",L"Alt+Shift+S snip  \u00b7  Alt+Shift+T copy text  \u00b7  Alt+Shift+C pick a colour  \u00b7  Alt+Shift+V clipboard","captureShortcuts",&Settings::captureShortcuts);
+    toggle(8,L"Share with my PCs",L"Send Shelf files to your own PCs on this network (Shelf \u203a Nearby). Each pair of PCs confirms a code once; files are encrypted and need accepting. Windows may ask to allow it through the firewall","sharing",&Settings::sharing);
     toggle(8,L"Keep the Shelf after restarts",L"Remembers links to your Shelf files and dropped text on this PC, never copies of the files","pinnedShelf",&Settings::pinnedShelf);
     button(8,L"Saved workspaces",L"Remove every saved app set; open apps are not affected",L"Remove",SettingAction::ClearWorkspaces);
     button(9,L"Local logs",L"Diagnostics stay on this device",L"Open folder",SettingAction::OpenLogs);
