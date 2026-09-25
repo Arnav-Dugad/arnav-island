@@ -29,7 +29,12 @@
 #include "FileShelf/ShelfStore.h"
 #include "Productivity/WeatherService.h"
 #include "Productivity/SiteIcons.h"
+#include "Media/MusicLibrary.h"
+#include "Media/IslandPlayer.h"
+#include "Audio/Sounds.h"
+#include <deque>
 #include <map>
+#include <set>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -51,6 +56,9 @@ class IslandWindow {
     // Phase 4: clipboard history (memory only), privacy indicators, command bar and workspaces.
     ClipboardWatcher clipboard_;ClipboardHistory clips_;int clipRetries_=0;std::map<std::wstring,std::shared_ptr<const Artwork>> clipIcons_;std::wstring copyLabel_;
     void onClipboard();void clipViews();void clearClips();void copyClip(size_t index);
+    // Phase 5G: the history kept across restarts (IslandCapture.cpp): images get a PNG once, saves are debounced.
+    std::set<uint64_t> clipPngPending_;bool clipHistoryReady_=false,clipHistoryLoading_=false;size_t clipSignature_=0;
+    void clipsChanged();void saveClipHistory(bool now);void loadClipHistory();bool clipMessage(UINT,WPARAM,LPARAM,LRESULT&);
     std::unique_ptr<PrivacyProvider> privacy_;std::vector<PrivacyUse> privacyUses_,qaLater_;void updatePrivacy();void showPrivacyNotice(const PrivacyUse&);
     std::unique_ptr<CommandService> commands_;WorkspaceStore workspaces_;bool hotkey_=false;int hotkeyChoice_=0;HWND commandReturn_=nullptr;uint64_t commandSeq_=0;
     void syncProductivity();void syncHotkey();void openCommand();void closeCommand(bool restoreFocus=true);bool commandKey(WPARAM);void commandChar(wchar_t);void commandQuery(bool refreshState=false);void commandResults();
@@ -83,13 +91,27 @@ class IslandWindow {
     // it gives while nothing but the wallpaper is behind it. qaBackdrop_: an illustrative map for captures.
     // Sharing with your own PCs (IslandShare.cpp): the service while its setting is on, the offer a card answers, where Send goes.
     std::unique_ptr<ShareService> share_;uint32_t shareOffer_=0;std::string shareTarget_;
+    // Phase 5G (IslandShare.cpp): transfers shown as they go, files dropped straight onto a PC, the Shelf dragged as a stack.
+    double transferDrawn_=0;void sendToPeer(const std::string& peer,std::vector<std::wstring> paths);Action dropZoneAt(POINT screen);bool dropOnPeer(const std::vector<ShelfItem>&,POINT screen);void dragStack();
+    // Phase 5G (IslandMusic.cpp): the island's own player and your Music folder's songs; music handed between your PCs.
+    std::unique_ptr<MusicLibrary> library_;std::unique_ptr<IslandPlayer> player_;std::wstring qaLibrary_;bool shufflePending_=false,qaPlay_=false,qaLibraryView_=false;
+    void syncLibrary();bool ensurePlayer();void libraryRows();void playerArt();void pauseOthers();void playLibrary(const std::vector<size_t>& order,size_t first,double start=0,bool play=true);void shuffleLibrary();bool libraryAction(Action);
+    void mediaCommand(int action);void mediaSeek(double target);bool musicMessage(UINT,WPARAM,LPARAM);
+    uint32_t handoffOffer_=0;ShareHandoff handoffMusic_;std::wstring handoffFrom_;double handoffAt_=0,handoffStart_=0;int handoffMatch_=-1;
+    struct HandoffWait{std::wstring app,title;double position=0,accepted=0,until=0;bool nudged=false;} handoffWait_;
+    void handoffTo(size_t index);void handoffEvent(const ShareEvent&);bool launchApp(const std::wstring&);void handoffAccept();void handoffWait();
     void syncSharing();void shareEvents();bool shareAction(Action);void shareCard(int kind,const std::wstring& title,const std::wstring& detail,const std::wstring& path,double duration);
     std::shared_ptr<const WallpaperLuma> wallLuma_;bool wallLoading_=false,qaBackdrop_=false;void loadWallpaperLuma();void adaptBackdrop();bool backdropCovered()const;
     // The body's top-left in the canvas (DIPs), including how far a notification pill has dropped (drop: 0..1).
     PointD bodyAt(double w,double h,double drop)const{auto o=bodyOrigin(w,h,Renderer::canvasWidth,Renderer::canvasHeight,settings_.edge);if(settings_.edge==0)o.y+=drop*dropDistance;return o;}
     // Whether a notification pill is out of the island (or on its way back) at time t.
     bool dropped(double t)const{return settings_.edge==0&&!settings_.floating()&&(motion_.drop.target()>0||std::abs(motion_.drop.sample(t).position)>1e-4);}
-    void skipTrack(int direction);bool fullscreenHidden_=false,peeking_=false,peekTimer_=false;double peekIdle_=0;void syncPeek();void peekTick();bool mediaReachable_=false;
+    // Phase 5G: a sideways drag over the music skips tracks everywhere it shows (1 while one is under way).
+    int swipeAxis_=0,lastSkip_=0;unsigned skips_=0;bool mediaSwipe()const;void endSwipe(int direction);
+    // Phase 5G: alerts that arrive while one shows wait below it as a bud (stackAlerts), then take its place in turn.
+    struct HeldCard{ContentSnapshot::Notice notice;Activity activity;};std::deque<HeldCard> heldCards_;ContentSnapshot::Notice shownNotice_;
+    bool holdCard(const Activity&);bool budAt(double x,double y)const;bool promoteCard(bool swap=false);void syncBud();static std::wstring budTitle(const ContentSnapshot::Notice&);
+    void skipTrack(int direction);bool qaFullscreen_=false,fullscreenHidden_=false,peeking_=false,peekTimer_=false;double peekIdle_=0;void syncPeek();void peekTick();bool mediaReachable_=false;
     void updateSessions();void switchSession(int delta,bool absolute=false);void updateProviders();void levelIndicator();void setMixerAt(LPARAM);long glanceShown_=-2;bool systemRequested_=false,contentDirty_=true;Action pressedAction_=Action::None;
     void setVolumeAt(LPARAM);void scrubAt(LPARAM,bool begin=false);void endScrub(bool commit);void requestPreviews(const std::vector<ShelfItem>& incoming={});void perform(Action);Action hit(LPARAM);void refresh();void clockTimer();
     std::unique_ptr<ShelfPreviews> previews_;RouteConfirmation route_;std::wstring routeName_;ComPtr<ShelfDropTarget> dropTarget_;bool visibilityAudit_=false,testing_=false,positioning_=false,motionStudy_=false;unsigned motionStudyStep_=0;

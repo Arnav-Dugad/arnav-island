@@ -141,6 +141,17 @@ inline constexpr double leanDegreesPerDip=.06,stretchPerDip=.001,narrowPerDip=.0
 // Phase 5F: a notification drops out of the top-docked island as its own pill, this far (DIPs)
 // below the screen edge (the compact island's height and a gap), while a stub of the island stays docked.
 inline constexpr double dropDistance=42;
+// Phase 5G: a second alert buds off the drop pill. bud runs from 0 (nothing yet) to 1 (its own small pill, budGap
+// below the first): it first grows down from the pill's foot as a capsule touching it, then its top lets go.
+// pillBottom is the pill's lower edge and centre its middle, in DIPs; width and height are the bud's full size.
+inline constexpr double budGap=8;
+struct BudShape{double left=0,top=0,right=0,bottom=0,radius=0;};
+inline BudShape budShape(double b,double pillBottom,double centre,double width,double height){
+    const double grow=std::clamp(b/.55,0.,1.),part=std::clamp((b-.55)/.45,0.,1.25),over=std::max(b-1,0.);
+    const double w=width*(.35+.65*std::clamp(b/.8,0.,1.));
+    const double top=pillBottom-1+(1+budGap)*part,bottom=std::max(top,pillBottom-1+(1+budGap+height)*grow+over*14);
+    return {centre-w/2,top,centre+w/2,bottom,std::max(0.,std::min({height/2,(bottom-top)/2,w/2}))};
+}
 inline double rubberBand(double displacement,double limit=90) {
     return std::copysign(limit*(1-1/(std::abs(displacement)/limit+1)),displacement);
 }
@@ -169,6 +180,8 @@ struct MotionEngine {
     Spring artX{12},artY{6},artSize{22},artOpacity{0},pulse{0},hoverX{20},hoverY{38},hoverW{40},hoverH{26},hoverOpacity{0},contentShift{0},swipe{0},level{0},slide{0};
     // The drop pill: 0 merged, 1 dropped dropDistance below the edge. The stub is the compact island left docked meanwhile.
     Spring drop{0};double stubWidth=196,stubHeight=34,stubRadius=17;
+    // Phase 5G: the bud of a waiting alert (budShape), and its size.
+    Spring bud{0};double budWidth=236,budHeight=36;
     // Auto-hide fades the island only in the last part of its slide.
     PhysicalState stageOpacity(double now)const{auto s=slide.sample(now);double q=std::clamp((s.position-.45)/.55,0.,1.),dq=(s.position>.45&&s.position<1)?s.velocity/.55:0;return {1-q*q*(3-2*q),-6*q*(1-q)*dq};}
     // A short sideways kick to the resting width when something new arrives.

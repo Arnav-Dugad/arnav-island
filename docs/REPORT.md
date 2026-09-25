@@ -1,123 +1,92 @@
-# Arnav Island v0.15 — development report
+# Arnav Island v0.16 — development report
 
 ## What changed
 
-**Notifications.**
-- **Drop pill.** A new `drop` spring runs from 0 (merged) to 1 (dropped).
-  - While it is out, the body is offset by `drop × 42` DIPs as a floating pill. A stub of the compact island (its width, at most 196 DIPs) stays docked with the shoulders.
-  - The body's outline starts above the screen edge and comes down twice as fast as the body (`top = min(2·dp − E, dp)`), so its corners round out as it leaves instead of popping.
-  - The shoulders and the stub move from the body's width to the stub's only after the pill has left the edge (`(dp − E/2) / 12`). The stub reaches just one DIP into the pill, so see-through glass never shows the two overlapping.
-  - The same expressions drive four renderers: DirectComposition (body offset, animated clips and wing positions through a new `curveOf` helper), the Windows.UI.Composition glass (a fourth part with its own rounded geometry, layers and rim), the shadow window (a second nine-grid sprite for the stub) and the input region (two outlines; the gap between them is click-through).
-  - Pointer mapping goes through one `bodyAt(w, h, drop)` everywhere.
-- **Edge light.** The island's outline (the free edges only when docked) is stroked into three surfaces: a core line, a dimmer line and a glow. Six clipped bands, narrowest brightest, sweep out from the middle in 0.8 s under one fade. It plays on device, power, privacy, capture, headphone and sharing cards.
-- **Privacy card.** A **Settings** button opens the capability's `ms-settings:privacy-*` page, and clicking the compact dots shows the card again.
+**Sharing (protocol 2).**
+- **Batches and folders.** A transfer is sealed frames:
+  - an offer (file count, total size, a title)
+  - per file, a header (size and relative path), 256 KB data frames and an end frame with its size and SHA-256
+  - a batch end, which the receiver acknowledges once every file is saved
+- **Saving.** Each file is written as `.arnavpart`, checked, then renamed. Each top-level folder takes a free name in Downloads, and every received path goes through `safeSharePath`: no `..` or empty parts, reserved names or unsafe characters, and at most 24 levels.
+- **Stopping.** On Windows a blocking `recv` doesn't wake when another thread shuts the socket down, so every wait now uses `select` in 200 ms slices and checks the transfer's stop flag. While a person decides, the receiver watches for the sender closing (`MSG_PEEK`), so a withdrawn offer's card goes away.
+- **Versions.** Discovery sends `port;2`: 0.15 still reads the port, and 0.16 learns the other PC's protocol. A 0.15 PC is shown as needing the update, and a mismatched handshake answers 2 ("outdated") instead of closing.
+- **Drop zones.** `ShelfDropTarget` gained `route(over, send)`. While a drag is over the island, the Shelf page's zones replace its tabs and rows, and the zone under the pointer is found with the renderer's own hit targets.
+- **The stack.** A drag from the Shelf's count is one `CF_HDROP` with every file.
+- **Progress.** Events are limited to one per percent and 100 ms. The window redraws for them at most five times a second.
 
-**Now Playing.**
-- **Compact controls.** Previous, play/pause and next are hit in the header's own coordinates, and hover-to-open waits while the pointer is over them, so pressing a control never opens the island.
-- **Swipe to skip.** `WM_MOUSEHWHEEL` accumulates (with a reset window), or a sideways release past 44 DIPs; the title kicks in the direction of the swipe.
-- **Fullscreen peek.** While a fullscreen app has hidden the island and something plays, the screen edge above it shows the island (a 120 ms poll that runs only then). It hides 0.8 s after the pointer leaves.
-- **Spectrum ring.** 24 ticks around a round cover, mirrored from the loopback bands.
-- **Word timing.** Enhanced-LRC `<mm:ss.xx>` tags become `LyricWord`s, kept only when in order and shifted with repeated lines and the offset. `lyricFill` turns a line into (time, characters lit) keyframes. The compact island and the Live Island now use the Command Center's two-slot morphing line.
-- **App accents.** With no artwork, the accent comes from the playing app's icon, cached per icon.
+**Music.**
+- **The player** is `IMFMediaEngine` (audio only) plus `ISystemMediaTransportControls` for the island's window, through the toolchain's own `windows.media.h`. That header defines `IReference<boolean>` and `IReference<BYTE>`, which are the same type here, so the player's file skips the first by its guard.
+- **How it joins the island.** Engine events and media keys come back as `PlayerMessage`. `updateSessions` puts the island's session first and drops the copy Windows reports for it (source `ArnavIsland.exe`). Controls and seeks go through `mediaCommand` and `mediaSeek`, which address either the island's player or Windows' sessions.
+- **The library** is scanned on a worker the first time it's wanted: the shell property store for title, artist, album, track and length, and shell thumbnails for covers (thumbnail only, so there are no generic icons). Only the rows on screen, the song playing and the next song have their covers read, and at most 64 are kept.
+- **Handoff** is its own sharing mode. The receiving PC tries four routes in turn:
+  1. a Windows session with the same title (seek, then play)
+  2. its library (`matchTrack`: title and artist, else file name and size)
+  3. the song's file, when the sender played it from one (answer 2 streams it)
+  4. launching the app: `spotify:`, `IApplicationActivationManager` for packaged ids, or `shell:AppsFolder`. It then waits up to 20 s for that app's session to show the song, seeks, and presses play once.
+  
+  The sender pauses when the other PC accepts.
+- **Drag to skip.** `mediaSwipe()` decides where a sideways gesture skips: over the music in the compact island, the Live Island, Home and the Media page. A press that starts on a button and travels 10 DIPs sideways becomes a swipe. `swipeFollow` moves the compact header with the drag and grows the chip; `swipeEnd` sends it off or springs it back. Touchpad sideways scrolling skips too.
+- **Island DJ.** Two halos sit behind the ring. The bloom is two eases, 1.3 s. The end glow's opacity animation is held at zero until 10 s before the end, then repeats a 1.8 s cycle with `AddRepeat`. Nothing is redrawn while it plays.
 
-**Awareness.**
-- **Weather.** Open-Meteo geocoding (once per town) and forecast (every 30 minutes) over WinHTTP, parsed by pure, tested functions. The place is stored in `weather.nexus`.
-- **Animated sky.** The Home tile's sky is DirectComposition animations looped with `AddRepeat`: rays turning, twinkling stars, drifting clouds, falling streaks and flakes, fog bands and a double storm flash. It runs for 60 s each time the tile appears, and every loop ends exactly where it is, so nothing jumps when it rests.
-- **Battery health.** `BatteryHealthLog` stores one full-charge/design reading a day. `summarizeWeek` counts charges, use per day and hours on battery from the existing 7-day history. The card shows from 9 am after three days of history, a week after the last one.
-- **Rich clipboard rows.** `linkHost` / `linkPath`, a colour swatch, `looksLikeCode` and `codeSpans` (keywords, strings, numbers, comments, punctuation) drawn in Cascadia Mono or Consolas. Site icons are opt-in and decoded from `/favicon.ico` through WIC.
+**Two alerts at once.**
+- **Holding.** `holdCard` runs at the five places a card appears. When a card is already showing and the new one is a different alert (not the same kind and subject), the new notice and its activity are queued, and the showing notice is restored.
+- **Promoting.** `promoteCard` brings the next card forward from the activity timer, from any transition to compact, or from a click on the bud. Clicking the bud keeps an unanswered pairing, offer or music card waiting.
+- **The bud's shape** comes from `budShape(b, pillFoot, centre, width, height)`. It grows down as a capsule touching the pill (b < 0.55), then lets go and settles 8 DIPs below, springing at ζ ≈ 0.58. The same shape drives:
+  - a clipped DirectComposition visual (the fill on Solid, the label on every material)
+  - a fifth glass part with its own rim (expressions over `b`, `bw` and `bh`)
+  - a shadow sprite
+  - the input region and the hit test
 
-**Controls page.**
-- Six tiles and two sliders. Radios, dark mode and the microphone run on a worker, and their live states are polled every 2 s while the page shows.
-- Brightness goes through `WmiSetBrightness` on a setter thread, and the level HUD is suppressed for the island's own changes.
+**The clipboard across restarts.**
+- **What's saved.** `saveHistory` and `loadHistory` handle a small binary format: kinds, pins, wall-clock times, sources, text, file lists and image PNGs. It's DPAPI-sealed into `clips-history.nexus`.
+- **Images** get their PNG once, on a worker, when they're copied (`dibToPng`). On load they're decoded back to a bottom-up 32-bit DIB and a thumbnail.
+- **Timing.** Saves are debounced (1.5 s) and change-detected, flushed on `WM_ENDSESSION` and at exit, and never happen before the saved history has been read back. That way a quick copy at start-up can't overwrite the file with a shorter history.
 
-**Sharing between your own PCs** (`ShareService`, Winsock + CNG).
-- **Discovery.** UDP broadcast announces an id, a port and the computer's name every 3 s. A PC unheard for 12 s is offline.
-- **Handshake.** The initiator sends its id, its P-256 public key and a *commitment* (SHA-256) to a random nonce. The responder answers with its id, key and nonce, and only then does the initiator reveal its nonce. So neither side can steer the pairing code.
-  - Session key: `SHA-256("arnav-share-v1" ‖ ECDH ‖ nonces ‖ ids)`.
-  - Pairing code: `SHA-256("arnav-pair-v1" ‖ keys ‖ nonces) mod 10⁶`.
-- **Pairing.** Both people confirm the code. Their answers are exchanged sealed, and the peer's key is stored only when both said yes.
-- **Transfers.**
-  - Sent only to a paired PC whose key matches, and only after the receiving person accepts.
-  - AES-256-GCM frames with a direction byte and counter as the nonce, 256 KB chunks, and an end frame carrying the size and SHA-256.
-  - Received as `.arnavpart`, verified, then renamed to a free name in Downloads.
-- **Names and storage.** Received names are made safe (no folders, reserved names or unsafe characters; at most 120 characters). The private key rests under DPAPI.
+**Weather.** `httpsGet` makes one attempt with WinHTTP's decompression. If the server answered 200 but the body can't be read (as with Open-Meteo), it tries once more without asking for compression. The weather service keeps an unreachable town and retries every 2 minutes.
 
-**The island.**
-- **Chips editor.** A Settings control with drag and arrow keys. The order is stored as `chip0..chip6`.
-- **Controls in the navigation.** The Controls page joins saved navigation orders after Stats (settings v14).
-- **Adaptive text.**
-  - The monitor's wallpaper is placed as Windows places it (`IDesktopWallpaper`: fill, fit, stretch, centre, tile) into a 480-wide luminance map on a worker.
-  - A 2-DIP grid under the compact island is darkened by the Clear scrim's own alpha.
-  - `text()` sets a per-run brush on a DirectWrite layout, with the halo inverted. Icons pick their ink at their centre, and rolling digits choose between two strips per column.
-  - It applies only while no other window overlaps the island (checked on foreground and location changes and every 1.5 s).
-
-**Motion.**
-- **Digit blur.** A second strip draws each figure seven times along the roll at 20% alpha. On jumps of 2.5 figures or more, its opacity, the sharp strip's opacity and a 10% vertical stretch follow the roll's speed.
-- **Morphing icons.**
-  - `drawMorph` blends play ↔ pause quads, the speaker's waves ↔ its cross, and the microphone's slash. `drawIconAnimated` gives each icon a short celebration.
-  - Both are flipbooks: a strip of frames in one surface, its offset stepped by the compositor.
-- **Lean.**
-  - Dragged against the top edge, the root gets a shear (0.06° per DIP) and a stretch.
-  - The glass gets the same as a `TransformMatrix` expression, and the input region is transformed to match.
-  - The transform is attached only while the island leans.
-- **Rising shadow.** The shadow's margin, drop and opacity grow with the island's height.
+**Motion and sound.**
+- **The liquid pill.** Two edge springs: the leading end is stiffer ({.7, 560, 34}), the trailing one softer ({.9, 300, 30}). Two caps are clipped from the pill's surface, and a 2-DIP middle is scaled by a `curveOf` of the gap between them.
+- **Sounds** are 16-bit WAVs synthesised in memory: two bell partials for the chime (-18 dBFS peak) and a filtered tick for the click (-20 dBFS). They're played with `PlaySound` and muted in test runs.
 
 ## Bugs found while testing
 
-- **The first weather sky crashed the app at startup** (`0x88980801`): DirectComposition lets only one surface draw at a time, and the sky's surfaces were drawn while the content surface was still open. They are now drawn after it closes.
-- **Two-row lyrics filled both rows at once.** Each row's fill was interpolated only between the line's own keyframes, so the second row spread across the whole line. Rows now get a keyframe at every character edge the fill crosses, and the compact line got the same. It was found by capturing the line at five moments.
-- **A one-pixel sliver at the content's right edge** appeared intermittently on the Media page. It came in about half of the runs and was traced by hiding layers one at a time. The content surface is now four DIPs wider and taller than the bands that show it, so an edge sample reads its own clear pixels.
-- **Clear glass showed the stub's outline through the pill** for a few frames. The stub now stops one DIP into the pill.
-- **The shoulders slid over a pill that hadn't left the edge yet.** They now move only after the pill detaches.
-- **"Thunderstorm" was cut off on the Home tile** (now "Storm" there). **The sun covered the end of the place name** (now smaller and in the corner). **The received-file card cut off its detail** (now the file name only).
-- **Test harness:** the auto-hide stages of the UI test left the island slid away for the stages after them (the new stages now start from a shown island). The settings test outgrew a five-minute limit (it takes 317 s).
+- **Weather never worked in 0.15.** The unit tests covered parsing, not the network. A probe showed WinHTTP returning 200 and then failing `WinHttpQueryDataAvailable` with `E_ABORT`, but only with decompression on.
+- **Drag to skip** only worked in the compact island, and with *Open on hover* the island had become the Live Island before a drag began. In the Live Island a drag only switched players.
+- **Stopping a transfer hung** until the other PC answered (a blocking `recv` doesn't wake on `shutdown`). Also, a receiver that stopped before answering reported nothing.
+- **A file named `.mp3`** got the title ".mp3".
+- **The first drop layout** drew under the tabs and the tab highlight. The stack's thumbnails overlapped its count, and a Nearby row's progress bar crowded its status.
+- **The UI test's fullscreen stage** could be undone by real foreground changes elsewhere on the desktop.
+- **Island DJ's next colour** waited for an unrelated redraw after the next cover loaded.
 
 ## Verification
 
-- **Unit suites: 5 of 5 pass.**
-  - **Phase: 5,534 checks** (102 new since 0.14), covering:
-    - word-timed lyrics (parsing, repeats, offsets and fill keyframes)
-    - link hosts and paths, code detection and colouring
-    - weather parsing, the place file, WMO codes and units, the weather command
-    - the health log and the week
-    - chips, the Controls migration and v13 → v14 settings
-    - the adaptive grid and the drop distance
-  - **Share: 49 checks** (a new suite). Two independent services with their own identities, over loopback:
-    - refusal before pairing
-    - a declined pairing, then matching codes
-    - a declined file, and two byte-exact 1 MB transfers (the second gets a free name)
-    - identity and pairing kept across a restart
-    - refusal after the other PC forgets this one
-    - safe file names
-  - **Model: 2,061 checks. Core: 11,682 checks. Provider lifecycle: pass.**
-- **Native UI test: 35 stages, 7 new.** Nothing reaches the real player, Wi-Fi or Bluetooth.
-  - The compact controls are hit where they are drawn (checked through `hit()`, no click).
-  - The Controls page lays out its tiles and sliders.
-  - The drop pill's input region covers the stub and the pill but not the gap.
-  - The Nearby tab offers Pair and Forget and chooses a target.
-  - The fullscreen peek shows and hides.
-- **Settings end-to-end: 176 of 176.** The user's settings file was byte-identical afterwards.
+- **Unit suites, all passing:**
+  - **Phase: 5,584 checks**, 32 new: the clipboard history format (secrets, images without a PNG yet, ages, cut-off files, restore order), the library's naming, sorting, search, matching and shuffles, the bud's shape, the sounds, and settings v15.
+  - **Share: 119 checks** (70 new): batches and folder trees byte for byte, free folder names, stopping from either side (and the other PC told), an outdated PC, handoff declined, accepted, and accepted with the song's file, and received paths cleaned.
+  - **Model: 2,061. Core: 11,682. Provider lifecycle: pass.**
+- **Native UI test: 42 stages**, 7 new:
+  - a real sideways drag across the Live Island skips forward and back, and a short one doesn't
+  - drop zones, and the zone under a point
+  - two alerts: holding, updating in place, the bud's hit test, and promotion
+  - the Media page's Library and Continue on buttons
+- **Settings end-to-end: 188 of 188.** The user's settings file was byte-identical afterwards.
+- **Live checks on this PC:**
+  - the weather service end to end: a sample town found, the forecast parsed, the place saved
+  - the island's player playing Windows' own sounds (muted), seen by Windows as a media session with its title, state and length
+  - the keyboard's play/pause key pausing it
 - **Captures, on the island's own matte:**
-  - the drop and the return caught mid-motion on Frosted, Clear and Solid
-  - the edge light mid-sweep
-  - digits mid-blur
-  - all eight skies
-  - adaptive text over an illustrative backdrop
-  - the sharing tab and cards
-  - the sequential lyric fill
-- **Live:** a borderless fullscreen window hid the island as it should. Nothing was playing on the PC, so the peek itself was verified by the UI test's made-up track.
-- **Idle (compact, the PC's own settings, 30 s):**
-  - v0.15: 0.000 s CPU, 78.2 MB private
-  - v0.14 under the same conditions: 0.031 s, 77.0 MB
-  - raw data: `evidence/v0.15/idle-compact*.json`
-
-Screenshots in `evidence/v0.15` use the island's own matte, the showcase track, sample clips, illustrative PCs ("Studio PC", "Travel laptop") and a sample town.
+  - the player and the library (Windows' sounds)
+  - drop zones, a transfer with Stop, and the stack
+  - two alerts on Frosted, Clear and Solid
+  - the music card and the Continue on picker
+  - the liquid pill mid-move, Island DJ's halo and the skip chip
+- **Idle:** 0.031–0.047 s CPU in 30 s, against 0.016 s for 0.15 today (one to three scheduler ticks), and 77–79 MB private.
 
 ## Limits
 
-- **Lock screen:** apps can't draw on Windows' secure desktop.
-- **Sharing** has been verified over loopback, not between two physical PCs. Discovery is UDP broadcast on one network segment, and Windows may ask about the firewall the first time.
-- **Word-by-word lyrics** need lyrics with word tags; LRCLIB's are mostly line-timed.
-- **Adaptive text** works from the wallpaper, so it switches off when a window is behind the island. A span wallpaper is treated as fill.
-- **The drop pill** and **the lean** are top-dock only.
-- **Unsigned preview.** There is no UI Automation tree for screen readers yet.
+- **Sharing and handoff** were verified between two independent services on one PC, not between two physical PCs. Both PCs need 0.16.
+- **Handoff** can't make an app play a song it doesn't have. Browser tabs can't follow.
+- **Island DJ** knows the next song only in the island's own queue.
+- **Two alerts at once** needs the drop pill (top dock).
+- **The music library** reads the Music folder only (8,000 songs, 12 levels).
+- **Unsigned preview.** There's no UI Automation tree yet.

@@ -2,7 +2,7 @@
 // Phase 5B, Now Playing Pro: synced lyric lines, the seek time bubble and skip feedback.
 namespace nexus {
 bool Renderer::lyricsPanel(const ContentSnapshot& s){
-    return s.settings.lyrics&&s.lyricsView&&s.lyrics&&!s.lyrics->empty()&&s.expanded&&!s.live&&!s.card&&!s.command.active&&s.page==Page::Media;
+    return s.settings.lyrics&&s.lyricsView&&s.lyrics&&!s.lyrics->empty()&&s.expanded&&!s.live&&!s.card&&!s.command.active&&s.mediaPage();
 }
 void Renderer::ensureNowPlaying(){
     if(lyricsLayer_)return;
@@ -213,7 +213,7 @@ void Renderer::timeLyrics(const ContentSnapshot& s,double now){
 // Time under the pointer (or the scrub position), with the lyric sung there when known.
 void Renderer::updateBubble(const ContentSnapshot& s){
     ensureNowPlaying();const double now=seconds();const auto& p=s.playback;
-    const bool timeline=s.expanded&&!s.live&&!s.card&&s.page==Page::Media&&p.duration>0&&p.canSeek;
+    const bool timeline=s.expanded&&!s.live&&!s.card&&s.mediaPage()&&p.duration>0&&p.canSeek;
     const bool visible=timeline&&(s.scrub.active||s.seekHover>=0);
     if(visible){
         const double time=s.scrub.active?s.scrub.value:std::clamp(double(s.seekHover)/380.,0.,1.)*p.duration;

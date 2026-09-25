@@ -133,8 +133,10 @@ struct GlassBackdrop::Impl {
     ComPtr<wuc::ISpriteVisual> shadowSprite;float shadowMargin=0;
     ComPtr<ID3D11Device> d3d;ComPtr<ID2D1Device> d2d;ComPtr<wuc::ICompositionGraphicsDevice> graphics;
     // Parts: the body, two shoulders, and (Phase 5F) the stub left docked while a notification pill drops out of the body.
-    std::array<Part,4> parts;ComPtr<IInspectable> geometry;// body rounded rectangle, shared by its clip and its rim
+    std::array<Part,5> parts;ComPtr<IInspectable> geometry;// body rounded rectangle, shared by its clip and its rim
     ComPtr<IInspectable> stubGeometry,stubRim;ComPtr<wuc::IInsetClip> stubRimClip;std::array<ComPtr<IInspectable>,3> stubRimShapes;ComPtr<wuc::ISpriteVisual> shadowStub;
+    // Phase 5G: the bud of a waiting alert below the pill (part 4), its rim and its shadow.
+    ComPtr<IInspectable> budGeometry,budRim;std::array<ComPtr<IInspectable>,3> budRimShapes;ComPtr<wuc::ISpriteVisual> shadowBud;
     ComPtr<IInspectable> rim;ComPtr<wuc::IInsetClip> rimClip;std::array<ComPtr<IInspectable>,3> rimShapes;
     struct ShoulderRim{ComPtr<IInspectable> visual;std::array<ComPtr<IInspectable>,3> shapes;};std::array<ShoulderRim,2> shoulderRims;
     ComPtr<IInspectable> hostBrush,materialBrush;ComPtr<wuc::ICompositionColorBrush> tintBrush;bool vibrancy=false;
@@ -239,6 +241,10 @@ void GlassBackdrop::Impl::layout(){
     // the shoulders move in to the stub's sides over the next 12 DIPs (SW, between the body's width and the stub's)
     // and take the stub's radius; until then they stay at the body's sides, where they belong.
     const bool drops=!side&&attached;const std::wstring dp=L"(p.d*"+px(dropDistance)+L")",top=drops?L"Min(2*"+dp+L"-"+E+L","+dp+L")":L"0",detach=L"("+dp+L"-"+E+L"/2)";
+    // The bud (budShape in MotionEngine.h, in these units): it grows from the pill's foot, then lets go budGap below it.
+    const std::wstring pillFoot=L"(Round(p.h)+"+dp+L")",budGrow=L"Clamp(p.b/0.55,0,1)",budPart=L"Clamp((p.b-0.55)/0.45,0,1.25)",budOver=L"Max(p.b-1,0)",budW=L"(p.bw*(0.35+0.65*Clamp(p.b/0.8,0,1)))";
+    const std::wstring budTop=L"("+pillFoot+L"-"+px(1)+L"+"+px(1+budGap)+L"*"+budPart+L")",budBottom=L"Max("+budTop+L","+pillFoot+L"-"+px(1)+L"+("+px(1+budGap)+L"+p.bh)*"+budGrow+L"+"+budOver+L"*"+px(14)+L")";
+    const std::wstring budLeft=L"(("+cw+L"-"+budW+L")/2)",budCorner=L"Min(p.bh/2,Min(("+budBottom+L"-"+budTop+L")/2,"+budW+L"/2))";
     const std::wstring blend=L"Clamp("+detach+L"/"+px(12)+L",0,1)",SW=L"(p.w+(p.sw-p.w)*"+blend+L")",Ls=L"Round(("+cw+L"-"+SW+L")/2)",Rs=L"Round(("+cw+L"+"+SW+L")/2)";
     start(glass,L"Offset",edge==1?L"Vector3(Round(p.dx+p.s*"+px(74)+L"),Round(p.dy),0)":left?L"Vector3(Round(p.dx-p.s*"+px(74)+L"),Round(p.dy),0)":L"Vector3(Round(p.dx),Round(p.dy-p.s*"+px(44)+L"),0)");
     start(glass,L"Opacity",L"1-Clamp((p.s-0.45)/0.55,0,1)*Clamp((p.s-0.45)/0.55,0,1)*(3-2*Clamp((p.s-0.45)/0.55,0,1))");
@@ -267,6 +273,9 @@ void GlassBackdrop::Impl::layout(){
         if(shadowStub){const std::wstring Es=L"(p.sr+"+px(2)+L")",sm=number(shadowMargin);
             start(shadowStub,L"Offset",L"Vector3("+Ls+L"-"+sm+L",-"+Es+L"-"+sm+L"+"+px(7)+L",0)");start(shadowStub,L"Size",L"Vector2("+Rs+L"-"+Ls+L"+2*"+sm+L",Min(p.sh,Max("+top+L",0)+"+px(1)+L")+"+Es+L"+2*"+sm+L")");
             start(shadowStub,L"Opacity",drops?L"p.so*0.72*Clamp("+detach+L"/"+px(10)+L",0,1)":L"0");}
+        if(shadowBud){const std::wstring sm=number(shadowMargin);
+            start(shadowBud,L"Offset",L"Vector3("+budLeft+L"-"+sm+L","+budTop+L"-"+sm+L"+"+px(6)+L",0)");start(shadowBud,L"Size",L"Vector2("+budW+L"+2*"+sm+L","+budBottom+L"-"+budTop+L"+2*"+sm+L")");
+            start(shadowBud,L"Opacity",drops?L"p.so*0.6*Clamp(("+budBottom+L"-"+budTop+L")/"+px(20)+L",0,1)":L"0");}
         return;
     }
     start(geometry,L"Offset",offset);start(geometry,L"Size",size);start(geometry,L"CornerRadius",L"Vector2("+rc+L","+rc+L")");
@@ -275,6 +284,7 @@ void GlassBackdrop::Impl::layout(){
         std::wstring o=layerOffset,z=layerSize;
         if(drops&&k>0&&k<3){o=L"Vector3("+Ls+L"-"+M+L",0,0)";z=L"Vector2("+Rs+L"-"+Ls+L"+2*"+M+L","+H+L")";}
         else if(k==3){o=L"Vector3("+Ls+L",0,0)";z=L"Vector2("+Rs+L"-"+Ls+L",p.sh)";}
+        else if(k==4){o=L"Vector3(0,0,0)";z=L"Vector2("+cw+L","+ch+L")";}
         for(size_t l=0;l<part.layers.size();++l){if(!part.layers[l])continue;start(part.layers[l],L"Offset",o);
             // Grain covers the whole canvas and moves with the pane.
             start(part.layers[l],L"Size",l==2?L"Vector2("+cw+L","+ch+L")":z);}}
@@ -298,6 +308,8 @@ void GlassBackdrop::Impl::layout(){
         if(drops){const std::wstring Es=L"(p.sr+"+px(2)+L")",tall=L"(Min(p.sh,Max("+top+L",0)+"+px(1)+L")+"+Es+L")",corner=L"Min(p.sr,"+tall+L"/2)";
             start(stubGeometry,L"Offset",L"Vector2("+Ls+L",-"+Es+L")");start(stubGeometry,L"Size",L"Vector2("+Rs+L"-"+Ls+L","+tall+L")");start(stubGeometry,L"CornerRadius",L"Vector2("+corner+L","+corner+L")");
             start(parts[3].container,L"Opacity",L"Clamp(("+detach+L"+"+px(1)+L")/"+px(1)+L",0,1)");start(stubRimClip,L"TopInset",L"p.sr");}
+        check(visual(parts[4].container)->put_IsVisible(drops));
+        if(drops){start(budGeometry,L"Offset",L"Vector2("+budLeft+L","+budTop+L")");start(budGeometry,L"Size",L"Vector2("+budW+L","+budBottom+L"-"+budTop+L")");start(budGeometry,L"CornerRadius",L"Vector2("+budCorner+L","+budCorner+L")");}
         if(!attached)return;
     }
     // Shoulders are built at the target radius in physical pixels and scaled about
@@ -354,14 +366,15 @@ bool GlassBackdrop::initialize(HWND window,float scale,float canvasWidth,float c
         check(as<wuc::ICompositionTarget>(i.target)->put_Root(i.visual(i.root).Get()));
         ComPtr<wuc::IVisualCollection> rootChildren;check(i.root->get_Children(&rootChildren));check(rootChildren->InsertAtTop(i.visual(i.glass).Get()));
         check(i.visual(i.root)->put_Size({canvasWidth*scale,canvasHeight*scale}));check(i.visual(i.glass)->put_Size({canvasWidth*scale,canvasHeight*scale}));
-        check(c->CreatePropertySet(&i.properties));for(auto key:{L"t",L"w",L"h",L"r",L"dx",L"dy",L"s",L"tw",L"th",L"so",L"d",L"sw",L"sr",L"sh"}){String k(key);check(i.properties->InsertScalar(k,0.f));}
+        check(c->CreatePropertySet(&i.properties));for(auto key:{L"t",L"w",L"h",L"r",L"dx",L"dy",L"s",L"tw",L"th",L"so",L"d",L"sw",L"sr",L"sh",L"b",L"bw",L"bh"}){String k(key);check(i.properties->InsertScalar(k,0.f));}
         check(c->CreateColorBrushWithColor(color(0x0c0d11,.55f),&i.tintBrush));
         check(as<Compositor5>(c)->CreateRoundedRectangleGeometry(&i.geometry));
         ComPtr<wuc::IVisualCollection> glassChildren;check(i.glass->get_Children(&glassChildren));
         if(shadowOnly){
             i.shadowMargin=28*scale;check(c->CreateSpriteVisual(&i.shadowSprite));
             check(glassChildren->InsertAtTop(i.visual(i.shadowSprite).Get()));
-            try{check(c->CreateSpriteVisual(&i.shadowStub));check(glassChildren->InsertAtBottom(i.visual(i.shadowStub).Get()));check(i.visual(i.shadowStub)->put_Opacity(0));}catch(...){i.shadowStub.Reset();}check(i.visual(i.glass)->put_IsVisible(false));impl_=impl.release();available_=true;return true;
+            try{check(c->CreateSpriteVisual(&i.shadowStub));check(glassChildren->InsertAtBottom(i.visual(i.shadowStub).Get()));check(i.visual(i.shadowStub)->put_Opacity(0));}catch(...){i.shadowStub.Reset();}
+            try{check(c->CreateSpriteVisual(&i.shadowBud));check(glassChildren->InsertAtBottom(i.visual(i.shadowBud).Get()));check(i.visual(i.shadowBud)->put_Opacity(0));}catch(...){i.shadowBud.Reset();}check(i.visual(i.glass)->put_IsVisible(false));impl_=impl.release();available_=true;return true;
         }
         {
             check(as<Compositor3>(c)->CreateHostBackdropBrush(&i.hostBrush));
@@ -370,7 +383,7 @@ bool GlassBackdrop::initialize(HWND window,float scale,float canvasWidth,float c
         }
         for(size_t k=0;k<i.parts.size();++k){auto& part=i.parts[k];
             // The stub sits beneath the body, so where they overlap early in a drop the body's rim stays on top.
-            check(c->CreateContainerVisual(&part.container));if(k==3)check(glassChildren->InsertAtBottom(i.visual(part.container).Get()));else check(glassChildren->InsertAtTop(i.visual(part.container).Get()));
+            check(c->CreateContainerVisual(&part.container));if(k>=3)check(glassChildren->InsertAtBottom(i.visual(part.container).Get()));else check(glassChildren->InsertAtTop(i.visual(part.container).Get()));
             ComPtr<wuc::IVisualCollection> children;check(part.container->get_Children(&children));
             auto add=[&](ComPtr<wuc::ISpriteVisual>& sprite,const ComPtr<IInspectable>& brush){check(c->CreateSpriteVisual(&sprite));if(brush)check(sprite->put_Brush(as<wuc::ICompositionBrush>(brush).Get()));check(children->InsertAtTop(i.visual(sprite).Get()));};
             add(part.layers[0],i.hostBrush);
@@ -391,13 +404,18 @@ bool GlassBackdrop::initialize(HWND window,float scale,float canvasWidth,float c
             {ComPtr<wuc::IVisualCollection> children;check(i.parts[3].container->get_Children(&children));check(children->InsertAtTop(i.visual(i.stubRim).Get()));}
             check(c->CreateInsetClip(&i.stubRimClip));check(i.visual(i.stubRim)->put_Clip(as<wuc::ICompositionClip>(i.stubRimClip).Get()));
             for(int k=0;k<3;++k){i.stubRimShapes[k]=i.shape(i.stubRim,widths[k]);check(as<SpriteShape>(i.stubRimShapes[k])->put_Geometry(i.stubGeometry.Get()));check(as<SpriteShape>(i.stubRimShapes[k])->put_StrokeBrush(as<wuc::ICompositionBrush>(k==2?i.rimBrush:i.glowBrush).Get()));}
+            // The bud's rim, all the way round.
+            check(as<Compositor5>(c)->CreateRoundedRectangleGeometry(&i.budGeometry));i.parts[4].clip=i.geometricClip(i.budGeometry);check(i.visual(i.parts[4].container)->put_Clip(as<wuc::ICompositionClip>(i.parts[4].clip).Get()));
+            check(as<Compositor5>(c)->CreateShapeVisual(&i.budRim));check(i.visual(i.budRim)->put_Size({canvasWidth*scale,canvasHeight*scale}));
+            {ComPtr<wuc::IVisualCollection> children;check(i.parts[4].container->get_Children(&children));check(children->InsertAtTop(i.visual(i.budRim).Get()));}
+            for(int k=0;k<3;++k){i.budRimShapes[k]=i.shape(i.budRim,widths[k]);check(as<SpriteShape>(i.budRimShapes[k])->put_Geometry(i.budGeometry.Get()));check(as<SpriteShape>(i.budRimShapes[k])->put_StrokeBrush(as<wuc::ICompositionBrush>(k==2?i.rimBrush:i.glowBrush).Get()));}
             for(auto& r:i.shoulderRims){check(as<Compositor5>(c)->CreateShapeVisual(&r.visual));check(glassChildren->InsertAtTop(i.visual(r.visual).Get()));for(int k=0;k<3;++k)r.shapes[k]=i.shape(r.visual,widths[k]);check(i.visual(r.visual)->put_IsVisible(false));}
             // Edge-light masks fade from the edge inward (a squircle-like falloff in three stops).
             const Vector2 from[4]={{0,.5f},{1,.5f},{.5f,0},{.5f,1}},to[4]={{1,.5f},{0,.5f},{.5f,1},{.5f,0}};
             for(int k=0;k<4;++k){i.lensMasks[k]=i.gradient(false);auto linear=as<LinearGradientBrush>(i.lensMasks[k]);check(linear->put_StartPoint(from[k]));check(linear->put_EndPoint(to[k]));
                 i.stops(i.lensMasks[k],{{0,color(0xffffff,.9f)},{.4f,color(0xffffff,.32f)},{1,color(0xffffff,0)}});}
         }
-        for(int k=1;k<4;++k)check(i.visual(i.parts[k].container)->put_IsVisible(false));
+        for(int k=1;k<5;++k)check(i.visual(i.parts[k].container)->put_IsVisible(false));
         check(i.visual(i.glass)->put_IsVisible(false));
         impl_=impl.release();available_=true;
     }catch(...){available_=false;}
@@ -410,7 +428,7 @@ void GlassBackdrop::style(const GlassStyle& s){
         if(i.styled&&i.current.light==s.light&&i.current.blur==s.blur&&i.current.material==s.material&&std::abs(i.current.tint-s.tint)<.001f&&i.current.accent==s.accent&&i.current.wallpaper==s.wallpaper&&std::abs(i.current.shadow-s.shadow)<.001f){i.current=s;return;}
         i.current=s;i.styled=true;
         if(i.shadowOnly){
-            if(!i.shadowDrawn){i.shadowDrawn=true;try{auto brush=i.shadowBrush(i.shadowMargin,20*i.scale);check(i.shadowSprite->put_Brush(as<wuc::ICompositionBrush>(brush).Get()));if(i.shadowStub)check(i.shadowStub->put_Brush(as<wuc::ICompositionBrush>(brush).Get()));}catch(...){}}
+            if(!i.shadowDrawn){i.shadowDrawn=true;try{auto brush=i.shadowBrush(i.shadowMargin,20*i.scale);check(i.shadowSprite->put_Brush(as<wuc::ICompositionBrush>(brush).Get()));if(i.shadowStub)check(i.shadowStub->put_Brush(as<wuc::ICompositionBrush>(brush).Get()));if(i.shadowBud)check(i.shadowBud->put_Brush(as<wuc::ICompositionBrush>(brush).Get()));}catch(...){}}
             {String so(L"so");check(i.properties->InsertScalar(so,s.shadow));}if(i.edge>=0)i.layout();return;}
         // Grain needs a GPU drawing surface; without one the glass simply has none.
         if(!i.grainTried){i.grainTried=true;try{i.grainBrush=i.grain();for(auto& part:i.parts)if(part.layers[2])check(part.layers[2]->put_Brush(as<wuc::ICompositionBrush>(i.grainBrush).Get()));}catch(...){i.grainBrush.Reset();}}
@@ -473,7 +491,8 @@ void GlassBackdrop::animate(const MotionEngine& m,double now,int edge,bool attac
         ComPtr<IInspectable> props;check(i.properties.As(&props));
         {String tw(L"tw"),th(L"th");check(i.properties->InsertScalar(tw,float(m.width.target()*s)));check(i.properties->InsertScalar(th,float(m.height.target()*s)));}
         {String sw(L"sw"),sr(L"sr"),sh(L"sh");check(i.properties->InsertScalar(sw,float(m.stubWidth*s)));check(i.properties->InsertScalar(sr,float(m.stubRadius*s)));check(i.properties->InsertScalar(sh,float(m.stubHeight*s)));}
-        i.start(props,L"d",springExpression(SpringTerms::from(m.drop,now),1));
+        i.start(props,L"d",springExpression(SpringTerms::from(m.drop,now),1));i.start(props,L"b",springExpression(SpringTerms::from(m.bud,now),1));
+        {String bw(L"bw"),bh(L"bh");check(i.properties->InsertScalar(bw,float(m.budWidth*s)));check(i.properties->InsertScalar(bh,float(m.budHeight*s)));}
         i.start(props,L"w",springExpression(SpringTerms::from(m.width,now),s));i.start(props,L"h",springExpression(SpringTerms::from(m.height,now),s));
         i.start(props,L"r",springExpression(SpringTerms::from(m.radius,now),s));i.start(props,L"dx",springExpression(SpringTerms::from(m.dragX,now),s));i.start(props,L"dy",springExpression(SpringTerms::from(m.dragY,now),s));i.start(props,L"s",springExpression(SpringTerms::from(m.slide,now),1));
         check(as<wuc::ICompositionObject>(i.properties)->StartAnimation(t,as<wuc::ICompositionAnimation>(clock).Get()));

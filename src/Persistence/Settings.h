@@ -8,7 +8,7 @@
 #include "Design/Layout.h"
 namespace nexus {
 struct Settings {
-    static constexpr int currentVersion=14;
+    static constexpr int currentVersion=15;
     int version=currentVersion,uiMode=1,preset=1,monitor=0,verticalOffset=0,horizontalOffset=0,hoverDelay=180,mediaLayout=0;
     int scale=100,corner=22,edge=0,theme=0,compactWidth=196,collapseDelay=650,accent=0;
     int material=0,glassTint=50;
@@ -43,6 +43,10 @@ struct Settings {
     // alerts, per-letter text colour on Clear glass, and sharing with your own PCs (opt-in).
     bool compactControls=true,swipeSkip=true,fullscreenPeek=true,appAccents=true,batteryWeekly=true,weather=false,richClips=true,siteIcons=false,edgeSplash=true,adaptiveText=true,sharing=false;
     int waveformStyle=1,notifyStyle=1,weatherUnit=0;
+    // v15: clipboard history kept across restarts (encrypted for this Windows user), soft sounds for alerts and the
+    // chips editor, continuing music on a paired PC (with sharing on), the ring glowing into the next track, a second
+    // alert budding off the first, and songs from your Music folder played by the island itself.
+    bool clipboardKeep=true,sounds=true,handoff=true,islandDj=true,stackAlerts=true,musicLibrary=true;
     // Every material meets the screen edge with the same concave shoulders; an
     // explicit vertical offset floats the island clear of the edge.
     bool glassy()const{return material!=0;}
@@ -62,6 +66,7 @@ struct Settings {
         FLAG(compactVolume) FLAG(compactTimer) FLAG(compactClock) FLAG(shelfPeek) FLAG(collapseOnAppSwitch) FLAG(wheelVolume) FLAG(animatedIcons) FLAG(trackHandoff) FLAG(reduceMotion) FLAG(hideFullscreen) FLAG(hoverOpen) FLAG(startAtLogin) FLAG(albumAccents) FLAG(magnetic) FLAG(compactMedia) FLAG(compactBattery) FLAG(directAudio)
         FLAG(waveform) FLAG(appIcons) FLAG(hud) FLAG(followSession) FLAG(autoHide) FLAG(alertsReveal) FLAG(deviceCards) FLAG(powerCards) FLAG(batteryHistory) FLAG(clipboardHistory) FLAG(clipboardConfirm) FLAG(privacyDots) FLAG(privacyCards) FLAG(waveTimeline) FLAG(lyrics) FLAG(lyricsCompact) FLAG(headphoneCards) FLAG(captureShortcuts) FLAG(hideSecrets) FLAG(pinnedShelf) FLAG(currency) FLAG(commandHistory) FLAG(shadow) FLAG(compactGlance) FLAG(artPulse)
         FLAG(compactControls) FLAG(swipeSkip) FLAG(fullscreenPeek) FLAG(appAccents) FLAG(batteryWeekly) FLAG(weather) FLAG(richClips) FLAG(siteIcons) FLAG(edgeSplash) FLAG(adaptiveText) FLAG(sharing)
+        FLAG(clipboardKeep) FLAG(sounds) FLAG(handoff) FLAG(islandDj) FLAG(stackAlerts) FLAG(musicLibrary)
 #undef FLAG
         }if(!in.eof())throw std::runtime_error("Malformed settings");
         // Before v14 there were seven pages: the saved order keeps its places and gains Controls after Stats.
@@ -73,6 +78,7 @@ struct Settings {
         WRITE(material) WRITE(glassTint) WRITE(reduceMotion) WRITE(hideFullscreen) WRITE(hoverOpen) WRITE(startAtLogin) WRITE(albumAccents) WRITE(magnetic) WRITE(compactMedia) WRITE(compactBattery) WRITE(directAudio)
         WRITE(waveform) WRITE(appIcons) WRITE(hud) WRITE(followSession) WRITE(autoHide) WRITE(alertsReveal) WRITE(deviceCards) WRITE(powerCards) WRITE(batteryHistory) WRITE(clipboardHistory) WRITE(clipboardConfirm) WRITE(privacyDots) WRITE(privacyCards) WRITE(springStiffness) WRITE(springDamping) WRITE(springMass) WRITE(commandShortcut) WRITE(waveTimeline) WRITE(lyrics) WRITE(lyricsCompact) WRITE(headphoneCards) WRITE(captureShortcuts) WRITE(hideSecrets) WRITE(pinnedShelf) WRITE(currency) WRITE(commandHistory) WRITE(shadow) WRITE(compactGlance) WRITE(artPulse)
         WRITE(compactControls) WRITE(swipeSkip) WRITE(fullscreenPeek) WRITE(appAccents) WRITE(batteryWeekly) WRITE(weather) WRITE(richClips) WRITE(siteIcons) WRITE(edgeSplash) WRITE(adaptiveText) WRITE(sharing) WRITE(waveformStyle) WRITE(notifyStyle) WRITE(weatherUnit)
+        WRITE(clipboardKeep) WRITE(sounds) WRITE(handoff) WRITE(islandDj) WRITE(stackAlerts) WRITE(musicLibrary)
 #undef WRITE
     }
     bool operator==(const Settings&)const=default;

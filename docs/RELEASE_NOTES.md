@@ -1,90 +1,62 @@
-# Arnav Island 0.15.0-preview.1 — A pill that drops, a sky that moves, your PCs within reach
+# Arnav Island 0.16.0-preview.1 — music from the island, sharing that goes where you drop it
 
-Phase 5F:
-- Notifications drop out of the island as their own glass pill.
-- A weather glance plays the sky.
-- Files go between your own PCs.
-- Control the music from the compact island, and control Wi-Fi, Bluetooth and brightness from a new Controls page.
-- Lyrics light up word by word, numbers blur on big jumps, icons morph, and the island leans when you drag it.
-
-## Notifications
-- **A pill that drops.** A card no longer grows the island. It drops out below as its own glass pill, settles with a small bounce, and rises back in when it's done. The island stays docked above it, at compact size, and the space between them is click-through. Choose *Grow the island* under Settings › Appearance › Alerts to get the old style back. Drop needs the top dock; on side docks and a floating island, cards still grow the island.
-- **Light runs along the edge.** When an alert arrives, a glint sweeps out along the island's edge from the middle and fades (Settings › Appearance › *Light along the edge*).
-- **Which app is using the camera.** The camera, microphone, screen-capture and location card now has a **Settings** button that opens that permission's page in Windows Settings. Clicking the coloured dots in the compact island brings the card back.
-
-## Now Playing
-- **Control the music from the compact island.** Previous, play/pause and next sit at the end of the compact island (Settings › Compact).
-- **Swipe to skip.** Swipe sideways on a touchpad over the compact island, or drag it sideways and let go, to skip a track. The title kicks in the direction you swiped.
-- **Over fullscreen apps.** While the island is hidden for a fullscreen game or video, touch the top edge of the screen above it to bring back the compact island, with its controls and swipe. It hides again 0.8 s after you move away.
-- **A spectrum ring.** The compact artwork turns round and a ring of 24 ticks pulses around it with the music. You can go back to bars in Settings › Compact › Live audio style.
-- **Lyrics everywhere, word by word.** The compact island and the Live Island use the Command Center's lyric line: it lights up as it's sung and morphs to the next line. When the lyrics carry word timing, each word lights as it's sung.
-- **Accent colours from the app.** With no artwork, the island takes its accent from the playing app's icon (Settings › Appearance › App colours).
-
-## Weather
-- **A weather glance.** Type *weather* and a town in the command bar (for example, *weather Paris*). The temperature then shows on Home and in the compact island's idle glance.
-- **A sky that moves.** On Home the weather tile plays the conditions for a minute each time it appears, then comes to rest: sun rays turning, stars twinkling, clouds drifting, rain streaks, snow, fog and storm flashes.
-- **Off until you ask.** Weather is off until you type a town or turn it on in Settings. It then sends the town once (to find it), and afterwards only its rounded coordinates every 30 minutes, to Open-Meteo.
-
-## Controls page
-- **A new page.** Tiles for Wi-Fi, Bluetooth, airplane mode, dark mode, the island's focus timer and your microphone, plus volume and brightness sliders. Tiles show their real state and light up with an animated icon when switched on.
+Phase 5G:
+- Drop files and folders straight onto your other PC, or send the whole Shelf at once.
+- Play songs from your Music folder in the island itself, and hand the music over to your other PC.
+- Two alerts at once: the second buds off the first.
+- Drag the music sideways to skip, anywhere it shows.
+- The clipboard remembers after a restart.
+- Weather works again.
+- Sounds, Island DJ and a liquid navigation pill.
 
 ## Sharing between your own PCs
-- **Send a Shelf file to your other PC.** Turn on *Share with my PCs* (Settings › Privacy & productivity) on both PCs, on the same network.
-  - Open Shelf › **Nearby** and press **Pair** next to the other PC.
-  - Both PCs show the same six-digit code. Check that it matches and press **Pair** on both.
-  - Then open a file on the Shelf and press the **Send** button. The other PC asks you to **Accept**, and the file lands in Downloads.
-- **Private by design.**
-  - Files go only between paired PCs, and only after the receiving PC accepts.
-  - Files and their names are encrypted end to end (AES-256-GCM, with keys agreed by ECDH P-256). Only the PC's name and that sharing is on are announced on the network.
-  - **Forget** unpairs a PC.
-- **Firewall.** The first time you turn it on, Windows may ask to let the island through the firewall. Allow it on private networks only.
+- **Drop onto a PC.** Drag files or folders over the island. It shows the Shelf on one side and your paired PCs on the other; let go over a PC to send them there.
+- **Folders.** A folder arrives whole, with everything inside it, under its own name in Downloads (*Photos (2)* if you already have *Photos*).
+- **The whole Shelf at once.** Each paired PC in Shelf › Nearby has **Send Shelf**. The Shelf's item count is also a stack: drag it onto a PC in the island, or out of the island to drop every file anywhere.
+- **See it move.** A PC's row fills as a transfer goes, and **Stop** ends it from either PC. The compact island shows a chip with the percentage.
+- **Clearer answers.** Offers say how many files there are and how big they are. The other PC is told when you stop sending. If Downloads doesn't have room, you're told before anything is written.
+- **Update both PCs.** This version's sharing (protocol 2) needs 0.16 on both PCs. A PC still on 0.15 shows *Needs the latest Arnav Island* instead of failing silently.
 
-## Battery
-- **Health trends.** The island records your battery's full-charge capacity once a day, on this PC only.
-- **A weekly summary card.** Once a week, in the morning, a card shows:
-  - your battery's health, and how much it changed since last week
-  - how many times you charged
-  - how much of the battery a typical day uses
+## Music
+- **Play from the island.** Media › **Library** lists the songs in your Music folder (MP3, M4A, AAC, FLAC, WAV, WMA, Ogg and Opus) with their covers. Pick one, or press **Shuffle all**. With nothing playing, the Media page offers **Shuffle my music**; in the command bar, type *play* and a song, or *shuffle*.
+- **A real player.** Songs the island plays appear in Windows' own media controls. The keyboard's media keys control them (checked), and Windows' media flyout shows them. Starting a song pauses whatever else was playing.
+- **Continue on my other PC.** With sharing on, the Media page's **Continue on** button (or *continue on* in the command bar) offers what's playing to a paired PC. The other PC shows *Play here*. It plays the song from where you were:
+  - in a player that already has it
+  - from its own Music folder
+  - from the song's file, sent along when the island was playing it
+  - by opening the same app, for Spotify and Store apps
+  
+  This PC then pauses.
+- **Drag to skip, everywhere.** A sideways drag over the music now skips tracks in the compact island, the Live Island, Home and the Media page. A chip on the leading side grows as you drag and snaps when letting go would skip. Before, the Live Island only switched between players on a drag, and with *Open on hover* the island had usually opened into it by the time you dragged. Players now switch with the dots under the cover.
+- **Island DJ.** Near the end of a track, a halo breathes behind the compact ring in the colours of what plays next. The island's own queue knows the next song; for other apps it uses the colours of what plays now. A new track blooms in its cover's colours as it starts.
+
+## Alerts
+- **Two alerts at once.** When a second alert arrives while one shows, it grows out of the first pill's foot as a bud, then lets go and settles just below it. It takes the pill's place when the first ends; click it to bring it forward. Up to four can wait, and a pairing code, file offer or music offer is never lost.
+- **Sounds.** A faint two-note chime plays with the light along the edge, and a soft click as chips move in Settings › Compact. They're made by the app itself (no sound files), quiet on purpose, and silent while something plays full screen.
 
 ## Clipboard
-- **Rich previews.**
-  - A link shows its site and path (and the site's icon, if you turn on *Site icons*).
-  - A colour code shows a swatch.
-  - Code shows in a monospaced font with syntax colouring.
+- **Remembers after a restart.** The clipboard history is saved on this PC, encrypted for your Windows account, and comes back when the island starts. Images are kept as PNG. Copies that look like passwords or keys are kept only if you pin them. Turn it off in Settings › Privacy & productivity › *Remember the clipboard after restarts* (the saved copy is deleted).
 
-## Compact island
-- **Arrange the chips.** Drag the chips (clock, volume, battery, timer, CPU, GPU, weather) into your own order in Settings › Compact. The arrow keys work too.
-- **Adaptive text on Clear glass.** On Clear glass, each letter turns dark over a bright part of your wallpaper and light over a dark one. This works only when no window is behind the island. When one is, the island keeps its usual colours.
+## Weather
+- **Fixed.** *Open-Meteo couldn't be reached* appeared on every lookup: Open-Meteo answers in a compressed form Windows' web client couldn't unpack. The island now asks again without compression when that happens. If the network really is down, it keeps your town and tries again every two minutes. If you tried a town on 0.15, type *weather* and the town once more.
 
-## Motion and icons
-- **Numbers stretch and blur on big jumps.** A digit that rolls a long way smears along its roll and stretches a little, then lands sharp.
-- **Icons morph.** Play turns into pause, and the speaker's waves turn into a cross, instead of swapping. Navigation and control icons play a short animation when chosen or switched on.
-- **The island leans.** Drag it against the top of the screen and it leans the way you pull and stretches a little, then springs back. The glass leans with it.
-- **A shadow that rises.** As the island grows, its shadow drops further and deepens, as if it were lifting off the desktop.
+## Motion
+- **A liquid navigation pill.** The highlight under the navigation stretches toward the page you pick, its leading end first, then draws its tail in, keeping its corners round.
 
-## Settings (version 14)
-- **New and on by default:**
-  - compact media controls
-  - swipe to skip
-  - Now Playing over fullscreen apps
-  - accent from the app's icon
-  - the weekly battery card
-  - rich clipboard rows
-  - light along the edge
-  - adaptive text
-  - the drop pill
-  - the spectrum ring
-- **New and off by default:**
-  - weather
-  - site icons
-  - sharing with your PCs
-- **Controls** joins the page order after Stats.
-- The chip order is saved.
+## Settings (version 15)
+- **New and on:**
+  - remember the clipboard after restarts
+  - sounds
+  - continue on my other PC (only with sharing on)
+  - Island DJ
+  - two alerts at once
+  - music library
+- Nothing new goes online. The library reads your Music folder on this PC only, and handing music over goes only to your own paired PCs.
 
 ## Limits
-- **Not on the lock screen.** Windows draws the lock screen on a secure desktop that apps can't draw on, so Now Playing there stays Windows' own.
-- **Word-by-word lyrics** need lyrics that carry word timing. Most lyrics on LRCLIB are timed by line, and those fill smoothly across the line instead.
-- **Sharing** was tested end to end between two PCs simulated on this machine (over loopback), not yet between two physical PCs. Discovery uses UDP broadcast, so both PCs must be on the same network segment, and some guest or public Wi-Fi networks block it.
-- **Adaptive text** reads your wallpaper, not what's actually behind the island, so it switches off whenever a window is behind the island. With a span wallpaper across several monitors, it treats the picture as *Fill*.
-- **Drop pill** is for the top dock only.
-- **Real blur** still needs Windows' Transparency effects.
+- **Handoff** plays the same song on the other PC when a player there has it, when your library there has it, when the island was playing it from a file, or when the app itself resumes it. Otherwise it opens the same app and presses play, and moves to where you were once that app shows the same song; whether the app picks up the same song is up to the app. Songs in a browser tab can't follow, because browsers don't expose the page.
+- **Sharing and handoff** were tested end to end between two independent services on one PC (loopback), not between two physical PCs.
+- **The music library** reads one folder: your Music folder, up to 8,000 songs, 12 folders deep. The list is kept in memory.
+- **Island DJ** knows the next song only in the island's own queue.
+- **Two alerts at once** needs the drop pill (top dock).
+- **Not on the lock screen** as an island (Windows' secure desktop).

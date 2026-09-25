@@ -5,7 +5,11 @@ namespace nexus {
 // current session is the default; a swipe or tap pins a choice until Windows
 // marks a different session current or the chosen player disappears.
 void IslandWindow::updateSessions(){
-    auto list=media_->sessions();int current=-1;
+    auto list=media_?media_->sessions():std::vector<MediaSnapshot>{};int current=-1;
+    // Phase 5G: the island's own player joins Windows' sessions, first; its copy through Windows' media controls is left out.
+    if(player_&&player_->active()){const auto* t=player_->track();
+        std::erase_if(list,[&](const MediaSnapshot& m){std::wstring source=m.source;for(auto& c:source)c=wchar_t(std::towlower(c));return source.find(L"arnavisland")!=std::wstring::npos||(t&&m.title==t->title&&(t->artist.empty()||m.artist==t->artist));});
+        list.insert(list.begin(),player_->snapshot(seconds()));}
     for(size_t i=0;i<list.size();++i)if(list[i].current)current=int(i);
     // Sessions are told apart by id: every tab of one browser shares an app ID.
     const uint64_t system=current>=0?list[current].id:0;
@@ -17,6 +21,8 @@ void IslandWindow::updateSessions(){
     if(content_.scrub.active&&(s.id!=content_.playback.id||s.title!=content_.playback.title||!s.canSeek))endScrub(false);
     content_.playback=s;content_.sessions=std::move(list);content_.session=content_.sessions.empty()?0:index;clockTimer();syncLyrics();
     bool changed=s.title!=content_.media;content_.media=s.title;content_.artist=s.artist;
+    // Island DJ: the colour of the island's next song, once its cover is read.
+    content_.djAccent=0;if(s.id==islandSessionId&&player_&&player_->upcoming()&&library_)if(auto art=library_->artwork(player_->upcoming()->path))content_.djAccent=art->accent;
     if(s.available&&changed){events_.publish({ActivityKind::Media,"media",20,0,.8,4},seconds());presentActivity();}else{refresh();animate();}
     if(s.available!=mediaReachable_){mediaReachable_=s.available;store_.log("Info",s.available?"media_session_connected":s.title!=L"Media access unavailable"?"media_manager_connected_no_session":"media_provider_unavailable");}
 }
@@ -64,10 +70,58 @@ void IslandWindow::autoHideTick(){
 void IslandWindow::showNotice(int kind,const BluetoothDevice& device){
     if(!renderer_||(state_!=IslandState::Compact&&state_!=IslandState::Notification))return;
     if(settings_.autoHide&&autoHide_.hidden&&!settings_.alertsReveal)return;
-    content_.notice={kind,device};events_.publish({kind>=3?ActivityKind::Power:ActivityKind::Device,"notice",60,double(kind),2.4,3.2},seconds());
+    content_.notice={kind,device};{const Activity a{kind>=3?ActivityKind::Power:ActivityKind::Device,"notice",60,double(kind),2.4,3.2};if(holdCard(a))return;events_.publish(a,seconds());}
     transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info",kind>=3?"power_card_shown":"device_card_shown");
 }
-void IslandWindow::alertSplash(){if(settings_.edgeSplash&&renderer_)renderer_->splash(float(motion_.width.target()),float(motion_.height.target()),float(motion_.radius.target()),!settings_.floating()&&motion_.drop.target()<=0,motion_.reduced?0:.34,motion_.reduced);}
+// The glint along the edge, and (Phase 5G, with sounds on and nothing full screen) its faint chime.
+void IslandWindow::alertSplash(){if(settings_.sounds&&!fullscreenHidden_&&renderer_)playSound(Sound::Chime);if(settings_.edgeSplash&&renderer_)renderer_->splash(float(motion_.width.target()),float(motion_.height.target()),float(motion_.radius.target()),!settings_.floating()&&motion_.drop.target()<=0,motion_.reduced?0:.34,motion_.reduced);}
+// ---- Phase 5G: two alerts at once ------------------------------------------------------------------
+// With the drop pill (top dock), an alert that arrives while another shows waits below it as a bud; the island
+// never replaces an alert someone may need to answer. The same alert updating (same kind and subject) still
+// updates in place. At most four wait; each takes the pill's place when the one before ends, is answered or
+// is clicked past (clicking the bud swaps them, keeping an unanswered pairing, offer or music card waiting).
+bool IslandWindow::holdCard(const Activity& a){
+    const auto& n=content_.notice;const auto& s=shownNotice_;
+    const bool stacking=settings_.stackAlerts&&settings_.notifyStyle==1&&settings_.edge==0&&!settings_.floating()&&state_==IslandState::Notification&&content_.card&&events_.active().has_value()&&s.kind!=0;
+    const bool same=n.kind==s.kind&&n.app==s.app&&n.device.name==s.device.name;
+    if(!stacking||same){shownNotice_=content_.notice;return false;}
+    if(heldCards_.size()>=4)heldCards_.pop_back();
+    heldCards_.push_back({content_.notice,a});content_.notice=shownNotice_;
+    if(settings_.sounds&&!fullscreenHidden_)playSound(Sound::Chime);
+    syncBud();refresh();store_.log("Info","alert_held");return true;
+}
+// The next waiting alert takes the pill's place (swap: the one showing waits again if it still needs an answer).
+bool IslandWindow::promoteCard(bool swap){
+    if(heldCards_.empty())return false;const double now=seconds();
+    if(swap&&events_.active()){const int k=content_.notice.kind;if(k==14||k==15||k==17)heldCards_.push_back({content_.notice,*events_.active()});}
+    auto next=std::move(heldCards_.front());heldCards_.pop_front();
+    content_.notice=next.notice;shownNotice_=next.notice;events_.dismiss(now);events_.publish(next.activity,now);
+    // The bud rises into the pill as its alert arrives there; another one buds again a moment later.
+    if(motion_.reduced)motion_.bud.reset(0,now);else motion_.bud.retarget(0,now,SpringSpec{1,320,36});
+    content_.bud={};transition(IslandState::Notification);presentActivity();alertSplash();
+    if(!heldCards_.empty())SetTimer(window_,63,460,nullptr);
+    store_.log("Info","alert_promoted");return true;
+}
+// The bud shows while an alert waits (and the pill is out); it buds with a little spring.
+void IslandWindow::syncBud(){
+    const bool show=!heldCards_.empty()&&state_==IslandState::Notification&&settings_.notifyStyle==1&&settings_.edge==0&&!settings_.floating();const double now=seconds();
+    if(show){const auto& n=heldCards_.front().notice;content_.bud={n.kind,budTitle(n),int(heldCards_.size())-1};}else content_.bud={};
+    const double target=show?1:0;if(motion_.bud.target()!=target){if(motion_.reduced)motion_.bud.reset(target,now);else motion_.bud.retarget(target,now,show?SpringSpec{1,170,15}:SpringSpec{1,320,36});animate();}
+}
+// Whether a point in the canvas (DIPs) is on the bud (once it has let go of the pill).
+bool IslandWindow::budAt(double x,double y)const{
+    const double t=seconds();if(settings_.edge!=0||!dropped(t)||content_.bud.kind==0)return false;const double b=motion_.bud.sample(t).position;if(b<.6)return false;
+    const auto origin=bodyAt(motion_.width.sample(t).position,motion_.height.sample(t).position,motion_.drop.sample(t).position);
+    const auto bud=budShape(b,origin.y+motion_.height.sample(t).position,Renderer::canvasWidth/2,motion_.budWidth,motion_.budHeight);
+    return x>=bud.left&&x<=bud.right&&y>=bud.top&&y<=bud.bottom;
+}
+std::wstring IslandWindow::budTitle(const ContentSnapshot::Notice& n){
+    switch(n.kind){
+    case 1:return n.device.name+L" connected";case 2:return n.device.name+L" disconnected";case 3:return L"Charging";case 4:return L"On battery";
+    case 5:return (n.app.empty()?std::wstring(L"An app"):n.app)+L" \u00b7 camera";case 6:return (n.app.empty()?std::wstring(L"An app"):n.app)+L" \u00b7 microphone";case 7:return (n.app.empty()?std::wstring(L"An app"):n.app)+L" \u00b7 location";
+    case 8:return L"Sound moved to "+n.device.name;case 9:return L"Colour picked";case 10:return L"Text copied";case 11:return L"Snip on the Shelf";case 12:return (n.app.empty()?std::wstring(L"An app"):n.app)+L" \u00b7 screen";
+    case 13:return L"Your battery this week";case 14:return L"Pair with "+n.app+L"?";case 15:return n.app+L" is sending";case 17:return L"Continue "+n.app;default:return n.app;}
+}
 void IslandWindow::updateBattery(){
     auto reading=battery_->reading();auto estimate=battery_->estimate();content_.power=reading;content_.toFull=estimate.minutesToFull(reading);content_.remaining=estimate.minutesRemaining(reading);
     auto history=battery_->history();content_.history.clear();const auto now=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -119,7 +173,7 @@ void IslandWindow::clearLyrics(){
 void IslandWindow::seekBy(double delta){
     auto& p=content_.playback;if(!p.canSeek||!(p.duration>0)||!renderer_)return;const double now=seconds();
     const double position=p.position+(p.playing?std::max(0.,now-p.sampledAt):0.),hi=p.seekMax>p.seekMin?p.seekMax:p.duration;
-    const double target=skipTarget(position,delta,p.seekMin,hi);if(media_)media_->seek(target,p);p.position=target;p.sampledAt=now;
+    const double target=skipTarget(position,delta,p.seekMin,hi);mediaSeek(target);p.position=target;p.sampledAt=now;
     if(state_!=IslandState::Compact&&!content_.live&&content_.page==Page::Media){const bool video=settings_.mediaLayout==2||(settings_.mediaLayout==0&&p.kind==MediaKind::Video);const float top=video?30.f:44.f,size=video?148.f:100.f;
         renderer_->skipFeedback(delta>0,20+size*(delta>0?.75f:.25f),38+top+size/2,motion_.reduced);}
     tickLyrics(false);refresh();store_.log("Info","media_skip");
@@ -128,7 +182,7 @@ void IslandWindow::seekBy(double delta){
 void IslandWindow::seekLyric(int line){
     auto& p=content_.playback;if(!p.canSeek||!(p.duration>0)||!content_.lyrics||line<0||size_t(line)>=content_.lyrics->size())return;
     const double hi=p.seekMax>p.seekMin?p.seekMax:p.duration,target=std::clamp((*content_.lyrics)[size_t(line)].time,p.seekMin,hi);
-    if(media_)media_->seek(target,p);p.position=target;p.sampledAt=seconds();tickLyrics(false);refresh();store_.log("Info","lyrics_seek");
+    mediaSeek(target);p.position=target;p.sampledAt=seconds();tickLyrics(false);refresh();store_.log("Info","lyrics_seek");
 }
 // The wheel over the compact island's logo changes the volume of the app that is playing.
 void IslandWindow::appVolumeWheel(int delta){
@@ -149,6 +203,6 @@ bool IslandWindow::showHeadphoneCard(const AudioDevice& output,const std::wstrin
     if(device.brand.empty())device.brand=std::string(deviceBrand(device.name));if(device.kind==DeviceKind::Other)device.kind=deviceKind(0,device.name);if(device.kind==DeviceKind::Other)device.kind=DeviceKind::Headphones;
     const bool back=settings_.directAudio&&std::any_of(content_.outputs.begin(),content_.outputs.end(),[&](auto& d){return d.id==fromId;});switchBackId_=back?fromId:std::wstring{};
     content_.notice={8,device,outputDisplayName(fromName),nullptr,back};
-    events_.publish({ActivityKind::Device,"headphones",60,8,2.4,6},seconds());transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info","headphone_card_shown");return true;
+    {const Activity a{ActivityKind::Device,"headphones",60,8,2.4,6};if(holdCard(a))return true;events_.publish(a,seconds());}transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info","headphone_card_shown");return true;
 }
 }

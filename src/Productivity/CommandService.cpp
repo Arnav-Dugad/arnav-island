@@ -30,7 +30,7 @@ namespace nexus {
 namespace {
 constexpr GUID commandTextDialect{0xc8b521fb,0x5cf3,0x11ce,{0xad,0xe5,0x00,0xaa,0x00,0x44,0x77,0x3d}};// DBGUID_DEFAULT
 int64_t unixNow(){return int64_t(std::time(nullptr));}
-// One HTTPS GET, at most 1 MB, five-second timeouts (Common/Http.h).
+// One HTTPS GET, at most 4 MB, five-second timeouts (Common/Http.h).
 std::optional<std::string> httpGet(const wchar_t* host,const wchar_t* path){return httpsGet(host,path);}
 // WinRT async operations are polled from a multithreaded apartment; nothing here pumps messages.
 template<class Operation> bool finished(Operation* op,int milliseconds){

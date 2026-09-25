@@ -26,6 +26,8 @@
 #include "Productivity/Weather.h"
 #include "Design/Backdrop.h"
 #include "Animation/MotionEngine.h"
+#include "Media/Library.h"
+#include "Audio/Sounds.h"
 #include <iostream>
 #include <random>
 #include <set>
@@ -526,5 +528,49 @@ int main(){try{
     // ---- Phase 5F: the adaptive text grid and the drop ----------------------------------------------------
     {LumaGrid g;g.cols=4;g.rows=2;g.x0=10;g.cell=2;g.luma={1,2,3,4,5,6,7,8};test(g.at(10,0)==1&&g.at(13.9f,0)==2&&g.at(15,3)==7&&g.at(-50,-50)==1&&g.at(500,500)==8,"the backdrop grid clamps to its edges");
         test(LumaGrid{}.at(0,0)==0&&brightBackdrop>127,"an empty grid reads dark");test(dropDistance>34&&dropDistance<60,"a dropped pill clears the compact island");}
-    std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery, auto-hide, command, clipboard, workspace, privacy, waveform, lab, accent, lyrics, palette, seeking, audio-route, currency, system-action, completion, file-search, command-memory, rolling-digit, GPU, colour, typo, row-group and left-dock checks\n";return 0;
+    // ---- Phase 5G: the clipboard across restarts ------------------------------------------------------
+    {ClipboardHistory h;auto text=[](std::wstring t){ClipEntry e;e.text=std::move(t);e.kind=isLink(e.text)?ClipEntry::Kind::Link:ClipEntry::Kind::Text;e.source=L"Notepad";e.sourcePath=L"C:\\Windows\\notepad.exe";return e;};
+        h.add(text(L"first copy"),10);h.add(text(L"https://example.com/a"),20);h.add(text(L"Tr0ub4dor&3xQ"),30);
+        ClipEntry files;files.kind=ClipEntry::Kind::Files;files.files={L"C:\\a.txt",L"C:\\b c.txt"};h.add(files,40);
+        ClipEntry raw;raw.kind=ClipEntry::Kind::Image;raw.dib.assign(64,1);h.add(raw,50);
+        ClipEntry picture;picture.kind=ClipEntry::Kind::Image;picture.dib.assign(64,2);picture.png=std::make_shared<const std::string>(std::string("PNG\0DATA",8));h.add(picture,55);
+        uint64_t firstId=0;for(auto& e:h.entries())if(e.text==L"first copy")firstId=e.id;test(h.togglePin(firstId),"a copy pins");
+        const std::string saved=saveHistory(h.entries(),{1000,60});auto back=loadHistory(saved,2000,100);
+        // The password-like copy and the image without its PNG yet are left out; the rest come back newest first.
+        test(back.size()==4,"the history comes back without secrets or unfinished images");
+        test(back[0].kind==ClipEntry::Kind::Image&&back[0].png&&*back[0].png==std::string("PNG\0DATA",8),"an image comes back as its PNG");
+        test(back[1].kind==ClipEntry::Kind::Files&&back[1].files==files.files,"file lists come back");
+        test(back[2].kind==ClipEntry::Kind::Link&&back[2].text==L"https://example.com/a","links come back");
+        test(back[3].text==L"first copy"&&back[3].pinned&&back[3].source==L"Notepad"&&back[3].sourcePath==L"C:\\Windows\\notepad.exe","pins and sources come back");
+        test(std::abs((100-back[3].time)-1050)<1.5&&std::abs((100-back[0].time)-1005)<1.5,"ages carry across the restart");
+        {ClipboardHistory pinned;pinned.add(text(L"Tr0ub4dor&3xQ"),1);pinned.togglePin(pinned.entries().front().id);test(loadHistory(saveHistory(pinned.entries(),{10,5}),10,5).size()==1,"a pinned secret is kept");}
+        test(loadHistory("garbage",1,1).empty()&&loadHistory("",1,1).empty(),"anything else reads as nothing");
+        bool safe=true;for(size_t cut=0;cut<saved.size();cut+=7){try{auto part=loadHistory(saved.substr(0,cut),2000,100);if(part.size()>4)safe=false;}catch(...){safe=false;}}test(safe,"a cut-off file reads its whole copies only");
+        ClipboardHistory fresh;fresh.add(text(L"newer"),200);fresh.add(text(L"first copy"),201);fresh.restoreHistory(back);
+        test(fresh.entries().size()==5&&fresh.entries()[0].text==L"first copy"&&fresh.entries()[1].text==L"newer"&&fresh.entries()[2].kind==ClipEntry::Kind::Image,"kept copies go below new ones, once each");
+        test(fresh.attachPng(fresh.entries()[2].id,std::make_shared<const std::string>("X"))&&!fresh.attachPng(999999,nullptr),"a PNG attaches to its image");}
+    // ---- Phase 5G: the music library --------------------------------------------------------------------
+    {test(isAudioFile(L"C:\\Music\\a.MP3")&&isAudioFile(L"x.flac")&&isAudioFile(L"y.m4a")&&!isAudioFile(L"notes.txt")&&!isAudioFile(L"mp3")&&!isAudioFile(L"C:\\m.mp3\\file"),"songs are known by their extension");
+        test(titleFromFileName(L"C:\\M\\03 - Blue in Green.mp3")==L"Blue in Green"&&titleFromFileName(L"1-02 So_What.flac")==L"So What"&&titleFromFileName(L"2046.mp3")==L"2046"&&titleFromFileName(L"Alarm01.wav")==L"Alarm01"&&titleFromFileName(L".mp3")==L"Untitled","titles from file names");
+        test(foldName(L"  So  What?! ")==L"so what"&&foldName(L"AC/DC")==L"ac dc","names fold for comparing");
+        std::vector<LibraryTrack> t{{L"c:\\1.mp3",L"So What",L"Miles Davis",L"Kind of Blue",562,1},{L"c:\\2.mp3",L"Green Onions",L"Booker T",L"Green Onions",170,1},{L"c:\\3.mp3",L"Blue in Green",L"miles davis",L"Kind of Blue",337,3},{L"c:\\4.mp3",L"Untitled",L"",L"",60,0}};
+        sortLibrary(t);test(t[0].title==L"Green Onions"&&t[1].title==L"So What"&&t[2].title==L"Blue in Green"&&t[3].artist.empty(),"the library lists by artist, album and track, unknown artists last");
+        auto green=searchLibrary(t,L"green");test(green.size()==2&&t[green[0]].title==L"Green Onions"&&t[green[1]].title==L"Blue in Green","a search puts titles that start with it first");
+        auto what=searchLibrary(t,L"MILES what");test(what.size()==1&&t[what[0]].title==L"So What","every word must match");test(searchLibrary(t,L"").size()==4&&searchLibrary(t,L"",2).size()==2,"an empty search lists all, up to the limit");
+        test(matchTrack(t,L"so what!",L"MILES DAVIS",{},0)==1&&matchTrack(t,L"So What",L"",{},0)==1&&matchTrack(t,L"So What",L"Someone Else",{},0)==-1,"a handed-off song is found by title and artist");
+        t[1].size=99;test(matchTrack(t,L"Nope",L"",L"1.mp3",99)==1&&matchTrack(t,L"Nope",L"",L"1.mp3",98)==-1,"or by its file name and size");
+        auto order=shuffledOrder(10,7,3);std::set<size_t> seen(order.begin(),order.end());test(order.size()==10&&seen.size()==10&&order[0]==3&&shuffledOrder(10,7,3)==order,"a shuffle is a whole order from the chosen song");}
+    // ---- Phase 5G: the bud, the sounds, settings v15 --------------------------------------------------
+    {const auto none=budShape(0,120,340,236,36),full=budShape(1,120,340,236,36);
+        test(none.bottom-none.top<1e-9&&std::abs(none.top-119)<1e-9,"a bud starts as nothing at the pill's foot");
+        test(std::abs(full.top-(120+budGap))<1e-9&&std::abs(full.bottom-(120+budGap+36))<1e-9&&std::abs(full.left-222)<1e-9&&std::abs(full.right-458)<1e-9&&std::abs(full.radius-18)<1e-9,"a grown bud is its own pill below");
+        bool grows=true,attached=true;double last=-1;for(int k=0;k<=100;++k){const auto b=budShape(k/100.,120,340,236,36);if(b.bottom<last-1e-9)grows=false;last=b.bottom;if(k<=55&&b.top>119+1e-9)attached=false;if(b.radius>(b.bottom-b.top)/2+1e-9||b.radius>(b.right-b.left)/2+1e-9)grows=false;}
+        test(grows&&attached,"a bud grows down while it touches the pill, then lets go");test(budShape(1.2,120,340,236,36).bottom>full.bottom,"an overshoot stretches it a little");
+        for(auto kind:{Sound::Chime,Sound::Click}){const auto w=soundWave(kind);test(w.size()>44&&std::memcmp(w.data(),"RIFF",4)==0&&std::memcmp(w.data()+8,"WAVEfmt ",8)==0,"the sounds are WAV files");
+            int peak=0;for(size_t i=44;i+1<w.size();i+=2){int16_t v;std::memcpy(&v,w.data()+i,2);peak=std::max(peak,std::abs(int(v)));}int16_t tail;std::memcpy(&tail,w.data()+w.size()-2,2);
+            test(peak>1000&&peak<32767/6&&std::abs(int(tail))<=2,"the sounds are quiet and end in silence");}
+        std::stringstream v14("version 14\nsharing 1\n");auto s=Settings::parse(v14);test(s.clipboardKeep&&s.sounds&&s.handoff&&s.islandDj&&s.stackAlerts&&s.musicLibrary&&s.sharing,"v14 settings gain the v15 features, on");
+        Settings off;off.clipboardKeep=off.sounds=off.handoff=off.islandDj=off.stackAlerts=off.musicLibrary=false;std::stringstream io;off.write(io);auto back=Settings::parse(io);
+        test(!back.clipboardKeep&&!back.sounds&&!back.handoff&&!back.islandDj&&!back.stackAlerts&&!back.musicLibrary&&back.version==15,"v15 settings round-trip");}
+    std::cout<<"PASS "<<checks<<" glass expression, glide, spectrum, settings-model, identity, brand, device, battery, auto-hide, command, clipboard, workspace, privacy, waveform, lab, accent, lyrics, palette, seeking, audio-route, currency, system-action, completion, file-search, command-memory, rolling-digit, GPU, colour, typo, row-group, left-dock, clipboard-history, library, bud, sound and v15 checks\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

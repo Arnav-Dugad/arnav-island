@@ -112,7 +112,7 @@ void IslandWindow::startCapture(CaptureMode mode){
 void IslandWindow::captureCard(int kind,std::wstring title,std::wstring detail,std::shared_ptr<const Artwork> icon,uint32_t colour){
     if(!renderer_)return;if(state_!=IslandState::Compact&&state_!=IslandState::Notification){content_.shelfStatus=title;content_.shelfStatusUntil=seconds()+3;refresh();return;}
     content_.notice={kind,{},std::move(title),std::move(icon),false,std::move(detail),colour};
-    events_.publish({ActivityKind::Notification,"capture",65,double(kind),2.2,kind==11?5:3.2},seconds());transition(IslandState::Notification);presentActivity();alertSplash();
+    {const Activity a{ActivityKind::Notification,"capture",65,double(kind),2.2,kind==11?5.:3.2};if(holdCard(a))return;events_.publish(a,seconds());}transition(IslandState::Notification);presentActivity();alertSplash();
 }
 // Puts text on the clipboard (the island owns the copy) and keeps it in history when that is on.
 void IslandWindow::copyText(const std::wstring& text,bool keep){
@@ -193,6 +193,63 @@ void IslandWindow::savePinnedClips(){
     if(!settings_.clipboardHistory||clips_.pinned()==0){std::filesystem::remove(path,ec);return;}
     std::string cipher;if(!protect(toUtf8(savePins(clips_.entries())),cipher))return;
     store_.submit([path,cipher]{auto temp=path;temp+=L".tmp";{std::ofstream f(temp,std::ios::binary|std::ios::trunc);f<<cipher;}MoveFileExW(temp.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);});
+}
+// ---- Phase 5G: the clipboard history across restarts --------------------------------------------------
+// With "Remember the clipboard after restarts" on, the history is saved (debounced, and at once when Windows
+// signs out or shuts down) to clips-history.nexus, encrypted for this Windows account. Images go as PNG, made
+// once per copy on a worker. Nothing is saved until the saved history has been read back, so a slow start never
+// overwrites it with an empty one.
+namespace {
+constexpr UINT ClipHistoryMessage=WM_APP+70,ClipPngMessage=WM_APP+71;
+constexpr UINT_PTR ClipSaveTimer=60;
+struct ClipPng{uint64_t id;std::shared_ptr<const std::string> png;};
+}
+void IslandWindow::clipsChanged(){
+    if(testing_||!settings_.clipboardHistory)return;
+    // Images still without a PNG get one, each once.
+    for(auto& e:clips_.entries())if(e.kind==ClipEntry::Kind::Image&&!e.png&&!e.dib.empty()&&clipPngPending_.insert(e.id).second){
+        HWND w=window_;std::thread([w,id=e.id,dib=e.dib]{const HRESULT com=CoInitializeEx(nullptr,COINIT_MULTITHREADED);auto job=std::make_unique<ClipPng>(ClipPng{id,dibToPng(dib)});if(SUCCEEDED(com))CoUninitialize();
+            if(PostMessageW(w,ClipPngMessage,0,LPARAM(job.get())))job.release();}).detach();}
+    if(!settings_.clipboardKeep||!clipHistoryReady_)return;
+    // Saved again only when what would be saved changed (ids, pins, images ready).
+    size_t signature=clips_.entries().size();for(auto& e:clips_.entries())signature=signature*1000003u^(e.id*2+(e.pinned?1:0))^(e.png?7919u:0u);
+    if(signature!=clipSignature_){clipSignature_=signature;SetTimer(window_,ClipSaveTimer,1500,nullptr);}
+}
+void IslandWindow::saveClipHistory(bool now){
+    KillTimer(window_,ClipSaveTimer);if(testing_)return;const auto path=store_.directory/L"clips-history.nexus";
+    if(!settings_.clipboardHistory||!settings_.clipboardKeep||clips_.entries().empty()){if(clipHistoryReady_||!settings_.clipboardHistory||!settings_.clipboardKeep){std::error_code ec;std::filesystem::remove(path,ec);}return;}
+    if(!clipHistoryReady_)return;
+    ClipSaveOptions o;o.wallNow=double(std::time(nullptr));o.appNow=seconds();
+    // The copies without their pixels: images travel as their PNG.
+    std::deque<ClipEntry> copy;for(auto& e:clips_.entries()){ClipEntry c;c.kind=e.kind;c.text=e.text;c.files=e.files;c.png=e.png;c.source=e.source;c.sourcePath=e.sourcePath;c.time=e.time;c.pinned=e.pinned;copy.push_back(std::move(c));}
+    auto job=[path,copy=std::move(copy),o]{std::string plain=saveHistory(copy,o),cipher;const bool sealed=protect(plain,cipher);SecureZeroMemory(plain.data(),plain.size());if(!sealed)return;
+        auto temp=path;temp+=L".tmp";{std::ofstream f(temp,std::ios::binary|std::ios::trunc);f<<cipher;if(!f)return;}MoveFileExW(temp.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);};
+    if(now)job();else store_.submit(std::move(job));
+}
+void IslandWindow::loadClipHistory(){
+    if(testing_||clipHistoryLoading_||clipHistoryReady_||!settings_.clipboardHistory||!settings_.clipboardKeep)return;
+    clipHistoryLoading_=true;HWND w=window_;auto path=store_.directory/L"clips-history.nexus";const double wall=double(std::time(nullptr)),app=seconds();
+    std::thread([w,path,wall,app]{
+        auto saved=std::make_unique<std::vector<ClipEntry>>();
+        {std::ifstream f(path,std::ios::binary);if(f){std::stringstream data;data<<f.rdbuf();std::string plain;if(unprotect(data.str(),plain)){*saved=loadHistory(plain,wall,app);SecureZeroMemory(plain.data(),plain.size());}}}
+        const HRESULT com=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
+        for(auto& e:*saved)if(e.kind==ClipEntry::Kind::Image&&e.png){e.dib=pngToDib(*e.png);if(!e.dib.empty())e.thumbnail=dibThumbnail(e.dib,96,&e.imageWidth,&e.imageHeight);}
+        if(SUCCEEDED(com))CoUninitialize();
+        std::erase_if(*saved,[](auto& e){return e.kind==ClipEntry::Kind::Image&&(e.dib.empty()||!e.thumbnail);});
+        if(PostMessageW(w,ClipHistoryMessage,0,LPARAM(saved.get())))saved.release();}).detach();
+}
+bool IslandWindow::clipMessage(UINT m,WPARAM w,LPARAM l,LRESULT& result){
+    switch(m){
+    case ClipHistoryMessage:{std::unique_ptr<std::vector<ClipEntry>> saved(reinterpret_cast<std::vector<ClipEntry>*>(l));clipHistoryLoading_=false;result=0;
+        if(!settings_.clipboardHistory||!settings_.clipboardKeep)return true;clipHistoryReady_=true;
+        for(auto& e:*saved)if(!e.sourcePath.empty()){auto it=clipIcons_.find(e.sourcePath);if(it==clipIcons_.end()){if(clipIcons_.size()>64)clipIcons_.clear();it=clipIcons_.emplace(e.sourcePath,shellIcon(e.sourcePath,32)).first;}e.sourceIcon=it->second;}
+        const size_t before=clips_.entries().size();clips_.restoreHistory(std::move(*saved));if(clips_.entries().size()!=before)store_.log("Info","clipboard_restored");clipViews();return true;}
+    case ClipPngMessage:{std::unique_ptr<ClipPng> job(reinterpret_cast<ClipPng*>(l));clipPngPending_.erase(job->id);if(job->png&&clips_.attachPng(job->id,job->png))clipsChanged();result=0;return true;}
+    case WM_TIMER:if(w==ClipSaveTimer){saveClipHistory(false);result=0;return true;}return false;
+    // Windows is signing out or shutting down: a pending save is written now (the process may end right after).
+    case WM_ENDSESSION:if(w){KillTimer(window_,ClipSaveTimer);if(clipHistoryReady_&&settings_.clipboardHistory&&settings_.clipboardKeep)saveClipHistory(true);}result=0;return true;
+    }
+    return false;
 }
 void IslandWindow::loadPinnedClips(){
     if(testing_||!settings_.clipboardHistory)return;std::ifstream f(store_.directory/L"clips-pinned.nexus",std::ios::binary);if(!f)return;std::stringstream data;data<<f.rdbuf();

@@ -1,0 +1,10 @@
+﻿{
+    "scenario":  "compact-idle-v0.16",
+    "wall_seconds":  30,
+    "cpu_seconds":  0.047,
+    "cpu_percent_of_one_core":  0.16,
+    "logical_processors":  20,
+    "working_set_mb":  99,
+    "private_mb":  77.3,
+    "threads":  27
+}

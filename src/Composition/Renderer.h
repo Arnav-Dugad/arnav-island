@@ -32,6 +32,7 @@
 #include "Productivity/Weather.h"
 #include "Design/Backdrop.h"
 #include "Productivity/ShareService.h"
+#include "Media/Library.h"
 namespace nexus {
 struct ContentSnapshot {
     Page page=Page::Overview;bool expanded=false,live=false,dropHover=false,light=false,blur=true;int layoutSlot=0;bool reducedMotion=false;int settingsPage=0,shelfOffset=0,audioOffset=0;std::wstring activity;std::vector<ShelfItem> shelf;std::vector<AudioDevice> outputs;std::wstring feedback;Action hovered=Action::None;bool pinned=false;
@@ -40,6 +41,20 @@ struct ContentSnapshot {
     std::shared_ptr<const LumaGrid> adapt;
     // Sharing: your PCs on this network, the paired one sends go to, and this PC's name.
     std::vector<SharePeer> nearby;std::string nearbyTarget;std::wstring shareName;
+    // Phase 5G: transfers under way (a Nearby row's progress and Stop, the compact island's chip), and the zone a drag
+    // over the island would drop into (DropShelf, or NearbyBase + the PC's row), shown while files are dragged over it.
+    struct Transfer{uint32_t id=0;std::string peer;std::wstring title,name;uint64_t done=0,total=0;uint32_t count=0;bool outgoing=true;};std::vector<Transfer> transfers;
+    Action dropZone=Action::None;
+    // Phase 5G: the Media page's library (songs in the Music folder, the rows on screen and their covers, the song the
+    // island plays), and the paired PCs offered for continuing the music there.
+    // Phase 5G: an alert waiting below the one that shows, as a bud (kind 0: none): its kind, what it says, how many more wait.
+    struct Bud{int kind=0;std::wstring title;int more=0;} bud;
+    // Island DJ: the colour of what plays next, when the island's own queue knows it (0 otherwise).
+    UINT32 djAccent=0;
+    bool library=false,libraryScanning=false,handoffPicking=false;int libraryOffset=0;std::shared_ptr<const std::vector<LibraryTrack>> libraryTracks;
+    std::vector<std::shared_ptr<const Artwork>> libraryArt;std::wstring libraryPlaying;
+    // The Media page shows what plays (not the library).
+    bool mediaPage()const{return page==Page::Media&&!library;}
     std::wstring headline=L"Your space, in rhythm.";
     std::wstring detail=L"A quieter home for the things happening now.";
     std::wstring media=L"No media session";
@@ -98,6 +113,10 @@ class Renderer {
     ComPtr<IDCompositionSurface> artFromSurface_,artToSurface_,navSurface_,ringsSurface_,dotSurface_;
     ComPtr<IDCompositionEffectGroup> iconEffect_,incomingEffect_,navEffect_,ringsEffect_,batteryDotEffect_,timerDotEffect_;
     ComPtr<IDCompositionRotateTransform> batteryRotation_,timerRotation_;
+    // Phase 5G: the navigation pill is liquid. Its two ends have their own springs, the leading one quicker, so it
+    // stretches like a droplet as it moves and draws itself back in; two caps and a middle keep its corners round.
+    Spring navLeft_{4},navRight_{51};ComPtr<IDCompositionVisual> navCapLeft_,navCapRight_,navMiddle_;ComPtr<IDCompositionRectangleClip> navClipLeft_,navClipRight_;ComPtr<IDCompositionScaleTransform> navMiddleScale_;ComPtr<IDCompositionSurface> navMiddleSurface_;
+    void placeNav(double now,float navY);
     ArtworkHandoff handoff_;Spring navX{4},batteryAngle{0},timerAngle{0};bool ringsEnabled_=true;int ringCount_=2;double ringBattery_=-2,ringTimer_=-2;int ringFlags_=-1;UINT32 ringColor_=0,ringTrack_=0;
     // celebrate: play the glyph's own animation once (a page just chosen, a switch just turned on).
     void icon(Action,Icon,float,float,float,UINT32,int stableSlot=-1,bool celebrate=false);
@@ -188,12 +207,21 @@ class Renderer {
     // Phase 5F: the spectrum ring around the compact cover (24 ticks, one per band, mirrored left and
     // right), the cover turning round while it shows, and a nudge of the header when a swipe changes track.
     struct RingTick{ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionScaleTransform> scale;ComPtr<IDCompositionRotateTransform> rotate;Glide glide{.22,0,.22,0,0};};
+    // Phase 5G, Island DJ: two halos behind the ring, one that blooms as a track starts and one that breathes through its last seconds.
+    struct Halo{ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionEffectGroup> effect;ComPtr<IDCompositionScaleTransform> scale;ComPtr<IDCompositionSurface> surface;UINT32 colour=1;};
+    Halo djBloom_,djEnd_;std::wstring djTitle_,djKey_;void halo(Halo&,UINT32 colour);
     std::array<RingTick,24> ringTicks_;ComPtr<IDCompositionVisual> ring_;ComPtr<IDCompositionEffectGroup> ringEffect_;ComPtr<IDCompositionSurface> ringSurface_;UINT32 spectrumRingColor_=1;bool ringOn_=false;float artRound_=-1;
     ComPtr<IDCompositionTranslateTransform> headerKick_;Spring kick_{0};
+    // Phase 5G: the skip chip of a sideways drag (swipeFollow), and how far the header follows it now.
+    ComPtr<IDCompositionVisual> swipeHint_;ComPtr<IDCompositionSurface> swipeNext_,swipePrevious_;ComPtr<IDCompositionEffectGroup> swipeEffect_;ComPtr<IDCompositionScaleTransform> swipeScale_;
+    int swipeSide_=0;bool swipeArmed_=false;float swipeProgress_=0,swipeOffset_=0,swipeX_=0,swipeY_=0;UINT32 swipeInk_=0xf1f3f7,swipeAccent_=0,swipeDrawn_=0;
     // The lean while dragged (top dock): a shear about the top edge and a stretch about the top centre.
     ComPtr<IDCompositionSkewTransform> leanSkew_;ComPtr<IDCompositionScaleTransform> leanScale_;ComPtr<IDCompositionTransform> leanGroup_;bool leaning_=false;
     // The docked stub of the island while a notification pill has dropped out of it (solid material; glass draws its own).
     ComPtr<IDCompositionVisual> stub_;ComPtr<IDCompositionRectangleClip> stubClip_;ComPtr<IDCompositionEffectGroup> stubEffect_;
+    // Phase 5G: a waiting alert's bud below the drop pill: its fill (solid material; glass draws its own) and its label.
+    ComPtr<IDCompositionVisual> bud_,budLabel_;ComPtr<IDCompositionRectangleClip> budClip_;ComPtr<IDCompositionEffectGroup> budEffect_,budLabelEffect_;ComPtr<IDCompositionSurface> budLabelSurface_;std::wstring budKey_;
+    void updateBud(const ContentSnapshot&,UINT32 ink,UINT32 muted,UINT32 accent,UINT32 raised);
     // The Home weather tile's animated sky (Sky.cpp).
     struct SkyPart{ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionEffectGroup> effect;};std::array<SkyPart,14> skyParts_;
     ComPtr<IDCompositionVisual> sky_;ComPtr<IDCompositionRectangleClip> skyClip_;ComPtr<IDCompositionEffectGroup> skyEffect_;ComPtr<IDCompositionRotateTransform> skyRays_;
@@ -234,6 +262,9 @@ public:
     std::vector<HitTarget> compactTargets;Action compactHit(float x,float y)const{for(auto& t:compactTargets)if(t.contains(x,y))return t.action;return Action::None;}
     // The compact header slides the way a swipe went, then springs back.
     void trackSkip(int direction,bool reduced);
+    // Phase 5G: a sideways drag that can skip a track. The compact header follows the drag (header), and a chip on the
+    // leading side fades and grows in with it, popping once letting go would skip. dx in DIPs; swipeEnd lets it go.
+    void swipeFollow(float dx,float bodyWidth,float bodyHeight,bool header,bool reduced);void swipeEnd(bool skipped,bool reduced);
     // Runs a glint around an island of this size (the outline it will have), after `delay` seconds.
     void splash(float width,float height,float radius,bool attached,double delay,bool reduced);
     unsigned commits=0,redraws=0; bool software=false;

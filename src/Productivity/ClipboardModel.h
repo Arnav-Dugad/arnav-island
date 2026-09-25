@@ -1,6 +1,7 @@
 #pragma once
 #include "Interaction/DashboardModel.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cwchar>
 #include <cwctype>
@@ -17,6 +18,8 @@ struct ClipEntry {
     std::shared_ptr<const Artwork> thumbnail,sourceIcon;std::wstring source,sourcePath;double time=0;uint64_t id=0;uint32_t imageWidth=0,imageHeight=0;
     // Pinned copies stay at the top and are never pushed out by newer ones.
     bool pinned=false;
+    // Phase 5G: an image as PNG, made off the UI thread once it is copied, for keeping it across restarts.
+    std::shared_ptr<const std::string> png;
     size_t bytes()const{size_t n=text.size()*sizeof(wchar_t)+dib.size();for(auto& f:files)n+=f.size()*sizeof(wchar_t);if(thumbnail)n+=thumbnail->pixels.size();return n;}
     bool sameContent(const ClipEntry& o)const{return kind==o.kind&&text==o.text&&files==o.files&&dib.size()==o.dib.size()&&dib==o.dib;}
 };
@@ -122,6 +125,13 @@ public:
     size_t pinned()const{size_t n=0;for(auto& e:entries_)n+=e.pinned;return n;}
     // Restores saved pins (oldest first), keeping any newer copies above them.
     void restore(std::vector<ClipEntry> saved,double now){for(auto& e:saved){e.pinned=true;e.id=++next_;e.time=now;if(pinned()<pinLimit&&std::none_of(entries_.begin(),entries_.end(),[&](auto& x){return x.sameContent(e);}))entries_.push_back(std::move(e));}}
+    // Phase 5G: copies kept from before a restart (newest first) go below any made since; pins stay pins.
+    void restoreHistory(std::vector<ClipEntry> saved){
+        for(auto& e:saved){if(e.pinned&&pinned()>=pinLimit)e.pinned=false;if(std::any_of(entries_.begin(),entries_.end(),[&](auto& x){return x.sameContent(e);}))continue;
+            if(e.kind!=ClipEntry::Kind::Image&&e.kind!=ClipEntry::Kind::Files&&clipPreview(e.text).empty())continue;if(e.bytes()>memoryLimit)continue;e.id=++next_;entries_.push_back(std::move(e));}
+        trim();}
+    // The PNG made for an image copy (false when that copy is gone).
+    bool attachPng(uint64_t id,std::shared_ptr<const std::string> png){for(auto& e:entries_)if(e.id==id&&e.kind==ClipEntry::Kind::Image){e.png=std::move(png);return true;}return false;}
     const ClipEntry* find(uint64_t id)const{for(auto& e:entries_)if(e.id==id)return &e;return nullptr;}
     void remove(uint64_t id){std::erase_if(entries_,[&](auto& e){return e.id==id;});}
     // Clear keeps pins; forget drops everything (turning history off).
@@ -168,6 +178,52 @@ inline std::vector<ClipEntry> loadPins(const std::wstring& text){
         else{e.text=body;if(clipPreview(e.text).empty())continue;}
         out.push_back(std::move(e));}
     return out;
+}
+// ---- Phase 5G: the history across restarts ---------------------------------------------------
+// The whole history as bytes (the caller encrypts them for this Windows user): "ARCL", a version,
+// then per copy, oldest first: kind, pinned, when it was copied (Unix seconds), the app, the app's
+// path, the text, the file paths and the PNG of an image. Copies that look like passwords or keys
+// are left out unless pinned; images are kept only once their PNG is made, at most 16 MB each.
+// wallNow and appNow are the same moment on the wall clock and on the copies' own clock.
+struct ClipSaveOptions{double wallNow=0,appNow=0;bool keepSecrets=false;};
+inline std::string saveHistory(const std::deque<ClipEntry>& entries,const ClipSaveOptions& o){
+    std::string out="ARCL";out+=char(1);
+    auto u32=[&](uint32_t v){for(int i=0;i<4;++i)out+=char((v>>(8*i))&255);};
+    auto bytes=[&](const std::string& b){u32(uint32_t(b.size()));out+=b;};
+    auto text=[&](const std::wstring& w){std::string b;b.reserve(w.size()*2);for(wchar_t c:w){b+=char(c&255);b+=char((c>>8)&255);}bytes(b);};
+    std::vector<const ClipEntry*> kept;
+    for(auto it=entries.rbegin();it!=entries.rend();++it){const auto& e=*it;
+        if(e.kind==ClipEntry::Kind::Image&&(!e.png||e.png->empty()||e.png->size()>(16u<<20)))continue;
+        if(!e.pinned&&!o.keepSecrets&&(e.kind==ClipEntry::Kind::Text)&&looksSecret(e.text))continue;
+        kept.push_back(&e);}
+    u32(uint32_t(kept.size()));
+    for(auto* e:kept){out+=char(int(e->kind));out+=char(e->pinned?1:0);
+        const double when=o.wallNow-(o.appNow-e->time);const int64_t t=int64_t(std::llround(std::max(0.,when)));for(int i=0;i<8;++i)out+=char((uint64_t(t)>>(8*i))&255);
+        text(e->source);text(e->sourcePath);text(e->kind==ClipEntry::Kind::Image?std::wstring():e->text);
+        u32(uint32_t(e->files.size()));for(auto& f:e->files)text(f);
+        bytes(e->kind==ClipEntry::Kind::Image?*e->png:std::string());}
+    return out;
+}
+// Reads saveHistory's bytes back, newest first, with each copy's time on the copies' own clock.
+// Anything malformed ends the list there; images come back as PNG only (the caller decodes them).
+inline std::vector<ClipEntry> loadHistory(const std::string& in,double wallNow,double appNow){
+    std::vector<ClipEntry> out;size_t at=0;
+    auto need=[&](size_t n){return at+n<=in.size();};
+    auto u32=[&](uint32_t& v)->bool{if(!need(4))return false;v=0;for(int i=0;i<4;++i)v|=uint32_t(uint8_t(in[at+i]))<<(8*i);at+=4;return true;};
+    auto bytes=[&](std::string& b,size_t limit)->bool{uint32_t n=0;if(!u32(n)||n>limit||!need(n))return false;b.assign(in,at,n);at+=n;return true;};
+    auto text=[&](std::wstring& w,size_t limit)->bool{std::string b;if(!bytes(b,limit*2)||b.size()%2)return false;w.resize(b.size()/2);for(size_t i=0;i<w.size();++i)w[i]=wchar_t(uint8_t(b[2*i])|(uint8_t(b[2*i+1])<<8));return true;};
+    if(in.size()<9||in.compare(0,4,"ARCL")!=0||in[4]!=char(1))return out;at=5;
+    uint32_t count=0;if(!u32(count))return out;count=std::min<uint32_t>(count,256);
+    for(uint32_t k=0;k<count;++k){ClipEntry e;if(!need(10))break;const int kind=uint8_t(in[at]);const bool pinned=in[at+1]!=0;at+=2;if(kind>3)break;
+        uint64_t t=0;for(int i=0;i<8;++i)t|=uint64_t(uint8_t(in[at+i]))<<(8*i);at+=8;
+        e.kind=ClipEntry::Kind(kind);e.pinned=pinned;
+        if(!text(e.source,1024)||!text(e.sourcePath,32768)||!text(e.text,1u<<20))break;
+        uint32_t files=0;if(!u32(files)||files>64)break;bool ok=true;for(uint32_t f=0;f<files&&ok;++f){std::wstring path;ok=text(path,32768);if(ok)e.files.push_back(std::move(path));}if(!ok)break;
+        std::string png;if(!bytes(png,16u<<20))break;
+        if(e.kind==ClipEntry::Kind::Image){if(png.empty())continue;e.png=std::make_shared<const std::string>(std::move(png));}
+        else if(e.kind==ClipEntry::Kind::Files?e.files.empty():clipPreview(e.text).empty())continue;
+        e.time=appNow-std::max(0.,wallNow-double(int64_t(t)));out.push_back(std::move(e));}
+    std::reverse(out.begin(),out.end());return out;
 }
 // "Just now", "4 min", "2 h", "3 d".
 inline std::wstring ageText(double seconds){

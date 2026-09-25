@@ -4,8 +4,8 @@
 #include <optional>
 namespace nexus {
 // Reads the Windows clipboard when it changes (WM_CLIPBOARDUPDATE on the island
-// window) and can put a kept item back. Content is never written to disk or
-// logged. Copies marked private by their source (the formats Windows' own
+// window) and can put a kept item back. Content is never logged; it reaches the disk
+// only encrypted for this Windows user, when the history is kept across restarts. Copies marked private by their source (the formats Windows' own
 // clipboard history honours) and copies from password managers are skipped.
 class ClipboardWatcher {
     HWND window_=nullptr;bool listening_=false;DWORD ownSequence_=0;
@@ -23,4 +23,8 @@ public:
 };
 // A device-independent bitmap as a small premultiplied thumbnail (longest side `size`).
 std::shared_ptr<const Artwork> dibThumbnail(const std::vector<uint8_t>& dib,UINT size,uint32_t* width=nullptr,uint32_t* height=nullptr);
+// Phase 5G: an image copy as PNG (to keep it across restarts; call off the UI thread, COM initialised) and back
+// (a bottom-up 32-bit DIB). Empty on failure.
+std::shared_ptr<const std::string> dibToPng(const std::vector<uint8_t>& dib);
+std::vector<uint8_t> pngToDib(const std::string& png);
 }

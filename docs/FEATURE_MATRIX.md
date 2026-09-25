@@ -1,4 +1,4 @@
-# Feature status — v0.15 preview
+# Feature status — v0.16 preview
 
 | Area | Implemented | Limits |
 |---|---|---|
@@ -138,3 +138,21 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Chips editor | Drag or arrow keys in Settings › Compact; seven chips, saved as an order | When space is short, chips on the right win |
 | Adaptive text | Wallpaper luminance (fill/fit/stretch/centre/tile) through the Clear scrim; letters, icons and rolling digits flip per glyph | Clear glass, top dock, only when no window overlaps the island; span wallpapers treated as fill |
 | Motion | Digit blur and stretch on jumps of 2.5+ figures, icon morphs (play/pause, volume/mute, microphone) and celebrations, lean with rubber band while dragged, shadow that deepens as the island grows | Lean on the top dock only |
+
+| v0.16 feature | Implemented | Limits |
+|---|---|---|
+| Drop onto a PC | While files are dragged over the island with a PC paired, the Shelf page shows a Shelf zone and a zone per paired PC (up to four); the zone under the pointer lights; a drop on a PC sends there | Text dropped on a PC goes to the Shelf (only files and folders are sent) |
+| Folders and batches | Protocol 2: one transfer carries any number of files and folder trees (up to 20,000 files, 16 GB a file, 1 TB in all); each file checked by SHA-256; received as `.arnavpart` and renamed; free names for top-level folders | Both PCs need 0.16; links and junctions inside folders are not followed |
+| Transfers | Progress on the PC's Nearby row and a compact chip; Stop from either PC (waits wake within 0.2 s); the offer card goes away when the sender stops; space checked before accepting | One network segment |
+| Shelf stack | Send Shelf on each paired row; the item count drags as a stack of every Shelf file (onto a PC in the island, or out to any app) | Files only |
+| Island player | Media Foundation media engine, one song at a time from a queue; Windows media transport controls for the window (title, artist, cover, timeline, buttons, seeking); media keys; other players pause when it starts; a paused song gives its session up after 20 minutes | Plays what Windows can decode (Ogg/Opus need the Web Media Extensions) |
+| Music library | Music folder scanned on first use (tags via the shell's property store, covers via its thumbnails), sorted by artist, album and track; five rows with covers; search in the command bar (*play* ...); *shuffle* | Music folder only; up to 8,000 songs, 12 levels; in memory |
+| Continue on | Title, artist, album, app and position to a paired PC; there: a player with the song, the library, the song's file (island songs), or the same app opened (then it moves to the position once the app shows the song); this PC pauses | Browser tabs can't follow; other apps resume whatever they resume |
+| Drag to skip | Sideways drags over the music skip in the compact island, the Live Island, Home and the Media page; a chip grows on the leading side and snaps past 44 DIPs; the header follows the finger; touchpad sideways swipes skip too | Players switch with the dots under the cover (no longer by swiping) |
+| Two alerts at once | A second alert waits as a bud: it grows from the pill's foot, lets go 8 DIPs below and settles with a spring; up to four wait; clicking brings it forward; an unanswered pairing, offer or music card is never lost; the same alert updating replaces in place | Drop pill (top dock) only; in DirectComposition, the glass (a fifth part with its own rim), the shadow and the input region |
+| Clipboard across restarts | `clips-history.nexus` under DPAPI; images as PNG made on a worker; saved 1.5 s after a change and at sign-out or shutdown, only after the saved history has been read back | Password-like copies only when pinned |
+| Sounds | A two-note chime (-18 dBFS) with alerts, a click (-20 dBFS) in the chips editor; generated in memory | Quiet while an app is full screen; off in test runs |
+| Island DJ | Halo behind the compact ring: a bloom in the new cover's colours on each track, a breathing glow in the next song's colours through a track's last 10 s | The next song is known only in the island's own queue |
+| Liquid navigation pill | Two edge springs (leading quicker) with caps and a stretched middle | — |
+| Weather | WinHTTP decompression failure detected and retried uncompressed; the town is kept and retried every 2 minutes when offline | — |
+

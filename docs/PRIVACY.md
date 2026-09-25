@@ -127,3 +127,18 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **Brightness and the Controls page** change Wi-Fi, Bluetooth, airplane mode, dark mode, brightness and the microphone only when you press them.
 - **Fullscreen peek** watches the pointer at the screen edge only while a fullscreen app has hidden the island and something is playing.
 - Public screenshots use illustrative PCs ("Studio PC", "Travel laptop"), a sample town and an illustrative backdrop; test runs never start sharing, weather or site icons.
+
+## v0.16 clipboard, music and sharing
+
+- **The clipboard history is kept across restarts** (on by default while clipboard history itself is on; clipboard history stays off until you turn it on). It is saved in `clips-history.nexus`, encrypted with Windows DPAPI for your account, and read back when the island starts:
+  - text, links and file lists as they were copied, and images as PNG
+  - which app they came from, and when
+  - copies that look like passwords, one-time codes or keys are not written unless you pin them
+  - copies from password managers and copies marked private are never read at all, as before
+  - turning off *Remember the clipboard after restarts* or clipboard history, or clearing it, deletes the file
+- **The music library** reads the songs in your Music folder (their tags and covers) on this PC when you open Media › Library, shuffle or type *play* and a song. The list and covers are kept in memory only and never sent. Test runs read only a folder they are given (Windows' own sounds), never the Music folder.
+- **The island's player** registers with Windows' media controls for its window, so Windows shows the song's title, artist and cover in its own media controls, as it does for any player.
+- **Continue on my other PC** (only with sharing on) sends, to a paired PC you choose, the song's title, artist, album, the app playing it and where it is, encrypted like shared files. When the island itself plays the song from a file and the other PC asks for it, that file is sent too (it's kept in `Handoff` in the island's folder on the other PC). Nothing is sent until you press **Continue on**; the other PC plays nothing until someone there presses **Play here**. To play the song there, the island may open the same app (Spotify by its link, a Store app by its id).
+- **Sharing** (protocol 2) now also carries folders, keeping their tree under a new folder in Downloads; received paths are cleaned (no `..`, drive letters, reserved names or unsafe characters; at most 24 levels). Discovery announces the protocol number with the port.
+- **Sounds** are generated in memory and played through Windows' default output; nothing is recorded.
+- Public screenshots use Windows' own sounds as the library, illustrative PCs and a made-up transfer.

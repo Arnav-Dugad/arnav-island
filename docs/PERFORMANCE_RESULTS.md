@@ -197,3 +197,16 @@ Compact island with the development PC's own settings (Live Island at 560 DIPs, 
 | v0.14, same settings | 0.031 s | 0.10% | 77.0 MB | 21 |
 
 v0.15 has two more threads than v0.14, both waiting when idle. One is the brightness setter behind the Controls page's slider, which waits until a level is set. Sharing, weather, site icons and the adaptive-text wallpaper reader start no threads until they are turned on. The weather sky and the edge light are compositor animations, so they cost the app no CPU while they play; the sky plays for 60 s at a time and then rests, so an open Home page doesn't keep the compositor busy.
+
+## v0.16 idle measurements
+
+Same conditions as v0.15 (the development PC's own settings, compact, nothing playing, 30 s after a 6 s settle); the installed v0.15 measured straight after. Raw data: `evidence/v0.16`.
+
+| Build | CPU time | One-core equivalent | Private memory | Threads |
+|---|---:|---:|---:|---:|
+| v0.16, first run | 0.047 s | 0.16% | 77.3 MB | 27 |
+| v0.16, second run | 0.031 s | 0.10% | 78.8 MB | 27 |
+| v0.15, same settings | 0.016 s | 0.05% | 77.8 MB | 26 |
+
+The differences are one to three of Windows' 15.6 ms scheduler ticks over 30 seconds. The extra thread is the music library's worker, which waits until the library is first used; the player itself starts only with the first song. The halo, the bud and the liquid pill are compositor animations and cost the app nothing while they play.
+

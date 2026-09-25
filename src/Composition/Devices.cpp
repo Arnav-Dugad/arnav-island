@@ -1,5 +1,14 @@
 #include "Renderer.h"
 namespace nexus {
+void Renderer::updateBud(const ContentSnapshot& s,UINT32 ink,UINT32 muted,UINT32 accent,UINT32 raised){
+    if(!s.bud.kind)return;const std::wstring key=std::to_wstring(s.bud.kind)+L"|"+s.bud.title+L"|"+std::to_wstring(s.bud.more)+L"|"+std::to_wstring(ink)+L"|"+std::to_wstring(accent);if(key==budKey_&&budLabelSurface_)return;budKey_=key;
+    const int k=s.bud.kind;const Icon glyph=k==1||k==2?Icon::Bluetooth:k==3?Icon::Bolt:k==4?Icon::Battery:k==5?Icon::Camera:k==6?Icon::Microphone:k==7?Icon::Location:k==8?Icon::Earbuds:k==9?Icon::Eyedropper:k==10?Icon::Text:k==11||k==12?Icon::Snip:k==13?Icon::Heart:k==14?Icon::Link:k==15?Icon::Download:k==17?Icon::Handoff:Icon::Laptop;
+    surface(budLabelSurface_,236,36,[&](ID2D1RenderTarget* rt){rt->Clear(D2D1::ColorF(0,0));ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(raised,.9f),&b));
+        rt->FillEllipse(D2D1::Ellipse({22,18},12,12),b.Get());drawIcon(rt,d2d_.Get(),glyph,14,10,16,accent);
+        const float room=s.bud.more>0?150.f:180.f;text(rt,s.bud.title,42,0,room,11,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,36);
+        if(s.bud.more>0)text(rt,L"+"+std::to_wstring(s.bud.more),196,0,30,10,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_TRAILING,36);});
+    budLabel_->SetContent(budLabelSurface_.Get());
+}
 namespace {
 Icon kindIcon(DeviceKind k){switch(k){case DeviceKind::Headphones:return Icon::Audio;case DeviceKind::Earbuds:return Icon::Earbuds;case DeviceKind::Speaker:return Icon::Speaker;case DeviceKind::Phone:return Icon::Phone;case DeviceKind::Keyboard:return Icon::Keyboard;case DeviceKind::Mouse:return Icon::Mouse;case DeviceKind::Gamepad:return Icon::Gamepad;case DeviceKind::Watch:return Icon::Watch;case DeviceKind::Computer:return Icon::Stats;case DeviceKind::Audio:return Icon::Volume;default:return Icon::Bluetooth;}}
 }
@@ -49,7 +58,10 @@ void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UI
             if(s.notice.kind==11){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({4,4,52,52},12,12),b.Get());if(s.notice.icon)drawPreview(rt,*s.notice.icon,6,6,44,44);else drawIcon(rt,d2d_.Get(),Icon::Snip,16,16,24,accent);return;}
             if((s.notice.kind>=5&&s.notice.kind<=7)||s.notice.kind==12){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());
                 if(s.notice.icon)drawPreview(rt,*s.notice.icon,12,12,32,32);else drawIcon(rt,d2d_.Get(),s.notice.kind==5?Icon::Camera:s.notice.kind==6?Icon::Microphone:s.notice.kind==12?Icon::Snip:Icon::Location,16,16,24,ink);}
-            else if(s.notice.kind>=14&&s.notice.kind<=16){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),s.notice.kind==14?Icon::Link:s.notice.kind==15?Icon::Download:Icon::Laptop,16,16,24,accent);}
+            else if(s.notice.kind>=14&&s.notice.kind<=17){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());
+                // Music from another PC shows its cover when this PC has the song, else a note.
+                if(s.notice.kind==17&&s.notice.icon){ComPtr<ID2D1RoundedRectangleGeometry> g;d2d_->CreateRoundedRectangleGeometry(D2D1::RoundedRect({4,4,52,52},12,12),&g);ComPtr<ID2D1Layer> layer;rt->CreateLayer(&layer);rt->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),g.Get()),layer.Get());drawPreview(rt,*s.notice.icon,4,4,48,48);rt->PopLayer();}
+                else drawIcon(rt,d2d_.Get(),s.notice.kind==14?Icon::Link:s.notice.kind==15?Icon::Download:s.notice.kind==17?Icon::Handoff:Icon::Laptop,16,16,24,accent);}
             else if(s.notice.kind==13){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),Icon::Heart,16,16,24,accent);}
             else if(s.notice.kind==3||s.notice.kind==4){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(s.notice.kind==3?0x3fcf7a:raised,s.notice.kind==3?1.f:.9f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),s.notice.kind==3?Icon::Bolt:Icon::Battery,14,14,28,s.notice.kind==3?0x0b1f12:ink);}
             else deviceBadge(rt,s.notice.device,4,4,48,raised,ink);});cardIcon_->SetContent(cardIconSurface_.Get());

@@ -28,9 +28,11 @@ std::wstring copiedLabel(const ClipEntry& e){
 // Providers follow preferences: clipboard listening only when history is on,
 // the privacy watcher only when a privacy feature is on, the shortcut on demand.
 void IslandWindow::syncProductivity(){
-    if(settings_.clipboardHistory&&!testing_){clipboard_.start(window_);if(!pinsLoaded_){pinsLoaded_=true;loadPinnedClips();}}
+    if(settings_.clipboardHistory&&!testing_){clipboard_.start(window_);if(!pinsLoaded_){pinsLoaded_=true;loadPinnedClips();}
+        // Remembering across restarts: read the saved history back once; turned off, the saved copy is removed.
+        if(settings_.clipboardKeep)loadClipHistory();else if(clipHistoryReady_){clipHistoryReady_=false;clipSignature_=0;saveClipHistory(true);}}
     // Turning history off forgets everything, pinned copies included.
-    else{clipboard_.stop();pinsLoaded_=false;if(!clips_.entries().empty()||!content_.clips.empty()){clips_.forget();clipViews();}savePinnedClips();}
+    else{clipboard_.stop();pinsLoaded_=false;if(!clips_.entries().empty()||!content_.clips.empty()){clips_.forget();clipViews();}savePinnedClips();clipHistoryReady_=false;clipSignature_=0;saveClipHistory(true);}
     if(settings_.pinnedShelf!=pinnedShelfWas_){pinnedShelfWas_=settings_.pinnedShelf;if(settings_.pinnedShelf&&content_.shelf.empty())loadShelfFile();shelfChanged();}
     syncCaptureHotkeys();
     const bool privacy=(settings_.privacyDots||settings_.privacyCards)&&!testing_;
@@ -91,6 +93,7 @@ void IslandWindow::clipViews(){
             if(settings_.richClips&&e.kind==ClipEntry::Kind::Link){c.host=linkHost(e.text);c.path=linkPath(e.text);if(settings_.siteIcons&&siteIcons_&&!c.host.empty())c.favicon=siteIcons_->get(c.host);}}
         c.meta=(e.source.empty()?std::wstring(L"Copied"):e.source)+L"  ·  "+ageText(now-e.time);content_.clips.push_back(std::move(c));}
     content_.clipOffset=std::clamp(content_.clipOffset,0,std::max(0,int(content_.clips.size())-4));
+    clipsChanged();
 }
 void IslandWindow::clearClips(){clips_.clear();clipViews();store_.log("Info","clipboard_cleared");refresh();}
 // `index` is a row of the Shelf list (pinned first), matched to its copy by id.
@@ -113,7 +116,7 @@ void IslandWindow::showPrivacyNotice(const PrivacyUse& u){
     if(!renderer_||(state_!=IslandState::Compact&&state_!=IslandState::Notification))return;
     if(settings_.autoHide&&autoHide_.hidden&&!settings_.alertsReveal)return;
     content_.notice={u.capability==Capability::Camera?5:u.capability==Capability::Microphone?6:u.capability==Capability::ScreenCapture?12:7,{},u.app,u.icon};
-    events_.publish({ActivityKind::Notification,"privacy",70,double(content_.notice.kind),2.4,3.4},seconds());
+    {const Activity a{ActivityKind::Notification,"privacy",70,double(content_.notice.kind),2.4,3.4};if(holdCard(a))return;events_.publish(a,seconds());}
     transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info","privacy_card_shown");
 }
 // ---- Command bar -----------------------------------------------------------
@@ -155,6 +158,15 @@ void IslandWindow::revealResult(size_t index){
 void IslandWindow::commandResults(){
     if(!commands_||!content_.command.active||content_.command.clips)return;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;
     auto seq=commands_->results(results,icons);if(seq<commandSeq_)return;commandSeq_=seq;
+    // Phase 5G: "play" and a song finds it in your Music folder; "shuffle" plays it all; "continue on" offers the music to a paired PC.
+    {const std::wstring typed=lowered(trimmed(content_.command.text));std::vector<CommandResult> extra;
+        if(settings_.musicLibrary&&library_){
+            if(typed.starts_with(L"play ")&&typed.size()>5){library_->scan();if(auto tracks=library_->tracks())for(size_t i:searchLibrary(*tracks,typed.substr(5),4)){const auto& t=(*tracks)[i];CommandResult r;r.kind=CommandKind::PlaySong;r.title=L"Play "+t.title;r.detail=(t.artist.empty()?std::wstring():t.artist+L"  \u00b7  ")+L"From your Music folder";r.target=t.path;extra.push_back(std::move(r));}}
+            if(typed==L"shuffle"||typed==L"shuffle music"||typed==L"shuffle my music"||typed==L"play my music"||typed==L"play music"){CommandResult r;r.kind=CommandKind::ShuffleMusic;r.title=L"Shuffle my music";r.detail=L"Songs from your Music folder, played by the island";extra.push_back(std::move(r));}}
+        if(settings_.sharing&&settings_.handoff&&content_.playback.available&&(typed==L"handoff"||typed.starts_with(L"continue on")||typed.starts_with(L"play on"))){
+            const std::wstring who=typed.starts_with(L"continue on")?trimmed(typed.substr(11)):typed.starts_with(L"play on")?trimmed(typed.substr(7)):L"";
+            for(auto& p:content_.nearby)if(p.paired&&p.online&&p.version>=shareProtocol&&(who.empty()||lowered(p.name).find(who)!=std::wstring::npos)){CommandResult r;r.kind=CommandKind::ContinueOn;r.title=L"Continue on "+p.name;r.detail=content_.playback.title+L"  \u00b7  plays there from where it is";r.target=std::wstring(p.id.begin(),p.id.end());extra.push_back(std::move(r));}}
+        if(!extra.empty()){icons.insert(icons.begin(),extra.size(),nullptr);results.insert(results.begin(),std::make_move_iterator(extra.begin()),std::make_move_iterator(extra.end()));}}
     auto& c=content_.command;bool same=results.size()==c.results.size();for(size_t i=0;same&&i<results.size();++i)same=results[i].title==c.results[i].title;
     c.results=std::move(results);c.icons=std::move(icons);if(!same){c.selected=0;if(c.armed){c.armed=false;c.status.clear();}}c.selected=std::clamp(c.selected,0,std::max(0,int(std::min<size_t>(5,c.results.size()))-1));
     // The bar grows and shrinks with its results, on the body spring.
@@ -256,9 +268,15 @@ void IslandWindow::runCommand(size_t index){
     case CommandKind::Snip:case CommandKind::CopyText:case CommandKind::PickColour:store_.log("Info","command_run");startCapture(r.kind==CommandKind::Snip?CaptureMode::Snip:r.kind==CommandKind::CopyText?CaptureMode::Text:CaptureMode::Colour);return;
     case CommandKind::MicMute:case CommandKind::MicUnmute:case CommandKind::MicToggle:{if(!audio_||!audio_->micAvailable){commandStatus(L"No microphone is connected",true,false);return;}
         const bool muted=audio_->micMuted;if(r.kind==CommandKind::MicToggle||(r.kind==CommandKind::MicMute)!=muted)audio_->toggleMic();done();return;}
-    case CommandKind::Play:case CommandKind::Pause:{bool want=r.kind==CommandKind::Play;if(media_&&content_.playback.canToggle&&content_.playback.playing!=want)media_->control(1,content_.playback.source,content_.playback.id);done();return;}
-    case CommandKind::Next:if(media_&&content_.playback.canNext)media_->control(3,content_.playback.source,content_.playback.id);done();return;
-    case CommandKind::Previous:if(media_&&content_.playback.canPrevious)media_->control(2,content_.playback.source,content_.playback.id);done();return;
+    case CommandKind::Play:case CommandKind::Pause:{bool want=r.kind==CommandKind::Play;if(content_.playback.canToggle&&content_.playback.playing!=want)mediaCommand(want?4:5);
+        // Nothing to resume: "play" shuffles your music instead.
+        else if(want&&!content_.playback.available&&settings_.musicLibrary)shuffleLibrary();done();return;}
+    case CommandKind::Next:if(content_.playback.canNext)mediaCommand(3);done();return;
+    case CommandKind::Previous:if(content_.playback.canPrevious)mediaCommand(2);done();return;
+    // Phase 5G: a song from the library (the list plays on from it), shuffling it, and continuing the music on a PC.
+    case CommandKind::PlaySong:{auto tracks=library_?library_->tracks():nullptr;if(tracks)for(size_t i=0;i<tracks->size();++i)if((*tracks)[i].path==r.target){std::vector<size_t> order(tracks->size());for(size_t k=0;k<order.size();++k)order[k]=k;playLibrary(order,i);break;}done();return;}
+    case CommandKind::ShuffleMusic:shuffleLibrary();done();return;
+    case CommandKind::ContinueOn:{for(size_t i=0;i<content_.nearby.size();++i)if(content_.nearby[i].id==std::string(r.target.begin(),r.target.end())){handoffTo(i);break;}closeCommand(false);return;}
     case CommandKind::Timer:content_.focus.select(r.target==L"break"?FocusClock::Mode::Break:FocusClock::Mode::Focus,now);content_.focus.duration=r.value;content_.focus.toggle(now);clockTimer();done();return;
     case CommandKind::Stopwatch:content_.focus.select(FocusClock::Mode::Stopwatch,now);content_.focus.toggle(now);clockTimer();done();return;
     case CommandKind::StopTimer:content_.focus.reset(now);clockTimer();done();return;

@@ -63,6 +63,8 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(2,L"Text that adapts to the wallpaper",L"On Clear glass, each letter turns light or dark to stand out from the wallpaper behind it","adaptiveText",&Settings::adaptiveText);
     number(2,C::Choice,L"Alerts",L"How device, charging and privacy alerts appear","notifyStyle",&Settings::notifyStyle,0,1,1,{L"Grow the island",L"Drop a pill"});
     toggle(2,L"Light along the edge",L"A glint runs around the island when an alert arrives","edgeSplash",&Settings::edgeSplash);
+    toggle(2,L"Two alerts at once",L"When a second alert arrives while one shows, it buds off below the first instead of waiting","stackAlerts",&Settings::stackAlerts);
+    toggle(2,L"Sounds",L"A faint chime with the light along the edge and soft clicks as you arrange chips. Quiet while something plays full screen","sounds",&Settings::sounds);
     number(3,C::Choice,L"Motion character",L"","preset",&Settings::preset,0,5,1,{L"Balanced",L"Fluid",L"Playful",L"Snappy",L"Calm",L"Custom"});
     // Choosing a preset shows its values on the sliders below; moving a slider makes the spring Custom.
     v.back().set=[](Settings& s,int x){s.preset=std::clamp(x,0,5);if(s.preset<5){auto p=preset(MotionPreset(s.preset));s.springStiffness=int(std::lround(p.stiffness));s.springDamping=int(std::lround(p.damping));s.springMass=int(std::lround(p.mass*100));}};
@@ -100,6 +102,9 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(5,L"Synced lyrics",L"From LRCLIB, a free lyrics library. Only the song title and artist are sent; lyrics are saved on this PC","lyrics",&Settings::lyrics);
     toggle(5,L"Lyrics in the compact island",L"Show the line being sung while music plays","lyricsCompact",&Settings::lyricsCompact);
     toggle(5,L"Now Playing over fullscreen apps",L"While the island is hidden for a fullscreen app, touch its edge to see and control what is playing","fullscreenPeek",&Settings::fullscreenPeek);
+    toggle(5,L"Island DJ",L"Near the end of a track the ring glows, and it blooms into the next track’s colours as it starts","islandDj",&Settings::islandDj);
+    toggle(5,L"Music library",L"Play songs from your Music folder right in the island (Media › Library). The list stays on this PC","musicLibrary",&Settings::musicLibrary);
+    toggle(5,L"Continue on my other PC",L"With sharing on, send what is playing to a paired PC (Media › Continue on). Only the song’s title, artist and position are sent, encrypted","handoff",&Settings::handoff);
     toggle(5,L"Artwork pulses to the beat",L"The cover swells gently with the bass of what Windows is playing","artPulse",&Settings::artPulse);
     button(5,L"Saved lyrics",L"Remove the lyrics kept on this PC",L"Clear",SettingAction::ClearLyrics);
     toggle(5,L"App logos",L"Show the real icon of the app that is playing","appIcons",&Settings::appIcons);
@@ -120,7 +125,8 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     for(int slot=0;slot<3;++slot){SettingItem i;i.section=7;i.control=SettingControl::Stepper;i.key="home"+std::to_string(slot);i.lo=0;i.hi=metricCount-1;i.options=metricNames();i.title=std::wstring(L"Home statistic ")+wchar_t(L'1'+slot);i.detail=L"Values never repeat";
         i.get=[slot](const Settings& s){return s.homeMetrics[slot];};i.set=[slot](Settings& s,int x){assignMetric(s.homeMetrics,slot,x);};v.push_back(std::move(i));}
     button(7,L"Restore navigation and statistics",L"Other preferences stay as they are",L"Reset layout",SettingAction::ResetLayout);
-    toggle(8,L"Clipboard history",L"Your last 24 copies, in memory only (pins are saved encrypted). Password managers are skipped","clipboardHistory",&Settings::clipboardHistory);
+    toggle(8,L"Clipboard history",L"Your last 24 copies. Password managers and copies marked private are skipped","clipboardHistory",&Settings::clipboardHistory);
+    toggle(8,L"Remember the clipboard after restarts",L"Keeps the history on this PC, encrypted for your Windows account. Copies that look like passwords are kept only when pinned","clipboardKeep",&Settings::clipboardKeep);
     toggle(8,L"Hide passwords and codes",L"Copies that look like a password, one-time code or key stay hidden until you point at them","hideSecrets",&Settings::hideSecrets);
     toggle(8,L"Rich clipboard rows",L"Links show their site, colours show a swatch and code is highlighted","richClips",&Settings::richClips);
     toggle(8,L"Site icons for links",L"Fetches a copied link\u2019s icon from that site itself; nothing else is sent","siteIcons",&Settings::siteIcons);

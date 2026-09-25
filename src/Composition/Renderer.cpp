@@ -19,6 +19,8 @@ void Renderer::initialize(HWND hwnd,float dpi,HWND shadow) {
     check(device_->CreateRectangleClip(&clip_));check(clip_->SetLeft(0.f));check(clip_->SetTop(0.f));check(body_->SetClip(clip_.Get()));
     check(device_->CreateRectangleClip(&innerClip_));check(innerClip_->SetLeft(0.f));check(innerClip_->SetTop(0.f));check(inner_->SetClip(innerClip_.Get()));
     check(device_->CreateVisual(&stub_));check(device_->CreateRectangleClip(&stubClip_));check(stub_->SetClip(stubClip_.Get()));check(device_->CreateEffectGroup(&stubEffect_));check(stub_->SetEffect(stubEffect_.Get()));stubEffect_->SetOpacity(0.f);check(root_->AddVisual(stub_.Get(),FALSE,body_.Get()));
+    check(device_->CreateVisual(&bud_));check(device_->CreateRectangleClip(&budClip_));check(bud_->SetClip(budClip_.Get()));check(device_->CreateEffectGroup(&budEffect_));check(bud_->SetEffect(budEffect_.Get()));budEffect_->SetOpacity(0.f);check(root_->AddVisual(bud_.Get(),FALSE,body_.Get()));
+    check(device_->CreateVisual(&budLabel_));check(device_->CreateEffectGroup(&budLabelEffect_));check(budLabel_->SetEffect(budLabelEffect_.Get()));budLabelEffect_->SetOpacity(0.f);check(bud_->AddVisual(budLabel_.Get(),FALSE,nullptr));
     check(inner_->SetOffsetX(1));check(inner_->SetOffsetY(1));
     check(content_->SetOffsetX(std::round(20*scale_)));check(content_->SetOffsetY(std::round(38*scale_)));
     check(device_->CreateTranslateTransform(&headerKick_));check(header_->SetTransform(headerKick_.Get()));
@@ -41,7 +43,11 @@ void Renderer::initialize(HWND hwnd,float dpi,HWND shadow) {
     {check(device_->CreateScaleTransform(&artPulse_));artPulse_->SetCenterX(128*scale_);artPulse_->SetCenterY(128*scale_);IDCompositionTransform* chain[]={artPulse_.Get(),artScale_.Get()};
         ComPtr<IDCompositionTransform> group;check(device_->CreateTransformGroup(chain,2,&group));check(art_->SetTransform(group.Get()));}
     check(art_->AddVisual(artFrom_.Get(),FALSE,nullptr));check(art_->AddVisual(artTo_.Get(),FALSE,nullptr));
-    check(body_->AddVisual(nav_.Get(),FALSE,nullptr));check(body_->AddVisual(iconLayer_.Get(),FALSE,nullptr));check(body_->AddVisual(rings_.Get(),FALSE,nullptr));check(rings_->AddVisual(batteryDot_.Get(),FALSE,nullptr));check(rings_->AddVisual(timerDot_.Get(),FALSE,nullptr));
+    check(body_->AddVisual(nav_.Get(),FALSE,nullptr));
+    for(auto* p:{std::addressof(navCapLeft_),std::addressof(navCapRight_),std::addressof(navMiddle_)}){check(device_->CreateVisual(p->GetAddressOf()));check(nav_->AddVisual(p->Get(),FALSE,nullptr));}
+    check(device_->CreateRectangleClip(&navClipLeft_));navClipLeft_->SetLeft(0.f);navClipLeft_->SetTop(0.f);navClipLeft_->SetRight(14*scale_);navClipLeft_->SetBottom(44*scale_);check(navCapLeft_->SetClip(navClipLeft_.Get()));
+    check(device_->CreateRectangleClip(&navClipRight_));navClipRight_->SetLeft(33*scale_);navClipRight_->SetTop(0.f);navClipRight_->SetRight(47*scale_);navClipRight_->SetBottom(44*scale_);check(navCapRight_->SetClip(navClipRight_.Get()));
+    check(device_->CreateScaleTransform(&navMiddleScale_));check(navMiddle_->SetTransform(navMiddleScale_.Get()));check(body_->AddVisual(iconLayer_.Get(),FALSE,nullptr));check(body_->AddVisual(rings_.Get(),FALSE,nullptr));check(rings_->AddVisual(batteryDot_.Get(),FALSE,nullptr));check(rings_->AddVisual(timerDot_.Get(),FALSE,nullptr));
     for(auto pair:{std::pair{std::addressof(iconEffect_),iconLayer_.Get()},std::pair{std::addressof(incomingEffect_),artTo_.Get()},std::pair{std::addressof(navEffect_),nav_.Get()},std::pair{std::addressof(ringsEffect_),rings_.Get()},std::pair{std::addressof(batteryDotEffect_),batteryDot_.Get()},std::pair{std::addressof(timerDotEffect_),timerDot_.Get()}}){check(device_->CreateEffectGroup(pair.first->GetAddressOf()));check(pair.second->SetEffect(pair.first->Get()));}
     for(auto pair:{std::pair{std::addressof(batteryRotation_),batteryDot_.Get()},std::pair{std::addressof(timerRotation_),timerDot_.Get()}}){check(device_->CreateRotateTransform(pair.first->GetAddressOf()));pair.first->Get()->SetCenterX(16*scale_);pair.first->Get()->SetCenterY(16*scale_);check(pair.second->SetTransform(pair.first->Get()));}
     batteryDot_->SetOffsetY(1*scale_);timerDot_->SetOffsetY(1*scale_);batteryDot_->SetOffsetX(-4*scale_);timerDot_->SetOffsetX(20*scale_);
@@ -81,6 +87,13 @@ void Renderer::initialize(HWND hwnd,float dpi,HWND shadow) {
     // The hover highlight is a plain layer shaped by an animated rounded clip, so its corners stay true at any size.
     check(device_->CreateRectangleClip(&hoverClip_));hoverClip_->SetLeft(0.f);hoverClip_->SetTop(0.f);{const float r=10*scale_;auto* c=hoverClip_.Get();c->SetTopLeftRadiusX(r);c->SetTopLeftRadiusY(r);c->SetTopRightRadiusX(r);c->SetTopRightRadiusY(r);c->SetBottomLeftRadiusX(r);c->SetBottomLeftRadiusY(r);c->SetBottomRightRadiusX(r);c->SetBottomRightRadiusY(r);}
     check(hoverVisual_->SetClip(hoverClip_.Get()));
+}
+// The liquid pill: the left cap at the left end, the right cap at the right end, and the middle stretched between them.
+void Renderer::placeNav(double now,float navY){
+    auto left=animation(navLeft_,now,scale_,20*scale_),right=animation(navRight_,now,scale_,(20-47)*scale_),middle=animation(navLeft_,now,scale_,(20+14)*scale_);
+    navCapLeft_->SetOffsetX(left.Get());navCapRight_->SetOffsetX(right.Get());navMiddle_->SetOffsetX(middle.Get());
+    auto span=curveOf([this](double t){return std::max(0.,(navRight_.sample(t).position-navLeft_.sample(t).position-28)/2);},now,[this](double t){return navLeft_.settled(t)&&navRight_.settled(t);});
+    navMiddleScale_->SetScaleX(span.Get());nav_->SetOffsetX(0.f);nav_->SetOffsetY((38+navY)*scale_);
 }
 ComPtr<IDCompositionAnimation> Renderer::curveOf(const std::function<double(double)>& value,double now,const std::function<bool(double)>& settled){
     ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(now)));double duration=0;
@@ -187,7 +200,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     if(s.settings.appAccents&&s.settings.albumAccents&&!s.playback.artwork&&s.playback.available&&s.playback.appIcon){auto [bright,deep]=iconColour(s.playback.appIcon);if(bright)accent=s.light?(deep?deep:accent):bright;}
     // The artwork's second hue runs the timeline gradient (deepened on light islands).
     const Artwork* art=s.settings.albumAccents?s.playback.artwork.get():nullptr;const UINT32 accent2=art&&art->secondary?(s.light?mixColor(art->secondary,0x000000,.5):art->secondary):accent;
-    bubbleColors_[0]=ink;bubbleColors_[1]=muted;bubbleColors_[2]=s.light?0xffffff:0x23272e;
+    swipeInk_=ink;swipeAccent_=accent;bubbleColors_[0]=ink;bubbleColors_[1]=muted;bubbleColors_[2]=s.light?0xffffff:0x23272e;
     bool attached=!s.settings.floating();
     GlassStyle style;style.visible=glass;style.light=s.light;style.blur=s.blur;style.material=s.settings.material;style.tint=s.settings.glassTint/100.f;style.accent=art?(art->ambient?art->ambient:art->accent):0;style.wallpaper=s.platform.wallpaper;glass_.style(style);
     // The soft shadow under the island: deeper under dark glass, lighter under light glass, faint under solid.
@@ -195,17 +208,19 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     if(!headerOnly){targets.clear();iconCursor_=pageCount;for(auto& i:icons_)i.used=false;}
     if(baseColor_!=bg||accentColor_!=accent||material_!=int(glass)||cachedEdge_!=edge_){
         baseColor_=bg;accentColor_=accent;material_=int(glass);cachedEdge_=edge_;
-        surface(baseSurface_,640,500,[&](auto* rt){rt->Clear(D2D1::ColorF(bg));});body_->SetContent(glass?nullptr:baseSurface_.Get());stub_->SetContent(glass?nullptr:baseSurface_.Get());
+        surface(baseSurface_,640,500,[&](auto* rt){rt->Clear(D2D1::ColorF(bg));});body_->SetContent(glass?nullptr:baseSurface_.Get());stub_->SetContent(glass?nullptr:baseSurface_.Get());bud_->SetContent(glass?nullptr:baseSurface_.Get());
         surface(innerSurface_,640,500,[&](auto* rt){rt->Clear(D2D1::ColorF(bg));});inner_->SetContent(glass?nullptr:innerSurface_.Get());
         wings(wingRadius_>0?wingRadius_:17);
         {const UINT32 tone=s.light?0x1c2230:0xffffff;if(hoverColor_!=tone){hoverColor_=tone;surface(hoverSurface_,440,360,[&](auto* rt){rt->Clear(D2D1::ColorF(tone,s.light?.065f:.10f));});hoverVisual_->SetContent(hoverSurface_.Get());}}
         surface(barSurface_,380,2,[&](auto* rt){rt->Clear(D2D1::ColorF(accent));});bar_->SetContent(barSurface_.Get());
-        surface(navSurface_,47,44,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink,s.light?.055f:.055f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,47,44},12,12),b.Get());});nav_->SetContent(navSurface_.Get());
+        surface(navSurface_,47,44,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink,s.light?.055f:.055f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,47,44},12,12),b.Get());});
+        surface(navMiddleSurface_,2,44,[&](auto* rt){rt->Clear(D2D1::ColorF(ink,.055f));});
+        navCapLeft_->SetContent(navSurface_.Get());navCapRight_->SetContent(navSurface_.Get());navMiddle_->SetContent(navMiddleSurface_.Get());
     }
     wingLeft_->SetContent(attached&&!glass?leftSurface_.Get():nullptr);wingRight_->SetContent(attached&&!glass?rightSurface_.Get():nullptr);barEffect_->SetOpacity(s.page==Page::Overview&&s.expanded&&!s.live?1.f:0.f);
     {const bool pulse=s.settings.artPulse&&!s.reducedMotion&&s.playback.playing&&bool(s.playback.artwork);
         setArtPulse(pulse);}
-    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track,accent2);updateLyrics(s,ink,muted,accent);updateBubble(s);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateRing(s,accent);updateCard(s,track,accent,solidRaised,ink);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-3.f:30.f,stats||(shelf&&s.settings.sharing)?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||(shelf&&!(s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size())),s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
+    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track,accent2);updateLyrics(s,ink,muted,accent);updateBubble(s);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateRing(s,accent);updateCard(s,track,accent,solidRaised,ink);updateBud(s,ink,muted,accent,solidRaised);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-3.f:30.f,stats||(shelf&&s.settings.sharing)?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||(shelf&&!(s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size())&&!(s.dropHover&&s.settings.sharing&&std::any_of(s.nearby.begin(),s.nearby.end(),[](auto& p){return p.paired;}))),s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
     headerSpots_.clear();compactTargets.clear();bool lyricOn=false;float sungX=0,sungW=0;
     surface(headerSurface_,600,150,[&](auto* rt){
         if(s.expanded)return;
@@ -229,7 +244,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             if(id<0)text(rt,value,end+19,0,span-21,10,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,34);else headerSpots_.push_back({id,value,end+19,0,10,DWRITE_FONT_WEIGHT_MEDIUM,ink,34});end-=7;};
         const bool media=s.settings.compactMedia&&s.playback.available,timing=s.activity.empty()&&!media&&s.settings.compactTimer&&s.focus.running;
         // Idle glance: with nothing else to show, CPU, GPU and the weather (where there is room) and today's date.
-        const bool glance=s.activity.empty()&&!media&&!s.focus.running&&s.settings.compactGlance;
+        const bool glance=s.activity.empty()&&!media&&!s.focus.running&&s.settings.compactGlance&&s.transfers.empty();
         // Media controls at the end (previous, play or pause, next), ahead of any chip; the title keeps 96 DIPs.
         if(s.settings.compactControls&&s.playback.available&&s.activity.empty()&&end-start>=78+96){const float x0=end-78;
             auto control=[&](Action a,Icon glyph,float x,float size,float box,bool enabled){compactTargets.push_back({a,x,17-box/2,box,box,enabled});
@@ -240,6 +255,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         // Chips in the order chosen in Settings, filled from the right.
         auto percent=[](double v){wchar_t b[16];swprintf(b,16,L"%.0f%%",v);return std::wstring(b);};
         auto skyIcon=[](int code,bool day){switch(skyOf(code)){case Sky::Clear:return day?Icon::Sun:Icon::Moon;case Sky::PartlyCloudy:return day?Icon::PartlyCloudy:Icon::Cloud;case Sky::Cloudy:return Icon::Cloud;case Sky::Fog:return Icon::Fog;case Sky::Drizzle:case Sky::Rain:return Icon::Rain;case Sky::Snow:return Icon::Snow;default:return Icon::Storm;}};
+        // Phase 5G: files on their way to or from another PC, as a chip that fills with them.
+        if(!s.transfers.empty()&&s.activity.empty()){uint64_t done=0,total=0;for(auto& t:s.transfers){done+=t.done;total+=t.total;}chip(s.transfers.front().outgoing?Icon::Send:Icon::Download,percent(total?100.*double(done)/double(total):0),52);}
         for(int k=chipCount-1;k>=0;--k)switch(s.settings.chips[size_t(k)]){
         case 0:if(s.settings.compactClock){SYSTEMTIME t{};GetLocalTime(&t);wchar_t value[12];swprintf(value,12,L"%02u:%02u",t.wHour,t.wMinute);chip(Icon::Clock,value,58);}break;
         case 1:if(s.settings.compactVolume)chip(s.muted?Icon::Muted:Icon::Volume,std::to_wstring(s.volume),48,6);break;
@@ -249,7 +266,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         case 5:if(glance&&s.system.gpu>=0)chip(Icon::Gauge,percent(s.system.gpu),52,11);break;
         case 6:if(glance&&s.settings.weather&&s.weather.valid)chip(skyIcon(s.weather.code,s.weather.day),temperatureText(s.weather.temperature,s.settings.weatherUnit),54,12);break;
         default:break;}
-        std::wstring label=!s.activity.empty()?s.activity:media?s.playback.title:L"Ready";
+        std::wstring label=!s.activity.empty()?s.activity:media?s.playback.title:!s.transfers.empty()?(s.transfers.front().outgoing?L"Sending to ":L"Receiving from ")+s.transfers.front().name:L"Ready";
         // A running timer: its mode when the timer chip already shows the time, else the time itself, rolling.
         const bool timerChip=std::any_of(headerSpots_.begin(),headerSpots_.end(),[](auto& p){return p.id==8;}),rolling=timing&&!timerChip;
         if(timing)label=timerChip?(s.focus.mode==FocusClock::Mode::Break?L"Break":s.focus.mode==FocusClock::Mode::Stopwatch?L"Stopwatch":L"Focus"):clockText(std::ceil(s.focus.displayed(seconds())));
@@ -338,13 +355,16 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             button(Action::PrivacySettings,L"Settings",198,26,82,24);
             return;
         }
-        if(s.card&&s.notice.kind>=14&&s.notice.kind<=16){
+        if(s.card&&s.notice.kind>=14&&s.notice.kind<=17){
             // Sharing: the pairing code both PCs show, a file to accept, or how a transfer or a pairing went.
             const auto& n=s.notice;
             if(n.kind==14){text(rt,L"Pair with "+n.app+L"?",72,2,176,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,20,176,19,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,30);
                 text(rt,L"The same code shows on both PCs",72,46,176,9,muted);button(Action::SharePair,L"Pair",256,4,76,26,true);button(Action::ShareDecline,L"Not now",256,34,76,22);}
             else if(n.kind==15){text(rt,n.app+L" is sending",72,6,176,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,176,11,muted);
                 button(Action::ShareAccept,L"Accept",256,4,76,26,true);button(Action::ShareDecline,L"Decline",256,34,76,22);}
+            // Music from another PC: the song, its artist and where it comes from.
+            else if(n.kind==17){text(rt,n.app,72,6,176,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,176,11,muted);
+                button(Action::HandoffPlay,L"Play here",256,4,76,26,true);button(Action::HandoffDecline,L"Not now",256,34,76,22);}
             else{const float room=n.path.empty()?256.f:176.f;text(rt,n.app,72,6,room,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,room,11,muted);if(!n.path.empty())button(Action::ShareShow,L"Show",256,14,76,28,true);}
             return;
         }
@@ -394,12 +414,14 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             return;
         }
         const wchar_t* titles[]={L"",L"Now playing",L"System overview",L"Make room for focus",L"Make it yours",L"Within reach",L"Sound, your way",L"Quick controls"};
-        int chips=s.page==Page::Media?int(std::min<size_t>(5,s.sessions.size())):0;if(chips<2)chips=0;
+        int chips=s.mediaPage()?int(std::min<size_t>(5,s.sessions.size())):0;if(chips<2)chips=0;
         auto tabs=[&](std::initializer_list<std::pair<Action,const wchar_t*>> items,int selected,float y){int i=0;for(auto& [a,name]:items){float x=i*88.f;targets.push_back({a,x,y,82,26});label(name,x,y,82,26,11.5f,i==selected?(s.light?0xf8f8fa:0x171b22):muted,i==selected?DWRITE_FONT_WEIGHT_SEMI_BOLD:DWRITE_FONT_WEIGHT_MEDIUM);++i;}};
         if(s.page==Page::System)tabs({{Action::StatsSystem,L"System"},{Action::StatsBattery,L"Battery"},{Action::StatsDevices,L"Devices"}},s.statsTab,-3);
-        const bool lyricsButton=s.page==Page::Media&&s.settings.lyrics&&s.lyrics&&!s.lyrics->empty(),panel=lyricsPanel(s);
+        const bool lyricsButton=s.mediaPage()&&s.settings.lyrics&&s.lyrics&&!s.lyrics->empty(),panel=lyricsPanel(s);
         const float titleRoom=(chips?340.f-chips*28:302.f)-(lyricsButton&&chips?32.f:0.f);
         if(s.page==Page::System){}
+        else if(s.library&&s.page==Page::Media){iconButton(Action::LibraryBack,Icon::ArrowLeft,-4,-4,32,28);text(rt,L"Library",32,-4,150,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,28);
+            const bool any=s.libraryTracks&&!s.libraryTracks->empty();targets.push_back({Action::LibraryShuffle,226,-3,118,26,any});box(226,-3,118,26,raised,13);drawIcon(rt,d2d_.Get(),Icon::Shuffle,238,3,14,any?accent:muted,any?1.f:.5f);text(rt,L"Shuffle all",258,-3,82,10.5f,any?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,26);}
         else if(panel){const float w=std::min(titleRoom,measure(s.playback.title,16,DWRITE_FONT_WEIGHT_SEMI_BOLD)+4);text(rt,s.playback.title,0,-4,w,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,28);if(titleRoom-w>40)text(rt,s.playback.artist,w+8,-3,titleRoom-w-8,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,28);}
         else if(*titles[int(s.page)])text(rt,titles[int(s.page)],0,-4,titleRoom,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,28);
         // Home carries today's date in the user's own format ("Thursday, 24 September").
@@ -425,15 +447,39 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             for(int i=0;i<3;++i){int metric=s.settings.homeMetrics[i];float x=i*130.f;box(x,126,120,68,raised,13);drawIcon(rt,d2d_.Get(),glyphs[metric],x+12,137,14,muted);text(rt,names[metric],x+33,136,77,10,muted);std::wstring number;switch(metric){case 0:number=value(s.system.cpu)+ (s.system.cpu>=0?L"%":L"");break;case 1:number=s.system.ramTotalGiB?value(s.system.ramPercent)+L"%":L"—";break;case 2:number=s.battery>=0?std::to_wstring(s.battery)+L"%":L"—";break;case 3:number=s.system.networkAvailable?rateText(s.system.download):L"—";break;case 4:number=s.system.networkAvailable?rateText(s.system.upload):L"—";break;case 5:number=s.system.diskTotalGiB?value(s.system.diskFreeGiB)+L" GB":L"—";break;case 7:number=s.system.gpu<0?L"—":value(s.system.gpu)+L"%";break;case 8:number=s.settings.weather&&s.weather.valid?temperatureText(s.weather.temperature,s.settings.weatherUnit):L"—";break;default:number=clockText(double(s.system.uptime));break;}contentSpots_.push_back({3+i,number,x+12,156,metric>=3&&metric!=7&&metric!=8?18.f:23.f,DWRITE_FONT_WEIGHT_SEMI_BOLD,ink});
                 if(metric==8&&s.weather.valid)text(rt,skyLabel(skyOf(s.weather.code)),x+60,160,56,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING,22);}
             iconButton(Action::Mute,s.muted?Icon::Muted:Icon::Volume,0,200,28,28);b->SetColor(D2D1::ColorF(line,lineAlpha));rt->DrawLine({38,214},{300,214},b.Get(),2);text(rt,s.muted?L"Muted":std::to_wstring(s.volume)+L"%",306,206,36,10.5f,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,16);iconButton(Action::Audio,Icon::Audio,346,200,34,28);targets.push_back({Action::VolumeSlider,38,201,262,26});
+        }else if(s.page==Page::Media&&s.library){
+            // Phase 5G: songs from the Music folder, played by the island itself. Five rows; the wheel or the arrows scroll.
+            const size_t n=s.libraryTracks?s.libraryTracks->size():0;
+            if(!n){box(0,40,380,150,raised,18);drawIcon(rt,d2d_.Get(),Icon::Library,176,58,28,s.libraryScanning?muted:accent);
+                label(s.libraryScanning?L"Looking through your Music folder":L"No songs in your Music folder yet",20,96,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+                label(s.libraryScanning?L"Songs appear here as soon as they are found":L"MP3, M4A, FLAC, WAV and WMA files there play right here",20,122,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);}
+            for(int row=0;row<5;++row){const size_t i=size_t(s.libraryOffset+row);if(i>=n)break;const auto& t=(*s.libraryTracks)[i];const float y=34+float(row)*34;const Action a=Action(int(Action::LibraryItemBase)+row);
+                const bool playing=t.path==s.libraryPlaying;targets.push_back({a,0,y,380,31});box(0,y,380,31,raised,9);
+                if(size_t(row)<s.libraryArt.size()&&s.libraryArt[size_t(row)])drawPreview(rt,*s.libraryArt[size_t(row)],5,y+3.5f,24,24);else drawIcon(rt,d2d_.Get(),Icon::Music,9,y+8,15,playing?accent:muted);
+                text(rt,t.title,38,y+1,250,11,playing?accent:ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,16);text(rt,t.artist.empty()?(t.album.empty()?std::wstring(L"Unknown artist"):t.album):t.artist,38,y+15,250,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,14);
+                if(playing)drawIcon(rt,d2d_.Get(),Icon::Audio,300,y+9,13,accent);text(rt,t.duration>0?clockText(t.duration):L"",310,y,62,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING,31);}
+            if(n){wchar_t range[64];swprintf(range,64,L"%zu\u2013%zu of %zu songs",size_t(s.libraryOffset)+1,std::min(n,size_t(s.libraryOffset)+5),n);text(rt,range,0,206,220,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,22);
+                iconButton(Action::LibraryUp,Icon::ArrowUp,316,204,30,24,false,s.libraryOffset>0);iconButton(Action::LibraryDown,Icon::ArrowDown,350,204,30,24,false,size_t(s.libraryOffset)+5<n);}
         }else if(s.page==Page::Media){
             bool video=s.settings.mediaLayout==2||(s.settings.mediaLayout==0&&s.playback.kind==MediaKind::Video);float tx=video?166.f:118.f,tw=380-tx;
             if(!s.playback.artwork){box(0,video?30:44,video?148:100,video?148:100,raised,18);if(logoArt)identity(rt,s.playback,video?42:22,video?72:66,video?64:56,solidRaised);else drawIcon(rt,d2d_.Get(),Icon::Music,video?56:34,video?85:77,32,muted);}
             if(s.playback.canSeek&&s.playback.duration>0){const float ay=video?30.f:44.f,as=video?148.f:100.f;targets.push_back({Action::SkipBack,0,ay,as/2,as});targets.push_back({Action::SkipForward,as/2,ay,as/2,as});}
-            if(!panel){text(rt,s.playback.title,tx,45,tw,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.artist,tx,74,tw,11,muted);}if(!panel){auto* rule=findService(s.playback.service);std::wstring app=rule?std::wstring(rule->name):s.playback.appName;if(app.empty())app=video?L"Video":L"Music";
+            // Continue on another PC: your paired PCs that are here (and up to date).
+            const bool handoff=s.settings.sharing&&s.settings.handoff&&s.playback.available&&std::any_of(s.nearby.begin(),s.nearby.end(),[](auto& p){return p.paired&&p.online&&p.version>=shareProtocol;});
+            const bool picking=handoff&&s.handoffPicking&&!panel;
+            if(picking){text(rt,L"Continue on",tx,96,74,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,24);float x=tx+76;
+                std::vector<size_t> ready;for(size_t i=0;i<s.nearby.size()&&i<3;++i)if(s.nearby[i].paired&&s.nearby[i].online&&s.nearby[i].version>=shareProtocol)ready.push_back(i);
+                const float w=std::min(118.f,(380-x-float(ready.size()-1)*6)/float(std::max<size_t>(1,ready.size())));
+                for(size_t i:ready){button(Action(int(Action::HandoffPeerBase)+int(i)),s.nearby[i].name,x,96,w,24,true);x+=w+6;}}
+            if(!panel){text(rt,s.playback.title,tx,45,tw,16,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.artist,tx,74,tw,11,muted);}if(!panel&&!picking){auto* rule=findService(s.playback.service);std::wstring app=rule?std::wstring(rule->name):s.playback.appName;if(app.empty())app=video?L"Video":L"Music";
                 if(s.sessions.size()>1)app+=L"  ·  "+std::to_wstring(s.session+1)+L" of "+std::to_wstring(s.sessions.size());text(rt,app,tx,100,std::max(40.f,tw-(s.settings.waveform&&s.playback.playing&&s.waveform?104.f:0.f)),9.5f,muted);}
             iconButton(Action::Previous,Icon::Previous,tx,132,36,36,false,s.playback.canPrevious);iconButton(Action::Play,s.playback.playing?Icon::Pause:Icon::Play,tx+54,124,52,52,true,s.playback.canToggle);iconButton(Action::Next,Icon::Next,tx+124,132,36,36,false,s.playback.canNext);
             double position=std::clamp(s.playback.position+(s.playback.playing?std::max(0.,seconds()-s.playback.sampledAt):0.),0.,s.playback.duration);if(s.playback.canSeek)targets.push_back({Action::Seek,0,178,380,25});if(s.scrub.active)position=s.scrub.value;text(rt,s.playback.duration>0?clockText(position):L"No timeline provided",0,204,160,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,22);// While scrubbing, the fine-control hint takes the mode button's place.
-            if(s.scrub.active)text(rt,L"Pull away for finer control",100,204,180,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER,22);else button(Action::MediaMode,s.settings.mediaLayout==0?L"Auto":s.settings.mediaLayout==1?L"Music":L"Video",167,204,54,22);text(rt,s.playback.duration>0?clockText(s.playback.duration):L"",300,204,80,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING,22);
+            if(s.scrub.active)text(rt,L"Pull away for finer control",100,204,180,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER,22);else button(Action::MediaMode,s.settings.mediaLayout==0?L"Auto":s.settings.mediaLayout==1?L"Music":L"Video",167,204,54,22);
+            // Phase 5G: the library either side of the mode (or, with nothing playing, as the way to start), and continuing elsewhere.
+            if(!s.scrub.active&&s.playback.available){if(s.settings.musicLibrary)iconButton(Action::LibraryOpen,Icon::Library,129,201,30,28);if(handoff)iconButton(Action::HandoffOpen,Icon::Handoff,229,201,30,28,s.handoffPicking);}
+            if(!s.playback.available&&s.settings.musicLibrary){button(Action::LibraryShuffle,L"Shuffle my music",tx,178,150,26,true);
+                button(Action::LibraryOpen,L"Library",tx+158,178,96,26);}text(rt,s.playback.duration>0?clockText(s.playback.duration):L"",300,204,80,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING,22);
         }else if(s.page==Page::System&&s.statsTab==1){
             const auto& p=s.power;const int percent=s.battery;const bool charging=p.charging||(s.charging&&!p.present);
             drawRing(rt,d2d_.Get(),58,100,40,4,percent>=0?percent/100.:0,charging?0x5fd98a:accent,track);
@@ -495,14 +541,28 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             contentSpots_.push_back({2,clockText(std::ceil(s.focus.displayed(seconds()))),124,91,42,DWRITE_FONT_WEIGHT_LIGHT,ink});text(rt,s.focus.finished?L"A moment well spent":s.focus.running?L"One thing at a time":L"A little space to begin",127,144,245,11,muted);iconButton(Action::TimerToggle,s.focus.running?Icon::Pause:Icon::Play,130,180,42,42,true);iconButton(Action::TimerReset,Icon::Reset,190,183,36,36);text(rt,s.focus.running?L"Pause session":L"Start session",238,193,142,10,muted);
         }else if(s.page==Page::Shelf){
             const bool detail=s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size();
-            if(!detail){if(s.settings.sharing)tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"},{Action::ShelfNearby,L"Nearby"}},s.shelfTab,30);else tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"}},s.shelfTab,30);}
+            // Phase 5G: files dragged over the island choose where they go: the Shelf, or one of your paired PCs (in place of the tabs and rows).
+            std::vector<size_t> dropPeers;if(s.dropHover&&s.settings.sharing)for(size_t i=0;i<s.nearby.size()&&i<4;++i)if(s.nearby[i].paired)dropPeers.push_back(i);
+            if(!detail&&dropPeers.empty()){if(s.settings.sharing)tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"},{Action::ShelfNearby,L"Nearby"}},s.shelfTab,30);else tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"}},s.shelfTab,30);}
             const bool status=!s.clipStatus.empty()&&seconds()<s.clipStatusUntil,shelfNote=!s.shelfStatus.empty()&&(s.shelfBusy||seconds()<s.shelfStatusUntil);
             // An icon and a label in one raised button.
             auto action=[&](Action a,Icon glyph,const wchar_t* name,float x,float y,float w,bool enabled=true){targets.push_back({a,x,y,w,30,enabled});box(x,y,w,30,raised,9);drawIcon(rt,d2d_.Get(),glyph,x+10,y+8,14,enabled?ink:muted,enabled?1.f:.5f);text(rt,name,x+29,y,w-33,10.5f,enabled?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,30);};
-            if(detail){
+            if(!dropPeers.empty()){
+                auto zone=[&](Action a,float x,float y,float w,float h,bool enabled){const bool on=enabled&&s.dropZone==a;targets.push_back({a,x,y,w,h,enabled});box(x,y,w,h,raised,16);
+                    if(on){b->SetColor(D2D1::ColorF(accent,.16f));rt->FillRoundedRectangle(D2D1::RoundedRect({x,y,x+w,y+h},16,16),b.Get());b->SetColor(D2D1::ColorF(accent,.95f));rt->DrawRoundedRectangle(D2D1::RoundedRect({x+1,y+1,x+w-1,y+h-1},15,15),b.Get(),2);}
+                    return on;};
+                const bool shelfOn=zone(Action::DropShelf,0,32,150,194,true);drawIcon(rt,d2d_.Get(),Icon::Shelf,57,82,36,shelfOn?accent:ink);
+                label(L"Keep on Shelf",0,130,150,22,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);label(shelfOn?L"Release to keep":L"Drop here",0,154,150,18,10,shelfOn?accent:muted,DWRITE_FONT_WEIGHT_NORMAL);
+                const float h=(194-float(dropPeers.size()-1)*8)/float(dropPeers.size());
+                for(size_t k=0;k<dropPeers.size();++k){const auto& p=s.nearby[dropPeers[k]];const float y=32+float(k)*(h+8),cy=y+h/2;const bool ready=p.online&&p.version>=shareProtocol;
+                    const bool on=zone(Action(int(Action::NearbyBase)+int(dropPeers[k])),160,y,220,h,ready);
+                    b->SetColor(D2D1::ColorF(on?accent:ink,on?.24f:.08f));rt->FillEllipse(D2D1::Ellipse({190,cy},16,16),b.Get());drawIcon(rt,d2d_.Get(),Icon::Laptop,180,cy-10,20,on?accent:ready?ink:muted);
+                    text(rt,p.name,216,cy-17,156,12,ready?ink:muted,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,18);
+                    text(rt,!p.online?L"Away":!ready?L"Needs the latest Arnav Island":on?L"Release to send":L"Drop to send",216,cy+1,156,10,on?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,16);}
+            }else if(detail){
                 const auto& item=s.shelf[size_t(s.shelfDetail)];const auto& info=s.shelfInfo;const bool file=item.kind==ShelfItem::Kind::File;
                 // With sharing on, a file can go to your paired PC from here.
-                const bool sendable=s.settings.sharing&&file&&!info.directory,reachable=std::any_of(s.nearby.begin(),s.nearby.end(),[&](auto& p){return p.paired&&p.online&&p.id==s.nearbyTarget;});
+                const bool sendable=s.settings.sharing&&file,reachable=std::any_of(s.nearby.begin(),s.nearby.end(),[&](auto& p){return p.paired&&p.online&&p.id==s.nearbyTarget;});
                 iconButton(Action::ShelfBack,Icon::ArrowLeft,-4,26,32,30);text(rt,item.label,32,26,sendable?306.f:348.f,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,30);
                 if(sendable)iconButton(Action::ShareSend,Icon::Send,346,26,34,30,false,reachable);
                 box(0,66,72,72,raised,14);if(item.preview)drawPreview(rt,*item.preview,6,72,60,60);else drawIcon(rt,d2d_.Get(),!file?Icon::Text:info.directory?Icon::Folder:Icon::File,22,88,28,muted);
@@ -520,19 +580,37 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 // Capture straight onto the Shelf, then the item count and the whole-Shelf actions.
                 iconButton(Action::CaptureSnip,Icon::Snip,-2,199,34,28);iconButton(Action::CaptureText,Icon::Text,34,199,34,28);iconButton(Action::CaptureColour,Icon::Eyedropper,70,199,34,28);
                 const bool files=std::any_of(s.shelf.begin(),s.shelf.end(),[](auto& i){return i.kind==ShelfItem::Kind::File;});
-                text(rt,shelfNote?s.shelfStatus:std::to_wstring(s.shelf.size())+(s.shelf.size()==1?L" item":L" items"),112,201,120,10,shelfNote&&!s.shelfBusy?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
+                if(shelfNote)text(rt,s.shelfStatus,112,201,120,10,!s.shelfBusy?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
+                else{// Phase 5G: the stack. Drag it to send every file at once (onto a paired PC) or to drop them anywhere.
+                    // Up to three cards, fanned about a common foot like a held stack.
+                    std::vector<size_t> cards;for(size_t k=0;k<s.shelf.size()&&cards.size()<3;++k)if(s.shelf[k].kind==ShelfItem::Kind::File)cards.push_back(k);
+                    const int fanned=int(cards.size());D2D1_MATRIX_3X2_F saved;rt->GetTransform(&saved);
+                    for(int c=fanned-1;c>=0;--c){const float angle=fanned==1?0.f:(float(c)-float(fanned-1)/2)*11.f,x=113+float(c)*3,y=202;
+                        rt->SetTransform(D2D1::Matrix3x2F::Rotation(angle,{x+10,y+26})*saved);box(x,y,20,20,solidRaised,5);
+                        if(s.shelf[cards[size_t(c)]].preview)drawPreview(rt,*s.shelf[cards[size_t(c)]].preview,x+1.5f,y+1.5f,17,17);else drawIcon(rt,d2d_.Get(),Icon::File,x+4,y+4,12,muted);
+                        b->SetColor(D2D1::ColorF(ink,.35f));rt->DrawRoundedRectangle(D2D1::RoundedRect({x+.5f,y+.5f,x+19.5f,y+19.5f},5,5),b.Get(),1);}
+                    rt->SetTransform(saved);
+                    const float tx0=fanned?146.f:112.f;text(rt,std::to_wstring(s.shelf.size())+(s.shelf.size()==1?L" item":L" items"),tx0,201,232-tx0,10,s.hovered==Action::ShelfStack?ink:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
+                    if(fanned)targets.push_back({Action::ShelfStack,108,197,126,30});}
                 button(Action::ShelfZip,L"Zip",240,201,68,25,false,files&&!s.shelfBusy);button(Action::ShelfClear,L"Clear",316,201,64,25,false,!s.shelf.empty());
             }else if(s.shelfTab==2){
                 // Nearby: your PCs on this network with sharing on. Clicking a paired one makes it where Send goes; an unpaired one offers Pair.
                 const size_t shown=std::min<size_t>(s.nearby.size(),4);
                 if(!shown){box(0,62,380,130,raised,18);drawIcon(rt,d2d_.Get(),Icon::Laptop,172,74,36,accent);label(L"Looking for your PCs",20,114,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
                     label(L"Turn on Share with my PCs on another PC on this network",20,140,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);}
-                for(size_t i=0;i<shown;++i){const auto& p=s.nearby[i];const float y=62+float(i)*36;const bool target=p.paired&&p.id==s.nearbyTarget;
-                    const Action row=Action(int(Action::NearbyBase)+int(i)),forget=Action(int(Action::NearbyForgetBase)+int(i));
+                const bool shelfFiles=std::any_of(s.shelf.begin(),s.shelf.end(),[](auto& i){return i.kind==ShelfItem::Kind::File;});
+                for(size_t i=0;i<shown;++i){const auto& p=s.nearby[i];const float y=62+float(i)*36;const bool target=p.paired&&p.id==s.nearbyTarget,ready=p.online&&p.version>=shareProtocol;
+                    const Action row=Action(int(Action::NearbyBase)+int(i)),forget=Action(int(Action::NearbyForgetBase)+int(i)),send=Action(int(Action::NearbySendBase)+int(i)),stop=Action(int(Action::NearbyCancelBase)+int(i));
+                    const auto moving=std::find_if(s.transfers.begin(),s.transfers.end(),[&](auto& t){return t.peer==p.id;});
                     box(0,y,380,32,raised,9);if(target){b->SetColor(D2D1::ColorF(accent,.9f));rt->DrawRoundedRectangle(D2D1::RoundedRect({.75f,y+.75f,379.25f,y+31.25f},8.5f,8.5f),b.Get(),1.5f);}
-                    drawIcon(rt,d2d_.Get(),Icon::Laptop,11,y+8,16,p.online?ink:muted);text(rt,p.name,36,y,156,11.5f,p.online?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,32);
-                    text(rt,p.paired?(p.online?(target?L"Sends go here":L"Paired"):L"Paired \u00b7 away"):L"Not paired",192,y,114,10,target?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING,32);
-                    if(p.paired){targets.push_back({row,0,y,310,32});button(forget,L"Forget",316,y+4,58,24);}else button(row,L"Pair",316,y+4,58,24,true,p.online);}
+                    drawIcon(rt,d2d_.Get(),Icon::Laptop,11,y+8,16,p.online?ink:muted);text(rt,p.name,36,y+1,182,11.5f,p.online?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,17);
+                    std::wstring status=p.paired?(p.online?(!ready?L"Needs the latest Arnav Island":target?L"Sends go here":L"Paired"):L"Paired \u00b7 away"):L"Not paired";
+                    if(moving!=s.transfers.end()){const double f=moving->total?double(moving->done)/double(moving->total):0;wchar_t pc[16];swprintf(pc,16,L"  \u00b7  %d%%",int(f*100));status=(moving->outgoing?L"Sending ":L"Receiving ")+moving->title+pc;
+                        b->SetColor(D2D1::ColorF(track));rt->FillRoundedRectangle(D2D1::RoundedRect({36,y+28,306,y+30},1,1),b.Get());b->SetColor(D2D1::ColorF(accent));rt->FillRoundedRectangle(D2D1::RoundedRect({36,y+28,36+float(270*std::clamp(f,0.,1.)),y+30},1,1),b.Get());}
+                    text(rt,status,36,moving!=s.transfers.end()?y+13:y+15,moving!=s.transfers.end()?270.f:182.f,9.5f,target||moving!=s.transfers.end()?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,12);
+                    if(moving!=s.transfers.end()){targets.push_back({row,0,y,224,32});button(stop,L"Stop",316,y+4,58,24);}
+                    else if(p.paired){targets.push_back({row,0,y,224,32});if(shelfFiles&&ready)button(send,L"Send Shelf",228,y+4,82,24,true);button(forget,L"Forget",316,y+4,58,24);}
+                    else button(row,L"Pair",316,y+4,58,24,true,p.online&&ready);}
                 text(rt,shelfNote?s.shelfStatus:(s.shareName.empty()?std::wstring(L"Visible to your PCs on this network"):L"This PC: "+s.shareName),0,201,380,10,shelfNote?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
             }else if(!s.settings.clipboardHistory){
                 box(0,62,380,130,raised,18);drawIcon(rt,d2d_.Get(),Icon::Clipboard,176,74,28,accent);label(L"Keep what you copy close",20,106,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
@@ -583,14 +661,17 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         const wchar_t* labels[]={L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio",L"Controls"};const Action actions[]={Action::Overview,Action::Media,Action::System,Action::Focus,Action::Settings,Action::Shelf,Action::Audio,Action::Control};const Icon glyphs[]={Icon::Home,Icon::Music,Icon::Stats,Icon::Focus,Icon::Settings,Icon::Shelf,Icon::Audio,Icon::Sliders};
         for(int slot=0;slot<pageCount;++slot){int p=s.settings.navigation[size_t(slot)];float x=std::round((slot*navStep+4)*scale_)/scale_;bool selected=int(s.page)==p;targets.push_back({actions[p],x,navY,47,44});
             // A page just chosen plays its icon's little animation once.
-            const bool celebrate=selected&&celebratedPage_!=p&&s.expanded&&!s.live;if(celebrate)celebratedPage_=p;icon(actions[p],glyphs[p],x+14,navY+5,19,selected?ink:muted,p,celebrate);label(labels[p],x,navY+26,47,16,9.5f,selected?ink:muted);if(selected){if(s.reducedMotion)navX.reset(x,seconds());else if(navX.target()!=x)navX.retarget(x,seconds(),MotionTokens::navigation);}}
+            const bool celebrate=selected&&celebratedPage_!=p&&s.expanded&&!s.live;if(celebrate)celebratedPage_=p;icon(actions[p],glyphs[p],x+14,navY+5,19,selected?ink:muted,p,celebrate);label(labels[p],x,navY+26,47,16,9.5f,selected?ink:muted);if(selected){const double now=seconds();if(s.reducedMotion||!s.expanded){navX.reset(x,now);navLeft_.reset(x,now);navRight_.reset(x+47,now);}
+                else if(navX.target()!=x){const bool right=x>navX.target();navX.retarget(x,now,MotionTokens::navigation);
+                    // The end it moves toward leads; the other follows a beat behind.
+                    constexpr SpringSpec lead{.7,560,34},trail{.9,300,30};navLeft_.retarget(x,now,right?trail:lead);navRight_.retarget(x+47,now,right?lead:trail);}}}
         if(debug){b->SetColor(D2D1::ColorF(0xf98585));for(auto& target:targets)rt->DrawRectangle({target.x,target.y,target.x+target.width,target.y+target.height},b.Get());}
     });drawingContent_=false;
     // (Its surfaces are drawn once the content surface is closed: one surface draws at a time.)
     if(skyWanted_)skyScene(s,skyX_);else skyHide();
     updateCaret(s,caretTarget_,accent);lineLyric(liveLyric_,content_.Get(),s,liveLyricOn&&s.live&&!s.card,68,21,250,20,11.5f,ink,s.reducedMotion);
     if(answerY_>=0&&!answerText_.empty()&&s.command.active)contentSpots_.push_back({0,answerText_,46,answerY_,17,DWRITE_FONT_WEIGHT_SEMI_BOLD,ink,0,false,true});
-    placeOdometers(contentSpots_,{0,2,3,4,5},content_.Get(),s.reducedMotion);for(auto request:iconRequests_)icon(request.action,request.glyph,request.x,request.y,request.size,request.color,request.slot,request.celebrate);for(auto& b:bands_)b.visual->SetContent(contentSurface_.Get());for(auto& item:icons_)if(!item.used)item.effect->SetOpacity(0.f);auto nx=animation(navX,seconds(),scale_,20*scale_);nav_->SetOffsetX(nx.Get());nav_->SetOffsetY((38+navY)*scale_);commit();
+    placeOdometers(contentSpots_,{0,2,3,4,5},content_.Get(),s.reducedMotion);for(auto request:iconRequests_)icon(request.action,request.glyph,request.x,request.y,request.size,request.color,request.slot,request.celebrate);for(auto& b:bands_)b.visual->SetContent(contentSurface_.Get());for(auto& item:icons_)if(!item.used)item.effect->SetOpacity(0.f);placeNav(seconds(),navY);commit();
 }
 
 ComPtr<IDCompositionAnimation> Renderer::animation(const Spring& s,double now,float factor,float bias) {
@@ -648,7 +729,7 @@ void Renderer::animate(const MotionEngine& m,double now) {
         wingLeft_->SetOffsetX(wingX);wingRight_->SetOffsetX(wingX);
         if(m.height.settled(now)){wingLeft_->SetOffsetY(restY-along);wingRight_->SetOffsetY(restY+restH-1);}
         else{auto ly=animation(m.height,now,-scale_/2,canvasHeight*scale_/2-along),ry=animation(m.height,now,scale_/2,canvasHeight*scale_/2-1);wingLeft_->SetOffsetY(ly.Get());wingRight_->SetOffsetY(ry.Get());}
-        header_->SetOffsetX(expanded_?std::round(20*scale_):0.f);stubEffect_->SetOpacity(0.f);}
+        header_->SetOffsetX(expanded_?std::round(20*scale_):0.f);stubEffect_->SetOpacity(0.f);budEffect_->SetOpacity(0.f);}
     else{leftScale_->SetCenterX(along);leftScale_->SetCenterY(0.f);rightScale_->SetCenterX(1.f);rightScale_->SetCenterY(0.f);wingLeft_->SetOffsetY(0.f);wingRight_->SetOffsetY(0.f);
         if(m.width.settled(now)){wingLeft_->SetOffsetX(restX-along);wingRight_->SetOffsetX(restX+restW-1);}
         else{auto lx=animation(m.width,now,-scale_/2,canvasWidth*scale_/2-along),rx=animation(m.width,now,scale_/2,canvasWidth*scale_/2-1);wingLeft_->SetOffsetX(lx.Get());wingRight_->SetOffsetX(rx.Get());}
@@ -663,7 +744,18 @@ void Renderer::animate(const MotionEngine& m,double now) {
             stub_->SetOffsetX(0.f);stub_->SetOffsetY(0.f);stubClip_->SetTop(0.f);auto sl=curveOf([&](double t){return (canvasWidth-span(t))/2*scale_;},now,settledAll),sr2=curveOf([&](double t){return (canvasWidth+span(t))/2*scale_;},now,settledAll);stubClip_->SetLeft(sl.Get());stubClip_->SetRight(sr2.Get());
             auto bottom=curveOf([&](double t){const double dp=m.drop.sample(t).position*dropDistance;return std::clamp(std::max(std::min(2*dp-cornerAt(t)-2,dp),0.)+1,0.,m.stubHeight)*scale_;},now,settledAll);stubClip_->SetBottom(bottom.Get());
             const float sr=float(m.stubRadius*scale_);stubClip_->SetBottomLeftRadiusX(sr);stubClip_->SetBottomLeftRadiusY(sr);stubClip_->SetBottomRightRadiusX(sr);stubClip_->SetBottomRightRadiusY(sr);stubEffect_->SetOpacity(1.f);}
-        else stubEffect_->SetOpacity(0.f);auto hx=animation(m.width,now,expanded_?0.f:scale_/2,expanded_?20*scale_:float(-m.compactWidth/2)*scale_);if(m.width.settled(now))header_->SetOffsetX(std::round(float(expanded_?20*scale_:(m.width.target()-m.compactWidth)*scale_/2)));else header_->SetOffsetX(hx.Get());}
+        else stubEffect_->SetOpacity(0.f);
+        // Phase 5G: a waiting alert's bud grows from the pill's foot, then lets go and settles just below it (budShape).
+        if(dropping&&(m.bud.target()>0||std::abs(m.bud.sample(now).position)>1e-3)){auto settledBud=[&](double t){return settledAll(t)&&m.bud.settled(t);};
+            auto shape=[&](double t){return budShape(m.bud.sample(t).position,m.drop.sample(t).position*dropDistance+m.height.sample(t).position,canvasWidth/2,m.budWidth,m.budHeight);};
+            auto left=curveOf([&](double t){return shape(t).left*scale_;},now,settledBud),top=curveOf([&](double t){return shape(t).top*scale_;},now,settledBud),right=curveOf([&](double t){return shape(t).right*scale_;},now,settledBud),bottom=curveOf([&](double t){return shape(t).bottom*scale_;},now,settledBud),radius=curveOf([&](double t){return shape(t).radius*scale_;},now,settledBud);
+            budClip_->SetLeft(left.Get());budClip_->SetTop(top.Get());budClip_->SetRight(right.Get());budClip_->SetBottom(bottom.Get());
+            {auto* c=budClip_.Get();auto* a=radius.Get();c->SetTopLeftRadiusX(a);c->SetTopLeftRadiusY(a);c->SetTopRightRadiusX(a);c->SetTopRightRadiusY(a);c->SetBottomLeftRadiusX(a);c->SetBottomLeftRadiusY(a);c->SetBottomRightRadiusX(a);c->SetBottomRightRadiusY(a);}
+            // The label sits at the bud's foot and shows once the bud has let go.
+            budLabel_->SetOffsetX(std::round(float((canvasWidth-m.budWidth)/2*scale_)));auto labelY=curveOf([&](double t){return (shape(t).bottom-m.budHeight)*scale_;},now,settledBud);budLabel_->SetOffsetY(labelY.Get());
+            auto shown=curveOf([&](double t){return std::clamp((m.bud.sample(t).position-.72)/.24,0.,1.);},now,settledBud);budLabelEffect_->SetOpacity(shown.Get());budEffect_->SetOpacity(1.f);}
+        else budEffect_->SetOpacity(0.f);
+        auto hx=animation(m.width,now,expanded_?0.f:scale_/2,expanded_?20*scale_:float(-m.compactWidth/2)*scale_);if(m.width.settled(now))header_->SetOffsetX(std::round(float(expanded_?20*scale_:(m.width.target()-m.compactWidth)*scale_/2)));else header_->SetOffsetX(hx.Get());}
     auto opacity=visibility(m,now);auto headerOpacity=visibility(m,now,!expanded_);
     restExpanded_=expanded_&&m.height.settled(now)&&m.width.settled(now)&&m.reveal.settled(now);restCompact_=!expanded_&&m.height.settled(now)&&m.width.settled(now);
     const bool contentEntering=restExpanded_&&now<contentEntrance_+.23,headerEntering=restCompact_&&now<headerEntrance_+.23;
@@ -677,7 +769,7 @@ void Renderer::animate(const MotionEngine& m,double now) {
     auto slide=animation(m.swipe,now,scale_,std::round(20*scale_));check(content_->SetOffsetX(slide.Get()));
     if(barMode_>=0&&barMode_<3){auto bx=animation(m.width,now,scale_,-barInset_*scale_);spectrum_->SetOffsetX(bx.Get());}
     auto hx=animation(m.width,now,scale_/2,-81*scale_),level=animation(m.level,now,150*scale_);hudTrack_->SetOffsetX(hx.Get());hudFill_->SetOffsetX(hx.Get());hudClip_->SetRight(level.Get());
-    auto nx=animation(navX,now,scale_,20*scale_);nav_->SetOffsetX(nx.Get());nav_->SetOffsetY((38+navY)*scale_);
+    placeNav(now,navY);
     auto rx=animation(m.width,now,edge_&&!expanded_?0.f:scale_,edge_&&!expanded_?8*scale_:-58*scale_);rings_->SetOffsetX(rx.Get());rings_->SetOffsetY(edge_&&!expanded_?38*scale_:0.f);
     auto ba=animation(batteryAngle,now),ta=animation(timerAngle,now);batteryRotation_->SetAngle(ba.Get());timerRotation_->SetAngle(ta.Get());
     auto pulse=animation(m.pulse,now);pulseEffect_->SetOpacity(pulse.Get());glass_.animate(m,now,edge_,attached_);shadow_.animate(m,now,edge_,attached_);

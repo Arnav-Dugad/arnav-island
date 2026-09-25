@@ -170,3 +170,31 @@ Found and fixed along the way:
 - On see-through glass, the stub and the pill overlapped for a few frames.
 - The shoulders slid over a pill that hadn't yet left the edge.
 - "Thunderstorm" was cut off on the Home tile.
+
+## Status after v0.16 — Phase 5G, sharing, music and alerts — 2026-09-25
+
+Shipped, as asked:
+- **Sharing that goes where you drop it:** drop zones for paired PCs, folders, the whole Shelf at once (Send Shelf and the stack gesture), progress and Stop.
+- **Weather:** fixed ("Open-Meteo couldn't be reached").
+- **Handoff:** Continue on my other PC.
+- **Two cards at once:** the second buds off the first.
+- **Sounds:** a chime with the edge light, a click in the chips editor.
+- **Island DJ:** the ring glows toward the next track.
+- **Liquid morphs:** the navigation pill stretches like a droplet.
+- **Drag to change media:** fixed and extended everywhere the music shows.
+- **Start songs from the island:** the island's own player and music library.
+- **Clipboard:** kept across restarts.
+- **Checks:** unit, sharing, UI (seven new stages) and settings suites.
+
+Deviations, each deliberate:
+- **Handoff** can't make an app play a song it doesn't have; it uses whichever of four routes works on the other PC, and says so when none does.
+- **Island DJ** can't know what another app plays next; it uses the current cover's colours there.
+- **Swiping** now skips tracks everywhere; switching players moved to the dots under the cover.
+
+Found and fixed along the way:
+- WinHTTP's decompression failed on Open-Meteo's answers (a 200 whose body couldn't be read), so weather never worked.
+- With *Open on hover*, the island was in the Live Island before a drag could start, and drags there only switched sessions.
+- On Windows, a blocking socket call doesn't wake when another thread shuts the socket, so stopping a transfer could hang; transfers now wait in fifth-of-a-second slices.
+- The UI test's fullscreen stage could be undone by real foreground changes on the desktop.
+- This toolchain's `windows.foundation.h` defines `IReference<BYTE>` twice (`boolean` is `BYTE`); the player's file skips the duplicate.
+

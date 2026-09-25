@@ -1,3 +1,4 @@
+#include "Audio/Sounds.h"
 #include "SettingsWindow.h"
 #include "Animation/MotionEngine.h"
 #include "Design/Icons.h"
@@ -48,7 +49,7 @@ private:
     std::map<int,ComPtr<IDWriteTextFormat>> formats_;float dpi_=96;UINT width_=0,height_=0;bool mica_=false,keyboard_=false;
     Spring navY_{0},page_{1},scroll_{0};double scrollTarget_=0;std::map<int,Spring> knobs_,hovers_,pillX_,pillW_,thumbs_,rings_;
     // A chip being dragged in the Chips control: its slot, where it was grabbed and the pointer.
-    int chipDrag_=-1;float chipGrab_=0,chipX_=0;int chipTarget(const Row&)const;
+    int chipDrag_=-1,chipHeard_=-1;float chipGrab_=0,chipX_=0;int chipTarget(const Row&)const;
     Hit hover_,press_,focus_;int dragItem_=-1;double confirmUntil_=0;int confirmItem_=-1;bool tracking_=false;
     // Animation Lab: a spring that plays the island's own motion in miniature.
     Spring preview_{0};double previewStart_=-10;bool previewForward_=false;void replay();void drawPreview(const D2D1_RECT_F& area,const Palette& p,float alpha);
@@ -192,7 +193,7 @@ void SettingsUi::key(WPARAM k){
         else if(item.control==SettingControl::Choice||item.control==SettingControl::Swatch){apply(focus_.item,std::clamp(v+d,item.lo,item.hi));focus_.part=item.get(s_);}
         else if(item.control==SettingControl::Stepper)activate({focus_.item,d>0?1:0,-1},0);
         else if(item.control==SettingControl::Order)apply(focus_.item,d);
-        else if(item.control==SettingControl::Chips){auto order=moveChip(s_.chips,focus_.part,focus_.part+d);apply(focus_.item,encodeChips(order));focus_.part=std::clamp(focus_.part+d,0,chipCount-1);}}
+        else if(item.control==SettingControl::Chips){if(s_.sounds&&focus_.part+d>=0&&focus_.part+d<chipCount)playSound(Sound::Click);auto order=moveChip(s_.chips,focus_.part,focus_.part+d);apply(focus_.item,encodeChips(order));focus_.part=std::clamp(focus_.part+d,0,chipCount-1);}}
     else if(k==VK_SPACE||k==VK_RETURN){if(focus_.section>=0)selectSection(focus_.section);else if(focus_.item>=0){auto& item=items_[focus_.item];if(item.control==SettingControl::Toggle||item.control==SettingControl::Button)activate({focus_.item,0,-1},0);else if(item.control==SettingControl::Actions||item.control==SettingControl::Preview)activate({focus_.item,std::max(0,focus_.part),-1},0);}}
     // Keep the focused row inside the viewport.
     if(focus_.item>=0){float height;for(auto& row:layout(height))if(row.item==focus_.item){float top=row.row.top,bottom=row.row.bottom;if(top<CardTop-10)scrollTarget_-=CardTop-10-top;else if(bottom>H()-20)scrollTarget_+=bottom-(H()-20);float max=std::max(0.f,height-H());scrollTarget_=std::clamp(scrollTarget_,0.,double(max));aim(scroll_,scrollTarget_,Scroll);}}
@@ -363,10 +364,12 @@ LRESULT SettingsUi::message(HWND h,UINT m,WPARAM w,LPARAM l){
     case RefreshMessage:refresh();return 0;
     case ShowMessage:ShowWindow(h,IsIconic(h)?SW_RESTORE:SW_SHOW);SetForegroundWindow(h);refresh();return 0;
     case WM_TIMER:if(w==1){KillTimer(h,1);dirty=true;}return 0;
-    case WM_MOUSEMOVE:{auto [x,y]=point();if(!tracking_){TRACKMOUSEEVENT t{sizeof(t),TME_LEAVE,h,0};TrackMouseEvent(&t);tracking_=true;}if(dragItem_>=0){slide(dragItem_,x);return 0;}if(chipDrag_>=0){chipX_=x;dirty=true;return 0;}auto next=hit(x,y);if(!(next==hover_)){hover_=next;dirty=true;}return 0;}
+    case WM_MOUSEMOVE:{auto [x,y]=point();if(!tracking_){TRACKMOUSEEVENT t{sizeof(t),TME_LEAVE,h,0};TrackMouseEvent(&t);tracking_=true;}if(dragItem_>=0){slide(dragItem_,x);return 0;}if(chipDrag_>=0){chipX_=x;dirty=true;
+            // Phase 5G: a soft click each time the dragged chip passes another's place.
+            float height;for(auto& row:layout(height))if(row.item==press_.item){const int to=chipTarget(row);if(to!=chipHeard_){if(s_.sounds)playSound(Sound::Click);chipHeard_=to;}}return 0;}auto next=hit(x,y);if(!(next==hover_)){hover_=next;dirty=true;}return 0;}
     case WM_MOUSELEAVE:tracking_=false;if(dragItem_<0){hover_={};dirty=true;}return 0;
     case WM_LBUTTONDOWN:{auto [x,y]=point();keyboard_=false;press_=hit(x,y);SetCapture(h);if(press_.item>=0&&items_[press_.item].control==SettingControl::Slider&&press_.part==0&&enabled(items_[press_.item])){dragItem_=press_.item;slide(dragItem_,x);}
-        if(press_.item>=0&&items_[press_.item].control==SettingControl::Chips&&press_.part>=0){float height;for(auto& row:layout(height))if(row.item==press_.item){chipDrag_=press_.part;chipGrab_=x-row.parts[size_t(press_.part)].left;chipX_=x;}}if(press_.item>=0||press_.section>=0)focus_=press_.section>=0?press_:Hit{press_.item,std::max(0,press_.part),-1};dirty=true;return 0;}
+        if(press_.item>=0&&items_[press_.item].control==SettingControl::Chips&&press_.part>=0){float height;for(auto& row:layout(height))if(row.item==press_.item){chipDrag_=press_.part;chipHeard_=press_.part;chipGrab_=x-row.parts[size_t(press_.part)].left;chipX_=x;}}if(press_.item>=0||press_.section>=0)focus_=press_.section>=0?press_:Hit{press_.item,std::max(0,press_.part),-1};dirty=true;return 0;}
     case WM_LBUTTONUP:{
         // ReleaseCapture sends WM_CAPTURECHANGED synchronously, which clears the press.
         auto [x,y]=point();Hit pressed=press_;bool dragging=dragItem_>=0;

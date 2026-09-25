@@ -18,7 +18,9 @@ enum class CommandKind { None,Volume,VolumeStep,Mute,Unmute,Play,Pause,Next,Prev
     // Phase 5E: a colour code, previewed as a swatch; value holds 0xRRGGBB.
     Colour,
     // Phase 5F: "weather <town>" chooses the weather's place (and turns weather on); target is the town.
-    Weather };
+    Weather,
+    // Phase 5G: a song from the Music folder (target its path), shuffling that music, continuing the music on a paired PC (target its id).
+    PlaySong,ShuffleMusic,ContinueOn };
 struct InstalledApp {std::wstring name,id;};
 struct CommandResult {
     CommandKind kind=CommandKind::None;std::wstring title,detail,target;int value=0;

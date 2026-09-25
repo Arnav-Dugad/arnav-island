@@ -78,7 +78,7 @@ void Renderer::ensureWave(){
         check(waveBase_->AddVisual(b.base.Get(),FALSE,nullptr));check(waveFill_->AddVisual(b.fill.Get(),FALSE,nullptr));}
 }
 void Renderer::updateTimeline(const ContentSnapshot& s,UINT32 accent,UINT32 track,UINT32 accent2){
-    bool visible=s.expanded&&!s.live&&s.page==Page::Media&&s.playback.duration>0;timelineEffect_->SetOpacity(visible?1.f:0.f);if(!visible)return;
+    bool visible=s.expanded&&!s.live&&s.mediaPage()&&s.playback.duration>0;timelineEffect_->SetOpacity(visible?1.f:0.f);if(!visible)return;
     const bool wave=s.settings.waveTimeline;ensureWave();const bool second=waveSecond_!=accent2;
     if(seekColor_!=accent||second||!seekTrackSurface_||seekStyle_!=int(wave)){seekColor_=accent;seekStyle_=int(wave);
         auto solid=[&](auto& surface_,UINT32 color){surface(surface_,380,4,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(color),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,380,4},2,2),b.Get());});};

@@ -39,6 +39,45 @@ std::shared_ptr<const Artwork> dibThumbnail(const std::vector<uint8_t>& dib,UINT
     if(!anyAlpha&&info->biBitCount==32)for(size_t i=3;i<art->pixels.size();i+=4)art->pixels[i]=255;
     return art;
 }
+namespace {
+// A DIB as a BMP file in memory, which WIC can decode.
+ComPtr<IWICBitmapFrameDecode> decodeDib(IWICImagingFactory* factory,const std::vector<uint8_t>& dib,std::vector<uint8_t>& bmp){
+    if(dib.size()<sizeof(BITMAPINFOHEADER))return nullptr;const auto* info=reinterpret_cast<const BITMAPINFOHEADER*>(dib.data());
+    DWORD colors=info->biClrUsed?info->biClrUsed:(info->biBitCount<=8?(1u<<info->biBitCount):0);DWORD masks=(info->biCompression==BI_BITFIELDS&&info->biSize==sizeof(BITMAPINFOHEADER))?12:0;
+    BITMAPFILEHEADER file{};file.bfType=0x4d42;file.bfSize=DWORD(sizeof(file)+dib.size());file.bfOffBits=DWORD(sizeof(file)+info->biSize+masks+colors*4);
+    bmp.resize(sizeof(file)+dib.size());memcpy(bmp.data(),&file,sizeof(file));memcpy(bmp.data()+sizeof(file),dib.data(),dib.size());
+    ComPtr<IStream> stream;stream.Attach(SHCreateMemStream(bmp.data(),UINT(bmp.size())));if(!stream)return nullptr;
+    ComPtr<IWICBitmapDecoder> decoder;ComPtr<IWICBitmapFrameDecode> frame;
+    if(FAILED(factory->CreateDecoderFromStream(stream.Get(),nullptr,WICDecodeMetadataCacheOnLoad,&decoder))||FAILED(decoder->GetFrame(0,&frame)))return nullptr;return frame;
+}
+}
+std::shared_ptr<const std::string> dibToPng(const std::vector<uint8_t>& dib){
+    ComPtr<IWICImagingFactory> factory;if(FAILED(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory))))return nullptr;
+    std::vector<uint8_t> bmp;auto frame=decodeDib(factory.Get(),dib,bmp);UINT w=0,h=0;if(!frame||FAILED(frame->GetSize(&w,&h))||!w||!h||w>16384||h>16384)return nullptr;
+    // 32-bit copies with no alpha at all (most screenshots) are saved opaque.
+    const auto* info=reinterpret_cast<const BITMAPINFOHEADER*>(dib.data());bool opaque=true;
+    if(info->biBitCount==32){WICPixelFormatGUID f{};frame->GetPixelFormat(&f);if(f==GUID_WICPixelFormat32bppBGRA||f==GUID_WICPixelFormat32bppPBGRA){std::vector<uint8_t> px(size_t(w)*h*4);if(SUCCEEDED(frame->CopyPixels(nullptr,w*4,UINT(px.size()),px.data())))for(size_t i=3;i<px.size();i+=4)if(px[i]){opaque=false;break;}}}
+    ComPtr<IWICFormatConverter> converter;if(FAILED(factory->CreateFormatConverter(&converter))||FAILED(converter->Initialize(frame.Get(),opaque?GUID_WICPixelFormat24bppBGR:GUID_WICPixelFormat32bppBGRA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom)))return nullptr;
+    ComPtr<IStream> out;if(FAILED(CreateStreamOnHGlobal(nullptr,TRUE,&out)))return nullptr;
+    ComPtr<IWICBitmapEncoder> encoder;ComPtr<IWICBitmapFrameEncode> target;ComPtr<IPropertyBag2> options;WICPixelFormatGUID format=opaque?GUID_WICPixelFormat24bppBGR:GUID_WICPixelFormat32bppBGRA;
+    if(FAILED(factory->CreateEncoder(GUID_ContainerFormatPng,nullptr,&encoder))||FAILED(encoder->Initialize(out.Get(),WICBitmapEncoderNoCache))||FAILED(encoder->CreateNewFrame(&target,&options))||FAILED(target->Initialize(options.Get()))||
+       FAILED(target->SetSize(w,h))||FAILED(target->SetPixelFormat(&format))||FAILED(target->WriteSource(converter.Get(),nullptr))||FAILED(target->Commit())||FAILED(encoder->Commit()))return nullptr;
+    HGLOBAL memory=nullptr;if(FAILED(GetHGlobalFromStream(out.Get(),&memory)))return nullptr;STATSTG stat{};if(FAILED(out->Stat(&stat,STATFLAG_NONAME)))return nullptr;
+    const size_t n=size_t(stat.cbSize.QuadPart);auto* p=static_cast<const char*>(GlobalLock(memory));if(!p)return nullptr;auto png=std::make_shared<std::string>(p,n);GlobalUnlock(memory);return png;
+}
+std::vector<uint8_t> pngToDib(const std::string& png){
+    ComPtr<IWICImagingFactory> factory;if(png.empty()||FAILED(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory))))return {};
+    ComPtr<IStream> stream;stream.Attach(SHCreateMemStream(reinterpret_cast<const BYTE*>(png.data()),UINT(png.size())));if(!stream)return {};
+    ComPtr<IWICBitmapDecoder> decoder;ComPtr<IWICBitmapFrameDecode> frame;UINT w=0,h=0;
+    if(FAILED(factory->CreateDecoderFromStream(stream.Get(),&GUID_VendorMicrosoft,WICDecodeMetadataCacheOnLoad,&decoder))||FAILED(decoder->GetFrame(0,&frame))||FAILED(frame->GetSize(&w,&h))||!w||!h||w>16384||h>16384||size_t(w)*h*4>(64u<<20))return {};
+    ComPtr<IWICFormatConverter> converter;if(FAILED(factory->CreateFormatConverter(&converter))||FAILED(converter->Initialize(frame.Get(),GUID_WICPixelFormat32bppBGRA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom)))return {};
+    std::vector<uint8_t> pixels(size_t(w)*h*4);if(FAILED(converter->CopyPixels(nullptr,w*4,UINT(pixels.size()),pixels.data())))return {};
+    // A bottom-up DIB, as apps expect from the clipboard.
+    std::vector<uint8_t> dib(sizeof(BITMAPINFOHEADER)+pixels.size());auto* info=reinterpret_cast<BITMAPINFOHEADER*>(dib.data());
+    info->biSize=sizeof(BITMAPINFOHEADER);info->biWidth=LONG(w);info->biHeight=LONG(h);info->biPlanes=1;info->biBitCount=32;info->biCompression=BI_RGB;info->biSizeImage=DWORD(pixels.size());
+    for(UINT y=0;y<h;++y)memcpy(dib.data()+sizeof(BITMAPINFOHEADER)+size_t(h-1-y)*w*4,pixels.data()+size_t(y)*w*4,size_t(w)*4);
+    return dib;
+}
 ClipboardWatcher::Read ClipboardWatcher::capture(ClipEntry& out){
     if(GetClipboardSequenceNumber()==ownSequence_)return Read::Skipped;
     // The owner is the app that copied; its name and icon label the entry.

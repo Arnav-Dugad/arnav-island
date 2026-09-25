@@ -168,3 +168,20 @@ Click a paired PC in Nearby to make it where Send goes. **Forget** unpairs it.
 **Battery week.** Once a week, in the morning, a card summarises your battery's health, charges and daily use (Settings › Devices & power › *Weekly battery summary*).
 
 **Clipboard.** Links show their site and path, colour codes a swatch and code is highlighted. *Site icons for links* (off by default) fetches each link's icon from its site.
+
+## v0.16 drop to share, music from the island, two alerts at once
+
+**Send by dropping.** With a PC paired (Shelf › Nearby), drag files or folders over the island: the Shelf is on the left, your PCs on the right. Let go over a PC to send them. **Send Shelf** on a PC's row sends every file on the Shelf; or drag the Shelf's item count (the little stack) onto a PC. A row fills as a transfer goes; **Stop** ends it. Both PCs need 0.16.
+
+**Play your music.** Media › the list button (left of *Auto*) opens **Library**: your Music folder's songs. Click one, or **Shuffle all**. With nothing playing, the Media page offers **Shuffle my music**. In the command bar: *play* and a song, or *shuffle*. The keyboard's media keys work too.
+
+**Continue on your other PC.** With sharing on, press the button right of *Auto* on the Media page (or type *continue on*). Pick the PC; there, press **Play here**.
+
+**Skip by dragging.** Drag the music sideways, in the compact island, the Live Island, Home or the Media page, and let go when the chip snaps.
+
+**Two alerts.** A second alert waits below the first as a small pill. Click it to see it now.
+
+**Settings.** Settings › Appearance: *Two alerts at once*, *Sounds*. Settings › Media & sound: *Island DJ*, *Music library*, *Continue on my other PC*. Settings › Privacy & productivity: *Remember the clipboard after restarts*.
+
+**Weather.** If you set a town on 0.15, type *weather* and the town once more.
+
