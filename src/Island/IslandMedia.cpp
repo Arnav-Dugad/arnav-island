@@ -150,12 +150,15 @@ void IslandWindow::updateBattery(){
         reading.cycles=148;reading.chemistry=L"LiP";reading.manufacturer=L"Sample Cells";reading.name=L"QA-Battery 57Wh";reading.serial=L"0000-QA";reading.warningMwh=5130;reading.lowMwh=2565;reading.criticalBiasMwh=0;reading.temperatureDeciK=3041;
         reading.estimateSeconds=-1;reading.windowsSeconds=-1;reading.count=1;reading.madeYear=2024;reading.madeMonth=3;reading.madeDay=18;content_.powerMode=2;}
     content_.power=reading;content_.toFull=estimate.minutesToFull(reading);content_.remaining=estimate.minutesRemaining(reading);
+    // An illustrative year and more of health, falling below 90% and then 80%.
+    if(qaBatterySample_){content_.healthDays.clear();const int64_t today=int64_t(std::time(nullptr))/86400;for(int k=0;k<420;++k){const double h=1-.21*k/419.-.004*std::sin(k*.7);content_.healthDays.push_back({today-419+k,float(h)});}}
     auto history=battery_->history();content_.history.clear();const auto now=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     for(auto& sample:history.samples)if(now-sample.time<=86400){content_.history.push_back(float(1-double(now-sample.time)/86400.));content_.history.push_back(sample.percent/100.f);}
     // The health trend, and once a week (from 9 o'clock, with at least three days of history) its card.
     content_.batteryWeek=summarizeWeek(history,now);
     if(!testing_){auto log=battery_->health();if(auto w=log.week()){content_.healthBefore=w->first;content_.healthNow=w->second;}else{content_.healthBefore=-1;content_.healthNow=log.days.empty()?-1:BatteryHealthLog::health(log.days.back());}
         content_.healthFirst=log.days.empty()?-1:BatteryHealthLog::health(log.days.front());content_.healthSince=log.days.empty()?0:log.days.front().day*86400;
+        content_.healthDays.clear();for(auto& d:log.days){const double h=BatteryHealthLog::health(d);if(h>=0)content_.healthDays.push_back({d.day,float(h)});}
         if(settings_.batteryWeekly&&settings_.batteryHistory){if(log.lastCard==0)battery_->markWeeklyCard(now);
             else if(now-log.lastCard>=7*86400){SYSTEMTIME t{};GetLocalTime(&t);auto week=summarizeWeek(history,now);if(t.wHour>=9&&week.days>=3&&state_==IslandState::Compact&&!(settings_.autoHide&&autoHide_.hidden)){content_.week=week;battery_->markWeeklyCard(now);showNotice(13);}}}}
     if((state_==IslandState::Expanded&&content_.page==Page::System&&content_.statsTab==1)||(content_.card&&(content_.notice.kind==3||content_.notice.kind==4||content_.notice.kind==13)))refresh();

@@ -168,3 +168,35 @@ This PC's battery reports capacities, voltage, chemistry, manufacturer, model an
 - Fog is two tiles drifting sideways.
 
 It first showed only while the island was open: the resting island redraws its header only, and the effect was updated on full redraws. It now updates on both.
+
+## 0.18.1-preview.1
+
+**Signing.** A code-signing certificate, `CN=Arnav Island Releases, O=Arnav Dugad` (RSA 3072, SHA-256, to 2036), is kept in the publisher's `Cert:\CurrentUser\My`. It is exportable, so it can be backed up with `Export-PfxCertificate` and a password of the publisher's choosing.
+
+`scripts/package.ps1` signs `ArnavIsland.exe` with it (`Set-AuthenticodeSignature`, SHA-256, DigiCert timestamp). It refuses to package if the certificate is missing, or if the signature doesn't verify as that certificate's.
+
+`signerSha256` runs `WinVerifyTrust` with no revocation checks and no network. It accepts success or `CERT_E_UNTRUSTEDROOT`: the signature is intact, and the root is simply one Windows doesn't know. It then hashes the signing certificate from the provider's chain and compares it with the SHA-256 pinned in `UpdateService.h`. A tampered file returns `TRUST_E_BAD_DIGEST` and yields no signer.
+
+| File | Signer | Accepted |
+|---|---|---|
+| The build, unsigned | none | no |
+| The build, signed with the publishing certificate | d4cbca03… | yes |
+| The same, one byte changed | none | no |
+
+**Drops.** `GlassDrops` steps each drop:
+- Drops under 1.5 DIP cling.
+- Larger ones run at 7 DIP/s per DIP of radius over 1.5.
+- A shake (from any change of the island's springs' targets, decaying over 0.9 s) quadruples the speed and lets clinging drops go.
+- A running drop merges with any drop within 0.9 of their combined radius (√ of the summed squares, at most 5.2 DIP).
+
+Each drop is a DirectComposition visual gliding linearly between steps. A merged drop slides into its taker as it fades.
+
+**The now marker.** The curve is Catmull-Rom through the hours, drawn as Béziers. For the span now running, the marker's y is that span's Hermite cubic rewritten in seconds, so DirectComposition moves it along the curve exactly. Its x is linear in time.
+
+**What's new.** The updater keeps the release body with the download, and writes `whats-new.md` next to the settings when it installs. The new version reads it once (`whatsNewLines`: headings, points, Markdown removed, the Checks section left out), then deletes it.
+
+**Found in the audit.**
+- The Updated card showed a Bluetooth icon: the card-icon layer had no case for it.
+- Home's volume bar showed through the What's new sheet, as it had through the weather view.
+- The health chart's 80% label collided with the "Below 80%" marker.
+- The first haze was stronger than "faint".

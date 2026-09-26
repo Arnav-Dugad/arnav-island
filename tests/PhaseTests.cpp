@@ -31,6 +31,7 @@
 #include "Composition/GlassBackdrop.h"
 #include "Media/Timeline.h"
 #include "Productivity/Update.h"
+#include "Animation/GlassDrops.h"
 #include <fstream>
 #include <regex>
 #include <iostream>
@@ -600,6 +601,25 @@ int main(){try{
         for(auto it=std::sregex_iterator(src.begin(),src.end(),started);it!=std::sregex_iterator();++it)used.insert((*it)[1]);
         std::string missing;for(auto& u:used)if(!known.count(u))missing+=u+" ";
         test(used.size()>=15&&missing.empty(),("the glass's properties all exist before its expressions and springs start (missing: "+missing+")").c_str());}
+    // ---- 0.18.1: drops that run and merge, What's new, health crossings, release notes ---------------------------
+    {GlassDrops still;still.reset(300,40,14,7);float area=0;for(auto& d:still.drops)area+=d.r*d.r;
+        test(still.drops.size()==14&&std::all_of(still.drops.begin(),still.drops.end(),[](auto& d){return d.alive&&d.x>=0&&d.x<=300&&d.y>=0&&d.y<=40&&d.r>=.9f&&d.r<=3.2f;}),"drops bead inside the island");
+        test(GlassDrops::runSpeed(1.2f,0)==0&&GlassDrops::runSpeed(3,0)>0&&GlassDrops::runSpeed(4,0)>GlassDrops::runSpeed(3,0)&&GlassDrops::runSpeed(3,1)>3*GlassDrops::runSpeed(3,0)&&GlassDrops::runSpeed(1.2f,.5f)>0,"small drops cling, bigger ones run, and movement shakes them all loose");
+        GlassDrops a,b;a.reset(300,40,14,11);b.reset(300,40,14,11);for(int k=0;k<8;++k){a.step(.25f,0);b.step(.25f,1);}
+        test(std::any_of(b.drops.begin(),b.drops.end(),[](auto& d){return d.speed>0;})&&[&]{int runningA=0,runningB=0;for(auto& d:a.drops)runningA+=d.speed>0;for(auto& d:b.drops)runningB+=d.speed>0;return runningB>runningA;}(),"a moving island sets more drops running");
+        GlassDrops pair;pair.reset(100,100,2,3);pair.drops[0]={50,40,3,20,0,true,-1};pair.drops[1]={50,44,2,0,0,true,-1};pair.step(.01f,0);
+        test(!pair.drops[1].alive&&pair.drops[1].into==0&&std::abs(pair.drops[0].r-std::sqrt(13.f))<1e-4f,"a running drop takes in the one it meets, and their areas add");
+        GlassDrops big;big.reset(100,100,2,3);big.drops[0]={50,40,5,20,0,true,-1};big.drops[1]={50,44,5,0,0,true,-1};big.step(.01f,0);test(big.drops[0].r<=GlassDrops::largest+1e-6f,"a drop never grows past the largest size");
+        GlassDrops off;off.reset(100,20,1,5);off.drops[0]={30,19,4,40,0,true,-1};off.step(.5f,0);test(!off.drops[0].alive,"a drop that runs off the bottom goes");off.step(.1f,0);test(off.drops[0].alive&&off.drops[0].y<=20*.45f+1e-4f&&off.drops[0].speed==0,"and comes back small near the top");
+        GlassDrops fit;fit.reset(300,200,6,9);fit.resize(120,30);test(std::all_of(fit.drops.begin(),fit.drops.end(),[](auto& d){return d.x<=120&&d.y<=30+d.r;}),"when the island shrinks, drops outside it start again inside");}
+    {const auto lines=whatsNewLines("# Arnav Island 0.18\n\n## Updates itself\n- **Automatic updates.** New versions [arrive](https://x.y) on their own.\n  1. downloads it\n  - checks `it`\n| a | b |\n## Checks\n- 53 stages\n## Weather\nRain on the *glass*.\n");
+        test(lines.size()==6&&lines[0].heading&&lines[0].text==L"Updates itself"&&!lines[1].heading&&lines[1].text==L"Automatic updates. New versions arrive on their own."&&lines[2].sub&&lines[2].text==L"downloads it"&&lines[3].sub&&lines[3].text==L"checks it"&&lines[4].heading&&lines[4].text==L"Weather"&&lines[5].text==L"Rain on the glass.","release notes read as headings and points, Markdown taken out, the Checks left out");
+        test(whatsNewLines("## A\n- one\n- two\n- three\n",2).size()==2&&whatsNewLines("").empty(),"What's new keeps at most what fits");
+        const std::string list=R"([{"tag_name":"v0.18.1","draft":false,"body":"## New\r\n- Drops run","assets":[{"name":"Arnav-Island-0.18.1-win-x64.zip","browser_download_url":"https://github.com/Arnav-Dugad/arnav-island/releases/download/v0.18.1/Arnav-Island-0.18.1-win-x64.zip"},{"name":"Arnav-Island-0.18.1-win-x64.zip.sha256","browser_download_url":"https://github.com/Arnav-Dugad/arnav-island/releases/download/v0.18.1/Arnav-Island-0.18.1-win-x64.zip.sha256"}]}])";
+        auto r=newestRelease(list,parseVersion("0.18.0"));test(r&&r->notes=="## New\r\n- Drops run"&&whatsNewLines(r->notes).size()==2,"a release brings its notes");}
+    {BatteryHealthLog log;auto day=[&](int64_t d,long long full){log.days.push_back({d,full,1000,0});};day(1,1000);day(2,930);day(3,905);day(4,899);day(5,860);day(6,801);day(7,799);
+        test(healthCrossing(log,.9)==3&&healthCrossing(log,.8)==6&&healthCrossing(log,.7)==-1,"the day health first fell below 90% and 80% is found");
+        BatteryHealthLog low;low.days.push_back({1,700,1000,0});low.days.push_back({2,690,1000,0});test(healthCrossing(low,.9)==-1,"a battery that was never above a line never crossed it");}
     // ---- 0.18: updates, every weather reading, every battery reading, settings v18 ----------------------------
     {test(parseVersion("0.17.0-preview.3").valid&&parseVersion("v0.18.0").valid&&!parseVersion("0.18").valid&&!parseVersion("0.18.0-beta.1").valid&&!parseVersion("x0.1.0").valid&&!parseVersion("0.18.0-preview.").valid,"versions are read strictly");
         test(parseVersion("0.17.0-preview.3")<parseVersion("0.17.0-preview.10")&&parseVersion("0.17.0-preview.10")<parseVersion("0.17.0")&&parseVersion("0.17.0")<parseVersion("0.18.0-preview.1")&&parseVersion("0.9.9")<parseVersion("0.10.0"),"a final release follows its previews, and numbers compare as numbers");

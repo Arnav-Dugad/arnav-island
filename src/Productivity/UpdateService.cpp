@@ -1,6 +1,8 @@
 #include "UpdateService.h"
 #include "Common/Http.h"
 #include <bcrypt.h>
+#include <wintrust.h>
+#include <softpub.h>
 #include <ctime>
 #include <fstream>
 #include <vector>
@@ -14,6 +16,21 @@ std::string fileSha256(const std::filesystem::path& file){
         UCHAR digest[32]{};if(ok&&BCryptFinishHash(hash,digest,32,0)==0){static const char* digits="0123456789abcdef";for(UCHAR b:digest){hex+=digits[b>>4];hex+=digits[b&15];}}
         BCryptDestroyHash(hash);}
     BCryptCloseAlgorithmProvider(algorithm,0);return hex;
+}
+static std::string sha256Hex(const void* data,size_t size){
+    BCRYPT_ALG_HANDLE algorithm=nullptr;if(BCryptOpenAlgorithmProvider(&algorithm,BCRYPT_SHA256_ALGORITHM,nullptr,0)!=0)return {};UCHAR digest[32]{};std::string hex;
+    if(BCryptHash(algorithm,nullptr,0,static_cast<PUCHAR>(const_cast<void*>(data)),ULONG(size),digest,32)==0){static const char* digits="0123456789abcdef";for(UCHAR b:digest){hex+=digits[b>>4];hex+=digits[b&15];}}
+    BCryptCloseAlgorithmProvider(algorithm,0);return hex;
+}
+std::string signerSha256(const std::filesystem::path& file){
+    WINTRUST_FILE_INFO info{};info.cbStruct=sizeof(info);info.pcwszFilePath=file.c_str();
+    WINTRUST_DATA data{};data.cbStruct=sizeof(data);data.dwUIChoice=WTD_UI_NONE;data.fdwRevocationChecks=WTD_REVOKE_NONE;data.dwUnionChoice=WTD_CHOICE_FILE;data.pFile=&info;
+    data.dwStateAction=WTD_STATEACTION_VERIFY;data.dwProvFlags=WTD_CACHE_ONLY_URL_RETRIEVAL;GUID action=WINTRUST_ACTION_GENERIC_VERIFY_V2;
+    const LONG result=WinVerifyTrust(static_cast<HWND>(INVALID_HANDLE_VALUE),&action,&data);std::string hex;
+    // Intact, and either trusted or signed by a certificate Windows doesn't know: then which certificate it was.
+    if(result==ERROR_SUCCESS||result==LONG(CERT_E_UNTRUSTEDROOT)){if(auto* provider=WTHelperProvDataFromStateData(data.hWVTStateData))if(auto* signer=WTHelperGetProvSignerFromChain(provider,0,FALSE,0))
+        if(signer->csCertChain>0&&signer->pasCertChain&&signer->pasCertChain[0].pCert){auto* cert=signer->pasCertChain[0].pCert;hex=sha256Hex(cert->pbCertEncoded,cert->cbCertEncoded);}}
+    data.dwStateAction=WTD_STATEACTION_CLOSE;WinVerifyTrust(static_cast<HWND>(INVALID_HANDLE_VALUE),&action,&data);return hex;
 }
 std::wstring productVersion(const std::filesystem::path& file){
     DWORD ignored=0;const DWORD size=GetFileVersionInfoSizeW(file.c_str(),&ignored);if(!size)return {};std::vector<BYTE> data(size);if(!GetFileVersionInfoW(file.c_str(),0,size,data.data()))return {};
@@ -61,7 +78,9 @@ void UpdateService::check(){
     if(code!=0||!std::filesystem::exists(exe)){fail(L"Couldn’t unpack "+versionText(release->version));return;}
     // The program itself must say it is the version the release is.
     if(parseVersion(toUtf8(productVersion(exe)))!=release->version){fail(L"The download of "+versionText(release->version)+L" wasn’t that version, so it wasn’t used");return;}
-    std::filesystem::remove(zip,ec);
+    // And it must be signed by the island's publisher: a release someone else managed to put up is never installed.
+    if(!signedByPublisher(exe)){fail(L"The download of "+versionText(release->version)+L" wasn\u2019t signed by the island\u2019s publisher, so it wasn\u2019t used");return;}
+    std::filesystem::remove(zip,ec);{std::ofstream notes(folder_/L"notes.md",std::ios::binary);notes<<release->notes;}
     {std::lock_guard lock(mutex_);ready_=release->version;staged_=unpacked;}
     set(State::Ready,versionText(release->version)+L" is ready. It installs the next time the island is resting");
 }
@@ -73,6 +92,8 @@ bool UpdateService::install(const std::wstring& args){
     if(!MoveFileExW(exe.c_str(),old.c_str(),MOVEFILE_REPLACE_EXISTING)){set(State::Failed,L"The island’s folder can’t be changed, so "+versionText(version)+L" can’t install. Download it from GitHub");return false;}
     if(!CopyFileW((staged/L"ArnavIsland.exe").c_str(),exe.c_str(),FALSE)){MoveFileExW(old.c_str(),exe.c_str(),MOVEFILE_REPLACE_EXISTING);set(State::Failed,L"Couldn’t install "+versionText(version));return false;}
     for(auto* name:{L"LICENSE",L"THIRD_PARTY_NOTICES.md",L"QUICK_START.md"})if(std::filesystem::exists(staged/name))CopyFileW((staged/name).c_str(),(dir/name).c_str(),FALSE);
+    // The release's notes, for the new version's What's new.
+    CopyFileW((folder_/L"notes.md").c_str(),(folder_.parent_path()/L"whats-new.md").c_str(),FALSE);
     pendingLaunch=L"\""+exe.wstring()+L"\" "+args+L" --after="+std::to_wstring(GetCurrentProcessId())+L" --updated="+versionText(current_);
     pendingFallback=L"\""+exe.wstring()+L"\" "+args;return true;
 }

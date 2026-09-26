@@ -1,3 +1,40 @@
+# Arnav Island 0.18.1-preview.1 — rain that runs, lightning, signed updates
+
+## Weather
+- **Rain that reacts.** Raindrops on the glass now:
+  - bead where they land
+  - creep down when they're big enough
+  - let go and run faster when the island moves (it opens, is dragged, or drops an alert)
+  - merge when a running drop meets another, growing and speeding up
+
+  A drop that runs off the bottom comes back small near the top.
+- **Lightning.** In a storm, the glass lights up from inside now and then: a bright flicker, then a fainter one.
+- **Air quality on the glass.** When the air is unhealthy for sensitive groups (US AQI over 100), a faint warm haze settles into the frost. It's stronger over 150.
+- **The hourly curve.** The weather view draws a smooth line through the next eight hours' temperatures. A marker glides along it with the time.
+
+## Battery
+- **Health over time.** Stats › Battery › **Health over time** charts your battery's health, one reading a day. It marks the day it first fell below 90% and below 80%. **Last 24 hours** switches back.
+
+## Updates
+- **What's new.** After an update, the *Updated to …* card has a **What's new** button. It opens that release's notes in the island, and the wheel scrolls them.
+- **Signed releases.** Every release is now signed with the island's own publishing certificate. The updater installs a new version only if:
+  - its checksum matches
+  - its program says it's that version
+  - its signature is intact and made with that certificate
+
+  A download that fails any of these is never installed, even if it was put on the island's GitHub page. The certificate is the island's own, not bought from a public authority, so Windows lists the signer as *Arnav Island Releases* without vouching for it. The updater checks the certificate itself.
+
+## Checks
+- **Unit suites:** core 11,682; model 2,061; phase 5,697 (13 new: drops running, merging and respawning, What's new, health crossings, release notes); share 165; provider lifecycle passing.
+- **Native UI test:** 53 of 53 stages.
+- **Settings end to end:** 202 of 202.
+- **Signatures:** the updater's check accepts a program signed with the publishing certificate. It rejects the same program unsigned, and rejects it with a single byte changed.
+- **On the glass, measured:**
+  - lightning brightens the glass, then fades
+  - AQI 170 warms dark glass from 24,25,27 to 50,43,38; AQI 120 is subtler
+  - drops: 14 on the glass, some running
+- **Visual audit:** the hourly curve and its marker, the health chart in dark and light, the Updated card and the What's new sheet.
+
 # Arnav Island 0.18.0-preview.2 — the first update that installs itself
 
 ## Fixed

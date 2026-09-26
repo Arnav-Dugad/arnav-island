@@ -1,4 +1,5 @@
 #include "Renderer.h"
+#include "App/Version.h"
 #include "Audio/AudioRoute.h"
 #include <dxgi1_2.h>
 #include "Composition/DockGeometry.h"
@@ -77,10 +78,17 @@ void Renderer::initialize(HWND hwnd,float dpi,HWND shadow) {
         b.clip->SetTop(std::round(float(k)*48*scale_));b.clip->SetBottom(k+1==bands_.size()?std::ceil(340*scale_):std::round(float(k+1)*48*scale_));b.visual->SetClip(b.clip.Get());check(content_->AddVisual(b.visual.Get(),FALSE,nullptr));}
     check(content_->AddVisual(cardRing_.Get(),FALSE,nullptr));
     check(device_->CreateVisual(&sheen_));check(device_->CreateEffectGroup(&sheenEffect_));sheen_->SetEffect(sheenEffect_.Get());sheenEffect_->SetOpacity(0.f);check(body_->AddVisual(sheen_.Get(),TRUE,inner_.Get()));
+    // The weather view's now marker rides the content layer.
+    check(device_->CreateVisual(&nowMarker_));
     // The weather on the glass, just above the fill (beneath the beat light, the pointer's light and all content).
     check(device_->CreateVisual(&weatherFx_));check(device_->CreateEffectGroup(&weatherFxEffect_));weatherFx_->SetEffect(weatherFxEffect_.Get());weatherFxEffect_->SetOpacity(0.f);check(body_->AddVisual(weatherFx_.Get(),TRUE,inner_.Get()));
     for(auto* v:{std::addressof(rainFx_),std::addressof(dropsFx_),std::addressof(fogFx_)}){check(device_->CreateVisual(v->GetAddressOf()));check(weatherFx_->AddVisual(v->Get(),FALSE,nullptr));}
     for(size_t k=0;k<fxTiles_.size();++k){check(device_->CreateVisual(&fxTiles_[k]));check((k<2?rainFx_:fogFx_)->AddVisual(fxTiles_[k].Get(),FALSE,nullptr));}
+    // The haze beneath everything; running drops above the still ones; lightning over all of it.
+    check(device_->CreateVisual(&hazeFx_));check(weatherFx_->AddVisual(hazeFx_.Get(),TRUE,nullptr));
+    check(device_->CreateVisual(&liveDropsFx_));check(weatherFx_->AddVisual(liveDropsFx_.Get(),FALSE,nullptr));
+    for(auto& d:liveDrops_){check(device_->CreateVisual(&d.visual));check(device_->CreateEffectGroup(&d.effect));check(device_->CreateScaleTransform(&d.scale));d.visual->SetEffect(d.effect.Get());d.visual->SetTransform(d.scale.Get());d.effect->SetOpacity(0.f);check(liveDropsFx_->AddVisual(d.visual.Get(),FALSE,nullptr));}
+    check(device_->CreateVisual(&flashFx_));check(device_->CreateEffectGroup(&flashEffect_));flashFx_->SetEffect(flashEffect_.Get());flashEffect_->SetOpacity(0.f);check(weatherFx_->AddVisual(flashFx_.Get(),FALSE,nullptr));
     // The solid island's beat light, just above its fill (beneath the pointer's light and all content).
     check(device_->CreateVisual(&beatLight_));check(device_->CreateEffectGroup(&beatLightEffect_));beatLight_->SetEffect(beatLightEffect_.Get());beatLightEffect_->SetOpacity(0.f);check(body_->AddVisual(beatLight_.Get(),TRUE,inner_.Get()));
     for(auto& v:beatStrips_){check(device_->CreateVisual(&v));check(beatLight_->AddVisual(v.Get(),FALSE,nullptr));}
@@ -230,7 +238,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         surface(navMiddleSurface_,2,44,[&](auto* rt){rt->Clear(D2D1::ColorF(ink,.055f));});
         navCapLeft_->SetContent(navSurface_.Get());navCapRight_->SetContent(navSurface_.Get());navMiddle_->SetContent(navMiddleSurface_.Get());
     }
-    wingLeft_->SetContent(attached&&!glass?leftSurface_.Get():nullptr);wingRight_->SetContent(attached&&!glass?rightSurface_.Get():nullptr);barEffect_->SetOpacity(s.page==Page::Overview&&!s.weatherView&&s.expanded&&!s.live?1.f:0.f);
+    wingLeft_->SetContent(attached&&!glass?leftSurface_.Get():nullptr);wingRight_->SetContent(attached&&!glass?rightSurface_.Get():nullptr);barEffect_->SetOpacity(s.page==Page::Overview&&!s.weatherView&&!(s.whatsNewView&&!s.whatsNew.empty())&&s.expanded&&!s.live?1.f:0.f);
     {const bool pulse=s.settings.artPulse&&!s.reducedMotion&&s.playback.playing&&bool(s.playback.artwork);
         setArtPulse(pulse);}
     setBeatEdge(s.settings.beatEdge&&!s.reducedMotion&&s.playback.playing,accent,glass,s.reducedMotion);
@@ -301,7 +309,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         const std::wstring labelKey=sung?L"\x1fsung":rolling?L"\x1ftimer":label;
         if(labelKey!=headerLabel_){if(restCompact_&&!s.expanded&&!s.reducedMotion&&!headerLabel_.empty()){headerEntrance_=seconds();auto a=entrance(headerEntrance_,.35f);headerEffect_->SetOpacity(a.Get());}headerLabel_=labelKey;}
     });header_->SetContent(headerSurface_.Get());placeOdometers(headerSpots_,{1,6,7,8,9,10,11,12},header_.Get(),s.reducedMotion);lineLyric(compactLyric_,header_.Get(),s,lyricOn,sungX,0,sungW,34,11.5f,ink,s.reducedMotion);adapt_=nullptr;if(headerOnly){updateWeatherGlass(s);commit();return;}
-    drawingContent_=true;iconRequests_.clear();caretTarget_=42;answerY_=-1;answerText_.clear();contentSpots_.clear();bool liveLyricOn=false;
+    drawingContent_=true;nowCurve_={};iconRequests_.clear();caretTarget_=42;answerY_=-1;answerText_.clear();contentSpots_.clear();bool liveLyricOn=false;
     // Four DIPs wider and taller than the bands show: a band sampled at its edge (a sub-pixel offset while a
     // spring settles) then reads this surface's own clear pixels, not whatever the compositor packed beside it.
     surface(contentSurface_,384,344,[&](auto* rt){
@@ -377,8 +385,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             return;
         }
         // 0.18: the island has just updated itself.
-        if(s.card&&s.notice.kind==18){box(12,10,44,44,raised,22);drawIcon(rt,d2d_.Get(),Icon::Spark,22,20,24,accent);
-            text(rt,s.notice.app,72,8,300,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.notice.detail,72,32,300,10.5f,muted);return;}
+        if(s.card&&s.notice.kind==18){const bool notes=!s.whatsNew.empty();
+            text(rt,s.notice.app,72,8,notes?176.f:300.f,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.notice.detail,72,32,notes?176.f:300.f,10.5f,muted);if(notes)button(Action::WhatsNewOpen,L"What\u2019s new",256,16,76,26,true);return;}
         if(s.card&&s.notice.kind>=14&&s.notice.kind<=17){
             // Sharing: the pairing code both PCs show, a file to accept, or how a transfer or a pairing went.
             // A detail too long for its room keeps what follows its first dot (a size, where it's from) and shortens the name.
@@ -469,7 +477,22 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         // The weather statistic's sky plays while Home shows it.
         {int slot=-1;for(int i=0;i<3;++i)if(s.settings.homeMetrics[i]==8)slot=i;
             skyWanted_=s.page==Page::Overview&&!s.weatherView&&s.expanded&&!s.live&&!s.card&&slot>=0&&s.settings.weather&&s.weather.valid&&!s.reducedMotion;skyX_=slot*130.f;}
-        if(s.page==Page::Overview&&s.weatherView&&s.weather.valid){
+        if(s.page==Page::Overview&&s.whatsNewView&&!s.whatsNew.empty()){
+            // 0.18.1: What's new, from the release's notes: section headings and their points, wrapped; the wheel pages.
+            iconButton(Action::WhatsNewBack,Icon::ArrowLeft,0,38,28,28);text(rt,std::wstring(L"What\u2019s new in ")+appVersion,36,40,340,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,24);
+            auto para=[&](const std::wstring& t,float x,float y,float w,float size,UINT32 color,DWRITE_FONT_WEIGHT weight,bool draw){ComPtr<IDWriteTextFormat> f;check(write_->CreateTextFormat(fontFamily(size),nullptr,weight,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,size,L"en-us",&f));
+                f->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);ComPtr<IDWriteTextLayout> l;check(write_->CreateTextLayout(t.c_str(),UINT32(t.size()),f.Get(),w,400,&l));DWRITE_TEXT_METRICS m{};l->GetMetrics(&m);
+                if(draw){b->SetColor(D2D1::ColorF(color));rt->DrawTextLayout({x,y},l.Get(),b.Get());}return m.height;};
+            float y=72;const float bottom=228;int shown=0;const int first=std::clamp(s.whatsNewOffset,0,std::max(0,int(s.whatsNew.size())-1));
+            for(size_t k=size_t(first);k<s.whatsNew.size();++k){const auto& line=s.whatsNew[k];const float x=line.heading?0.f:line.sub?24.f:12.f,size=line.heading?11.f:9.5f;
+                const std::wstring& t=line.text;const float h=para(t,x,y,380-x,size,line.heading?ink:muted,line.heading?DWRITE_FONT_WEIGHT_SEMI_BOLD:DWRITE_FONT_WEIGHT_NORMAL,false);
+                if(y+h>bottom&&shown>0)break;
+                // A heading keeps its first point with it.
+                if(line.heading&&shown>0&&k+1<s.whatsNew.size()){const auto& next=s.whatsNew[k+1];if(y+4+h+3+para(next.text,next.sub?24.f:12.f,0,380-(next.sub?24.f:12.f),9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,false)>bottom)break;}if(line.heading&&k!=size_t(first))y+=4;if(!line.heading){b->SetColor(D2D1::ColorF(muted));rt->FillEllipse(D2D1::Ellipse({x-6,y+size*.72f},1.4f,1.4f),b.Get());}
+                para(t,x,y,380-x,size,line.heading?ink:muted,line.heading?DWRITE_FONT_WEIGHT_SEMI_BOLD:DWRITE_FONT_WEIGHT_NORMAL,true);y+=h+(line.heading?3:2);++shown;}
+            whatsNewShown_=shown;
+            if(first+shown<int(s.whatsNew.size()))text(rt,L"Scroll for more",260,214,120,8.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);
+        }else if(s.page==Page::Overview&&s.weatherView&&s.weather.valid){
             // 0.18: the weather's own view: now, the next hours, and every reading.
             const auto& n=s.weather.now;const int unit=s.settings.weatherUnit;const UINT32 rain=s.light?0x2f6fb8:0x7fb6ff;
             auto sky=[](int code,bool day){switch(skyOf(code)){case Sky::Clear:return day?Icon::Sun:Icon::Moon;case Sky::PartlyCloudy:return day?Icon::PartlyCloudy:Icon::Cloud;case Sky::Cloudy:return Icon::Cloud;case Sky::Fog:return Icon::Fog;case Sky::Drizzle:case Sky::Rain:return Icon::Rain;case Sky::Snow:return Icon::Snow;default:return Icon::Storm;}};
@@ -481,13 +504,24 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             {std::wstring hl;if(std::isfinite(n.high)&&std::isfinite(n.low))hl=L"H "+temperatureText(n.high,unit)+L"   L "+temperatureText(n.low,unit);text(rt,hl,200,36,180,12,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_TRAILING);
                 if(std::isfinite(n.feels))text(rt,L"Feels like "+temperatureText(n.feels,unit),200,54,180,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);
                 if(s.weather.sunrise>0)text(rt,L"Sunrise "+clock(s.weather.sunrise,false)+L"  \u00b7  Sunset "+clock(s.weather.sunset,false),160,70,220,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
-            // The next hours: the time, the sky, the temperature and (from 20%) the chance of rain.
-            hairline(0,88,380);{const int64_t now=int64_t(std::time(nullptr));int column=0;
-                for(const auto& h:n.hours){if(h.time+3600<=now)continue;if(column>=8)break;const float x=float(column)*47.5f;
-                    text(rt,column==0?std::wstring(L"Now"):clock(h.time,true),x,91,47,8.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER);drawIcon(rt,d2d_.Get(),sky(h.code,h.day),x+16,104,15,ink);
-                    text(rt,temperatureText(h.temperature,unit),x,119,47,11,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_CENTER);if(h.rain>=20)text(rt,std::to_wstring(h.rain)+L"%",x,132,47,8,rain,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER);++column;}
-                if(!column)text(rt,L"The next hours appear with the next forecast",0,116,380,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER);}
-            hairline(0,145,380);
+            // The next hours: the time, the sky, the temperature, a smooth curve through the temperatures (with "now" gliding
+            // along it) and, from 20%, the chance of rain.
+            hairline(0,88,380);{const int64_t now=int64_t(std::time(nullptr));std::vector<const WeatherHour*> shown;for(const auto& h:n.hours){if(h.time+3600<=now)continue;if(shown.size()>=8)break;shown.push_back(&h);}
+                float lo=1e9f,hi=-1e9f;for(auto* h:shown){lo=std::min(lo,float(h->temperature));hi=std::max(hi,float(h->temperature));}
+                std::vector<D2D1_POINT_2F> points;for(size_t k=0;k<shown.size();++k){const auto& h=*shown[k];const float x=float(k)*47.5f;
+                    text(rt,k==0?std::wstring(L"Now"):clock(h.time,true),x,90,47,8.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER);drawIcon(rt,d2d_.Get(),sky(h.code,h.day),x+16.5f,101,14,ink);
+                    text(rt,temperatureText(h.temperature,unit),x,113,47,10.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_CENTER);if(h.rain>=20)text(rt,std::to_wstring(h.rain)+L"%",x,138,47,7.5f,rain,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER);
+                    points.push_back({x+23.75f,hi>lo?136-float((h.temperature-lo)/(hi-lo))*8:132});}
+                nowCurve_={};
+                if(points.size()>=2){auto tangent=[&](size_t k){const size_t a=k?k-1:0,b=std::min(points.size()-1,k+1);return (points[b].y-points[a].y)/float(b-a);};
+                    ComPtr<ID2D1PathGeometry> path;check(d2d_->CreatePathGeometry(&path));ComPtr<ID2D1GeometrySink> sk;check(path->Open(&sk));sk->BeginFigure(points[0],D2D1_FIGURE_BEGIN_HOLLOW);
+                    for(size_t k=0;k+1<points.size();++k){const float dx=points[k+1].x-points[k].x;sk->AddBezier({{points[k].x+dx/3,points[k].y+tangent(k)/3},{points[k+1].x-dx/3,points[k+1].y-tangent(k+1)/3},points[k+1]});}
+                    sk->EndFigure(D2D1_FIGURE_END_OPEN);check(sk->Close());b->SetColor(D2D1::ColorF(accent,.85f));ComPtr<ID2D1StrokeStyle> round;check(d2d_->CreateStrokeStyle(D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND,D2D1_CAP_STYLE_ROUND,D2D1_CAP_STYLE_ROUND,D2D1_LINE_JOIN_ROUND),nullptr,0,&round));
+                    rt->DrawGeometry(path.Get(),b.Get(),1.6f,round.Get());b->SetColor(D2D1::ColorF(muted,.6f));for(size_t k=1;k<points.size();++k)rt->FillEllipse(D2D1::Ellipse(points[k],1.5f,1.5f),b.Get());
+                    // The now marker's path: the first span of the curve, the hour now running.
+                    nowCurve_={true,points[0].x,points[1].x-points[0].x,points[0].y,points[1].y,tangent(0),tangent(1),shown[0]->time};}
+                if(shown.empty())text(rt,L"The next hours appear with the next forecast",0,116,380,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER);}
+            hairline(0,150,380);
             // Every reading, four to a row.
             {std::vector<std::pair<const wchar_t*,std::wstring>> cells;auto add=[&](const wchar_t* name,std::wstring v){if(!v.empty())cells.push_back({name,std::move(v)});};
                 auto whole=[](double v,const wchar_t* suffix){return std::isfinite(v)?std::to_wstring(long(std::lround(v)))+suffix:std::wstring();};
@@ -496,7 +530,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 add(L"PRESSURE",pressureText(n.pressure,unit));add(L"VISIBILITY",distanceText(n.visibility,unit));if(std::isfinite(n.dewPoint))add(L"DEW POINT",temperatureText(n.dewPoint,unit));
                 add(L"CLOUD COVER",whole(n.cloud,L"%"));add(L"RAIN CHANCE",whole(n.rainChance,L"%"));add(L"RAIN TODAY",rainText(n.rainTotal,unit));
                 if(std::isfinite(n.daylight)){const int m=int(n.daylight/60);add(L"DAYLIGHT",std::to_wstring(m/60)+L" h "+std::to_wstring(m%60)+L" min");}
-                for(size_t k=0;k<cells.size()&&k<12;++k){const float x=float(k%4)*96,y=150+float(k/4)*26;text(rt,cells[k].first,x,y,92,8,muted);text(rt,cells[k].second,x,y+11,94,11,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}}
+                for(size_t k=0;k<cells.size()&&k<12;++k){const float x=float(k%4)*96,y=154+float(k/4)*25;text(rt,cells[k].first,x,y,92,8,muted);text(rt,cells[k].second,x,y+11,94,11,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}}
         }else if(s.page==Page::Overview){
             if(!s.playback.artwork){box(0,43,64,64,raised,15);if(logoArt)identity(rt,s.playback,12,55,40,solidRaised);else drawIcon(rt,d2d_.Get(),Icon::Music,19,62,26,muted);}
             // Title and artist sit as one block centred on the artwork (43..107), as does the play button.
@@ -616,11 +650,29 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             wchar_t full[32]{};if(p.fullMwh>0&&!p.relative)swprintf(full,32,L"%.1f Wh",p.fullMwh/1000.);double health=p.health();
             stat(Icon::Heart,L"HEALTH",health>=0?std::to_wstring(int(std::lround(health*100)))+L"%":L"—",122);
             if(s.healthNow>=0&&s.healthBefore>=0){const double change=(s.healthNow-s.healthBefore)*100;wchar_t d[32];swprintf(d,32,std::abs(change)<.05?L"steady":L"%+.1f",change);text(rt,std::wstring(d)+L" this week",160,116,84,8.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,14);}stat(Icon::Battery,L"FULL CHARGE",full[0]?full:L"—",208);stat(Icon::Reset,L"CYCLES",p.cycles?std::to_wstring(p.cycles):L"—",294);
+            // 0.18.1: the last 24 hours, or health over time (one reading a day, with where it fell below 90% and 80%).
+            button(Action::BatteryChart,s.batteryHealthChart?L"Last 24 hours":L"Health over time",262,141,118,19);
+            if(s.batteryHealthChart){
+                auto month=[](int64_t day){std::time_t t=std::time_t(day*86400);std::tm tm{};gmtime_s(&tm,&t);wchar_t b[16]{};wcsftime(b,16,L"%b %Y",&tm);return std::wstring(b);};
+                text(rt,s.healthDays.empty()?std::wstring(L"Health over time"):L"Health since "+month(s.healthDays.front().first),0,146,250,9.5f,muted);
+                if(s.healthDays.size()<2)text(rt,L"One reading a day; the line appears after a couple of days",0,166,380,10,muted);
+                else{float minH=1;for(auto& d:s.healthDays)minH=std::min(minH,d.second);const float lo=std::min(.75f,minH-.03f),top=162,bottom=196;
+                    const double first=double(s.healthDays.front().first),span=std::max(1.,double(s.healthDays.back().first)-first);
+                    auto at=[&](size_t k){return D2D1::Point2F(float((double(s.healthDays[k].first)-first)/span*380),bottom-(s.healthDays[k].second-lo)/(1-lo)*(bottom-top));};
+                    // The 90% and 80% lines, dashed.
+                    ComPtr<ID2D1StrokeStyle> dash;{D2D1_STROKE_STYLE_PROPERTIES props{};props.dashStyle=D2D1_DASH_STYLE_CUSTOM;const float dashes[]={2,3};check(d2d_->CreateStrokeStyle(props,dashes,2,&dash));}
+                    for(float level:{.9f,.8f})if(level>lo){const float y=bottom-(level-lo)/(1-lo)*(bottom-top);b->SetColor(D2D1::ColorF(muted,.45f));rt->DrawLine({0,y},{380,y},b.Get(),.8f,dash.Get());text(rt,level>.85f?L"90%":L"80%",0,y-10,26,7.5f,muted);}
+                    ComPtr<ID2D1PathGeometry> path;d2d_->CreatePathGeometry(&path);ComPtr<ID2D1GeometrySink> sink;path->Open(&sink);sink->BeginFigure({at(0).x,bottom},D2D1_FIGURE_BEGIN_FILLED);for(size_t k=0;k<s.healthDays.size();++k)sink->AddLine(at(k));sink->AddLine({at(s.healthDays.size()-1).x,bottom});sink->EndFigure(D2D1_FIGURE_END_CLOSED);sink->Close();
+                    b->SetColor(D2D1::ColorF(accent,.14f));rt->FillGeometry(path.Get(),b.Get());b->SetColor(D2D1::ColorF(accent));for(size_t k=1;k<s.healthDays.size();++k)rt->DrawLine(at(k-1),at(k),b.Get(),1.6f);
+                    // Where it first fell below each line.
+                    for(float level:{.9f,.8f}){bool above=false;for(size_t k=0;k<s.healthDays.size();++k){if(s.healthDays[k].second>=level)above=true;else if(above){const auto p=at(k);b->SetColor(D2D1::ColorF(level>.85f?0xf0b44c:0xf06a6a));rt->FillEllipse(D2D1::Ellipse(p,3,3),b.Get());
+                        const std::wstring label=(level>.85f?L"Below 90% \u00b7 ":L"Below 80% \u00b7 ")+month(s.healthDays[k].first);const float w=measure(label,8)+4,x=std::clamp(p.x-w/2,28.f,380-w);text(rt,label,x,p.y-15,w,8,ink,DWRITE_FONT_WEIGHT_MEDIUM);break;}}}}
+            }else{
             text(rt,L"Last 24 hours",0,146,200,9.5f,muted);
             if(s.history.size()>=8){ComPtr<ID2D1PathGeometry> path;d2d_->CreatePathGeometry(&path);ComPtr<ID2D1GeometrySink> sink;path->Open(&sink);auto point=[&](size_t i){return D2D1::Point2F(s.history[i]*380,196-s.history[i+1]*32);};
                 sink->BeginFigure({s.history[0]*380,196},D2D1_FIGURE_BEGIN_FILLED);for(size_t i=0;i+1<s.history.size();i+=2)sink->AddLine(point(i));sink->AddLine({s.history[s.history.size()-2]*380,196});sink->EndFigure(D2D1_FIGURE_END_CLOSED);sink->Close();
                 b->SetColor(D2D1::ColorF(accent,.14f));rt->FillGeometry(path.Get(),b.Get());b->SetColor(D2D1::ColorF(accent));for(size_t i=2;i+1<s.history.size();i+=2)rt->DrawLine(point(i-2),point(i),b.Get(),1.6f);}
-            else text(rt,L"History fills in as the day goes on",0,166,380,10,muted);}
+            else text(rt,L"History fills in as the day goes on",0,166,380,10,muted);}}
             hairline(0,197,380);button(Action::PowerSettings,L"Power & battery",0,203,150,25);
             button(Action::BatteryDetails,s.batteryDetails?L"Overview":L"All details",270,203,110,25);
         }else if(s.page==Page::System&&s.statsTab==2){
@@ -820,7 +872,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     });drawingContent_=false;
     // (Its surfaces are drawn once the content surface is closed: one surface draws at a time.)
     if(skyWanted_)skyScene(s,skyX_);else skyHide();
-    updateWeatherGlass(s);
+    updateWeatherGlass(s);updateNowMarker(accent);
     updateCaret(s,caretTarget_,accent);lineLyric(liveLyric_,content_.Get(),s,liveLyricOn&&s.live&&!s.card,68,21,250,20,11.5f,ink,s.reducedMotion);
     if(answerY_>=0&&!answerText_.empty()&&s.command.active)contentSpots_.push_back({0,answerText_,46,answerY_,17,DWRITE_FONT_WEIGHT_SEMI_BOLD,ink,0,false,true});
     placeOdometers(contentSpots_,{0,2,3,4,5},content_.Get(),s.reducedMotion);for(auto request:iconRequests_)icon(request.action,request.glyph,request.x,request.y,request.size,request.color,request.slot,request.celebrate);for(auto& b:bands_)b.visual->SetContent(contentSurface_.Get());for(auto& item:icons_)if(!item.used)item.effect->SetOpacity(0.f);placeNav(seconds(),navY);commit();
@@ -835,6 +887,21 @@ ComPtr<IDCompositionAnimation> Renderer::animation(const Spring& s,double now,fl
 }
 ComPtr<IDCompositionAnimation> Renderer::visibility(const MotionEngine& m,double now,bool compact){
     ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(now)));double duration=0;auto curve=approximateCurve([&](double t){return m.visibility(t,compact);},[&](double t){return m.height.settled(t)&&m.reveal.settled(t);},now,duration);for(auto& c:curve)check(a->AddCubic(c.time,float(c.p),float(c.v),float(c.quadratic),float(c.cubic)));check(a->End(duration,float(m.visibility(now+10,compact).position)));return a;
+}
+// The weather view's now marker: at the hour's fraction gone along the curve's first span, gliding to its end.
+void Renderer::updateNowMarker(UINT32 accent){
+    if(!nowMarker_)return;const bool on=nowCurve_.on;if(!on){nowMarker_->SetContent(nullptr);return;}
+    if(!nowMarkerSurface_||nowMarkerColor_!=accent){nowMarkerColor_=accent;surface(nowMarkerSurface_,10,10,[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(0xffffff),&b));rt->FillEllipse(D2D1::Ellipse({5,5},4.2f,4.2f),b.Get());b->SetColor(D2D1::ColorF(accent));rt->FillEllipse(D2D1::Ellipse({5,5},3,3),b.Get());});}
+    if(!nowMarkerAdded_){check(content_->AddVisual(nowMarker_.Get(),FALSE,nullptr));nowMarkerAdded_=true;}
+    nowMarker_->SetContent(nowMarkerSurface_.Get());
+    const double now=seconds(),wall=double(std::time(nullptr)),f0=std::clamp((wall-double(nowCurve_.start))/3600.,0.,1.),remaining=std::max(1.,(1-f0)*3600);const float px=scale_;
+    // The Hermite span as a cubic in time: y(u)=A u^3+B u^2+C u+D, u=f0+t/3600.
+    const double p0=nowCurve_.p0,p1=nowCurve_.p1,m0=nowCurve_.m0,m1=nowCurve_.m1,A=2*p0+m0-2*p1+m1,B=-3*p0-2*m0+3*p1-m1,C=m0,D=p0,k=1/3600.;
+    ComPtr<IDCompositionAnimation> x,y;check(device_->CreateAnimation(&x));check(device_->CreateAnimation(&y));check(x->SetAbsoluteBeginTime(ticks(now)));check(y->SetAbsoluteBeginTime(ticks(now)));
+    const float left=(nowCurve_.x0-5)*px,top=-5*px;
+    check(x->AddCubic(0,left+float(nowCurve_.dx*f0)*px,float(nowCurve_.dx*k)*px,0,0));check(x->End(remaining,left+nowCurve_.dx*px));
+    check(y->AddCubic(0,top+float(A*f0*f0*f0+B*f0*f0+C*f0+D)*px,float(k*(3*A*f0*f0+2*B*f0+C))*px,float(k*k*(3*A*f0+B))*px,float(k*k*k*A)*px));check(y->End(remaining,top+float(p1)*px));
+    nowMarker_->SetOffsetX(x.Get());nowMarker_->SetOffsetY(y.Get());
 }
 void Renderer::animate(const MotionEngine& m,double now) {
     // At rest the body sits on whole physical pixels, so its edges meet the shoulders exactly.
@@ -931,6 +998,9 @@ void Renderer::animate(const MotionEngine& m,double now) {
     auto rx=animation(m.width,now,edge_&&!expanded_?0.f:scale_,edge_&&!expanded_?8*scale_:-58*scale_);rings_->SetOffsetX(rx.Get());rings_->SetOffsetY(edge_&&!expanded_?38*scale_:0.f);
     auto ba=animation(batteryAngle,now),ta=animation(timerAngle,now);batteryRotation_->SetAngle(ba.Get());timerRotation_->SetAngle(ta.Get());
     auto pulse=animation(m.pulse,now);pulseEffect_->SetOpacity(pulse.Get());glass_.animate(m,now,edge_,attached_);shadow_.animate(m,now,edge_,attached_);
+    // Rain on the glass: any change of shape (opening, a drag, a drop) shakes the drops loose; they live in the island's size.
+    {const double signature=m.width.target()+m.height.target()*3+m.drop.target()*7+m.dragX.target()*11+m.dragY.target()*13+m.slide.target()*17+m.spread.target()*19;
+        if(signature!=shapeSignature_){shapeSignature_=signature;shakeAt_=now;}bodyW_=float(m.width.target());bodyH_=float(m.height.target());if(dropsOn_)dropField_.resize(bodyW_,bodyH_);}
     // The solid beat light's right and bottom strips follow the body's size.
     {const float band=std::round(beatBand*scale_);if(m.width.settled(now))beatStrips_[1]->SetOffsetX(restW-band);else{auto a=animation(m.width,now,scale_,-band);beatStrips_[1]->SetOffsetX(a.Get());}
         if(m.height.settled(now))beatStrips_[3]->SetOffsetY(restH-band);else{auto a=animation(m.height,now,scale_,-band);beatStrips_[3]->SetOffsetY(a.Get());}}

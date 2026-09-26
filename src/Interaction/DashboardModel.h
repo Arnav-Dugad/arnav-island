@@ -22,7 +22,9 @@ enum class Action { None,Overview,Media,System,Focus,Settings,Pin,Close,Play,Pre
     UpNextOpen=531,UpNextBack=532,UpNextUp=533,UpNextDown=534,UpNextItemBase=535,UpNextItemEnd=540,
     RemoteShelfBack=540,RemoteShelfRefresh=541,RemoteShelfUp=542,RemoteShelfDown=543,RemoteItemBase=544,RemoteItemEnd=548,NearbyBrowseBase=548,NearbyBrowseEnd=552,
     // 0.18 (552-556): every battery reading, the weather's own view, installing a downloaded update now.
-    BatteryDetails=552,WeatherOpen=553,WeatherBack=554,UpdateRestart=555,ActionEnd=556 };
+    BatteryDetails=552,WeatherOpen=553,WeatherBack=554,UpdateRestart=555,
+    // 0.18.1 (556-559): the battery's health over time, and the What's new sheet after an update.
+    BatteryChart=556,WhatsNewOpen=557,WhatsNewBack=558,ActionEnd=559 };
 inline bool inRange(Action a,Action base,Action end){return int(a)>=int(base)&&int(a)<int(end);}
 // Command bar layout: input 42, then 40 per row, then the key hints.
 inline float commandFooterY(int rows){return 52+40.f*float(rows)+2;}

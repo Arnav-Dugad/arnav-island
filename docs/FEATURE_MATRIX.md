@@ -190,3 +190,13 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Deferred alerts | Alerts while the island is open wait (up to four) and show as it settles; dropped after 60 s | — |
 | Low battery | Once each at 20%, 10% and 5% on battery | — |
 | Row previews | 37 rows | Pointer only |
+
+| v0.18.1-preview.1 feature | Implemented | Limits |
+|---|---|---|
+| Running drops | 14 live drops: cling, run by size, shaken loose by the island's movement, merge (areas add), come back small | Glass, rain, not with reduced motion |
+| Lightning | A glow from inside the glass, twice in eleven seconds | Storms; not with reduced motion |
+| Air-quality haze | Faint warm haze over US AQI 100, stronger over 150 | Needs Open-Meteo's air quality |
+| Hourly curve | Catmull-Rom through eight hours; a now marker gliding along the current span | — |
+| Health over time | One reading a day; first falls below 90% and 80% marked | Fills in from when the island started keeping history |
+| What's new | The Updated card opens the release's notes; the wheel scrolls | From 0.18.1 on (the version doing the updating saves the notes) |
+| Signed releases | Authenticode, pinned publisher certificate checked by the updater | Self-issued certificate: Windows shows the signer without vouching for it |

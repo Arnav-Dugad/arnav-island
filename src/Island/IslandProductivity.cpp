@@ -1,5 +1,6 @@
 #include "Island/IslandWindow.h"
 #include "App/Version.h"
+#include <sstream>
 #include <shlobj.h>
 #include <powrprof.h>
 #include <ctime>
@@ -77,7 +78,10 @@ void IslandWindow::installUpdate(){
     if(update_->install(launchArgs_)){store_.log("Info","update_started");PostMessageW(window_,WM_CLOSE,0,0);}else pushSettingsContext();
 }
 void IslandWindow::showUpdated(){
-    if(!renderer_)return;content_.notice={};content_.notice.kind=18;content_.notice.app=std::wstring(L"Updated to ")+appVersion;content_.notice.detail=L"From "+updatedFrom_+L". What\u2019s new is on GitHub";
+    if(!renderer_)return;
+    // The notes the update brought (saved by the version it replaced), read once.
+    {const auto file=store_.directory/L"whats-new.md";std::ifstream in(file,std::ios::binary);if(in){std::stringstream text;text<<in.rdbuf();content_.whatsNew=whatsNewLines(text.str());in.close();std::error_code ec;std::filesystem::remove(file,ec);}}
+    content_.notice={};content_.notice.kind=18;content_.notice.app=std::wstring(L"Updated to ")+appVersion;content_.notice.detail=L"From "+updatedFrom_+(content_.whatsNew.empty()?L". What\u2019s new is on GitHub":L"");
     {const Activity a{ActivityKind::Notification,"update",55,18,2.4,6};if(deferCard(a)||holdCard(a))return;events_.publish(a,seconds());}
     transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info","update_card_shown");
 }

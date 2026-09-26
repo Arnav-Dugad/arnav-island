@@ -85,7 +85,7 @@ class IslandWindow {
     // Weather (opt-in): the service runs only while weather is on; a command may be waiting on its answer.
     std::unique_ptr<WeatherService> weather_;bool weatherAsked_=false;void syncWeather();
     // 0.18: updates from the island's releases. launchArgs_: this run's arguments, passed on to the new version.
-    std::unique_ptr<UpdateService> update_;std::wstring launchArgs_,updatedFrom_,qaVersion_;bool qaUpdate_=false,updateShown_=false,launchArgsQa_=false;static constexpr UINT_PTR UpdateTimer=77,UpdatedTimer=78;void syncUpdates(bool checkNow=false);bool quietForUpdate();void installUpdate();void showUpdated();
+    std::unique_ptr<UpdateService> update_;std::wstring launchArgs_,updatedFrom_,qaVersion_;bool qaUpdate_=false,updateShown_=false,launchArgsQa_=false;static constexpr UINT_PTR UpdateTimer=77,UpdatedTimer=78,DropTimer=79;bool dropTimer_=false;void syncDropTimer();void syncUpdates(bool checkNow=false);bool quietForUpdate();void installUpdate();void showUpdated();
     // Phase 5G: Settings' Town field (a search under way, what to say about it).
     bool townBusy_=false,qaWeatherLive_=false;std::wstring townStatus_;void townMessage(WPARAM,LPARAM);void pushSettingsContext();
     // Site icons for copied links (opt-in), kept in memory while the setting is on.

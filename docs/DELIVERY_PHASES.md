@@ -277,3 +277,18 @@ Verified:
 Limits:
 - **Unsigned.** Updates are checked by SHA-256 and by the program's own version, both from this repository's releases over HTTPS. A signed build would add a publisher check.
 - **First install.** Laptops on 0.17 or earlier need 0.18 installed once.
+
+## Status after v0.18.1-preview.1 — rain that runs, lightning, signed updates — 2026-09-26
+
+Shipped, as asked:
+- **Rain that reacts:** a live drop field (`GlassDrops`) stepped four times a second while it rains on visible glass. Island movement shakes drops loose; running drops merge (areas add).
+- **Lightning:** a glow from inside the glass, twice in every eleven seconds, in a storm.
+- **Hourly sparkline:** a smooth curve through the next eight hours; the now marker follows the curve's cubic in time.
+- **Battery health timeline:** health over time, marking where it first fell below 90% and 80%.
+- **Update notes on the island:** the Updated card opens the release's notes (What's new).
+- **Signed releases:** Authenticode with the island's own certificate; the updater checks the signer's SHA-256.
+- **Air-quality glass:** a faint warm haze over US AQI 100, stronger over 150.
+
+Limits:
+- **The certificate is self-issued.** Windows shows the signer but doesn't vouch for it, so SmartScreen still treats downloads as unrecognised. A certificate from a public authority would change that.
+- **The signing key lives on the publishing PC.** Back it up: without it, future releases can't be signed, and 0.18.1 and later wouldn't accept them.

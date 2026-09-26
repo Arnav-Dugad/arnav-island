@@ -201,6 +201,7 @@ std::wstring IslandWindow::accessibleName(Action a)const{
     case Action::BudPromote:return L"Show the waiting alert: "+content_.bud.title;
     case Action::BatteryDetails:return content_.batteryDetails?L"Battery overview":L"All battery details";
     case Action::WeatherOpen:return L"Weather details";case Action::WeatherBack:return L"Back to Home";case Action::UpdateRestart:return L"Restart to update";
+    case Action::BatteryChart:return content_.batteryHealthChart?L"Show the last 24 hours":L"Show health over time";case Action::WhatsNewOpen:return L"What\u2019s new";case Action::WhatsNewBack:return L"Close What\u2019s new";
     default:break;}
     // Rows.
     if(inRange(a,Action::ShelfItemBase,Action::MixerSliderBase)){const size_t i=row(Action::ShelfItemBase);return i<content_.shelf.size()?content_.shelf[i].label:L"Shelf item";}

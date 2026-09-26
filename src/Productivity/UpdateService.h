@@ -34,6 +34,13 @@ private:
     State state_=State::Idle;std::wstring status_;AppVersion ready_;std::filesystem::path staged_;
     void run();void check();void set(State s,std::wstring status);
 };
+// 0.18.1: releases are signed (Authenticode) with the island's own publishing certificate. A program counts as the
+// island's only if its signature is intact and its signer is that certificate (its SHA-256, below). Windows doesn't
+// know this certificate (it isn't from a public authority), so "untrusted root" is expected; which certificate signed
+// is what's checked. signerSha256: the signing certificate's SHA-256 (empty when unsigned or the signature is broken).
+inline constexpr const char* publisherCertificate="d4cbca03ce626894a377bfa9da287808dcb20edd1dee2a8eb51c2e2fef0cb7d4";
+std::string signerSha256(const std::filesystem::path&);
+inline bool signedByPublisher(const std::filesystem::path& file){return signerSha256(file)==publisherCertificate;}
 // SHA-256 of a file as 64 lowercase hex digits (empty when it can't be read).
 std::string fileSha256(const std::filesystem::path&);
 // A program's ProductVersion (from its version resource), or empty.

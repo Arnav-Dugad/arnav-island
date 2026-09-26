@@ -70,6 +70,10 @@ struct BatteryHealthLog {
     static BatteryHealthLog read(std::istream& in){BatteryHealthLog h;std::string magic,word;int version=0;if(!(in>>magic>>version>>word>>h.lastCard)||magic!="battery_health"||version!=1||word!="card")return {};
         Day d;int64_t last=-1;while(in>>d.day>>d.full>>d.design>>d.cycles){if(d.day<=last||d.full<=0||d.design<=0)return {};last=d.day;h.days.push_back(d);if(h.days.size()>limit)h.days.erase(h.days.begin());}return in.eof()?h:BatteryHealthLog{};}
 };
+// 0.18.1: the first day (index into days) the health fell below `level` after being at or above it; -1 when it hasn't.
+inline int healthCrossing(const BatteryHealthLog& log,double level){
+    bool above=false;for(size_t k=0;k<log.days.size();++k){const double h=BatteryHealthLog::health(log.days[k]);if(h<0)continue;if(h>=level)above=true;else if(above)return int(k);}return -1;
+}
 // The last seven days of charge history: how often a charge began, how much of the battery an
 // average day used while on battery, and the hours spent on battery. usedPerDay is -1 without data.
 struct BatteryWeek {int charges=0;double usedPerDay=-1,hoursOnBattery=0,days=0;};

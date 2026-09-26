@@ -30,6 +30,8 @@
 #include "Design/Accent.h"
 #include "Media/Lyrics.h"
 #include "Productivity/Weather.h"
+#include "Productivity/Update.h"
+#include "Animation/GlassDrops.h"
 #include "Design/Backdrop.h"
 #include "Productivity/ShareService.h"
 #include "Media/Library.h"
@@ -104,6 +106,9 @@ struct ContentSnapshot {
     BatteryWeek week;double healthNow=-1,healthBefore=-1;
     // 0.18: the Battery tab's details (paged by rows of three), the week so far, and the first day of the health log.
     bool batteryDetails=false;int batteryOffset=0;BatteryWeek batteryWeek;double healthFirst=-1;int64_t healthSince=0;
+    // 0.18.1: the health chart (one reading a day: Unix day, health 0-1) in place of the last 24 hours; and after an update,
+    // its notes for the What's new sheet (opened from the Updated card), paged by the wheel.
+    bool batteryHealthChart=false;std::vector<std::pair<int64_t,float>> healthDays;std::vector<NoteLine> whatsNew;bool whatsNewView=false;int whatsNewOffset=0;
     struct Command{bool clips=false,paste=false;bool active=false,armed=false,error=false;std::wstring text,status;size_t caret=0;int selected=0;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;} command;
 };
 
@@ -248,6 +253,21 @@ public:bool queueGliding()const{return queueGliding_;}private:
     // (or snow) as two stacked tiles scrolled down forever, drops beaded on the pane, and fog as two tiles drifting sideways.
     ComPtr<IDCompositionVisual> weatherFx_,rainFx_,dropsFx_,fogFx_;std::array<ComPtr<IDCompositionVisual>,4> fxTiles_;ComPtr<IDCompositionEffectGroup> weatherFxEffect_;
     ComPtr<IDCompositionSurface> rainTile_,dropsTile_,fogTile_;std::string weatherFxKey_;void updateWeatherGlass(const ContentSnapshot&);
+    // 0.18.1: drops that run (a live GlassDrops field, stepped four times a second while it rains), lightning in a storm
+    // (a glow from inside that flickers now and then), and a warm haze on poor-air days. shakeAt_: when the island last
+    // moved (it shakes drops loose); bodyW_, bodyH_: the island's size the drops live in.
+    struct LiveDrop{ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionEffectGroup> effect;ComPtr<IDCompositionScaleTransform> scale;float x=0,y=0,r=0,o=0;};std::array<LiveDrop,14> liveDrops_;
+    ComPtr<IDCompositionVisual> liveDropsFx_,flashFx_,hazeFx_;ComPtr<IDCompositionEffectGroup> flashEffect_;ComPtr<IDCompositionSurface> beadSurface_,flashTile_,hazeTile_;
+    GlassDrops dropField_;bool dropsOn_=false;double dropAt_=0,shakeAt_=-10,shapeSignature_=0;float bodyW_=0,bodyH_=0;
+public:
+    // While it rains on the glass: step the drops (the island calls this about every 250 ms).
+    bool wantsDropSteps()const{return dropsOn_;}void stepDrops();
+    // Lines of the What's new sheet that fit (for paging with the wheel), and how many there are.
+    int whatsNewShown_=0;
+private:
+    // 0.18.1: the weather view's "now" marker glides along the hourly curve (x linear in time, y the curve's cubic).
+    ComPtr<IDCompositionVisual> nowMarker_;ComPtr<IDCompositionSurface> nowMarkerSurface_;UINT32 nowMarkerColor_=1;bool nowMarkerAdded_=false;
+    struct NowCurve{bool on=false;float x0=0,dx=0,p0=0,p1=0,m0=0,m1=0;int64_t start=0;} nowCurve_;void updateNowMarker(UINT32 accent);
     // The tile the sky plays in, drawn beneath it (the content's own box is left out), so the tile's text stays above the weather.
     ComPtr<IDCompositionVisual> skyBase_;ComPtr<IDCompositionSurface> skyBaseSurface_;UINT32 skyTile_=0x14171d;float skyTileAlpha_=1;std::wstring skyKey_;bool skyShown_=false,skyWanted_=false;float skyX_=0;
     void skyScene(const ContentSnapshot&,float x);void skyHide();
@@ -318,7 +338,7 @@ public:
     // Test runs only (--qa-glass-only): the DirectComposition layers hidden, so the glass alone can be measured.
     bool qaGlassOnly=false;
     // Test runs only (--qa-frost): the resting frost settles in about a second instead of half a minute.
-    double qaFrostPace=1;void qaFrost(double pace){qaFrostPace=pace;if(frostOn_){frostOn_=false;glass_.frost(false,seconds());}updateFrost();}std::string glassFailure()const{return glass_.failure()+" frostOn="+std::to_string(frostOn_)+" allowed="+std::to_string(frostAllowed_)+" expanded="+std::to_string(expanded_)+" inside="+std::to_string(pointerInside_)+" wx="+weatherFxKey_+" mat="+std::to_string(material_);}
+    double qaFrostPace=1;void qaFrost(double pace){qaFrostPace=pace;if(frostOn_){frostOn_=false;glass_.frost(false,seconds());}updateFrost();}std::string glassFailure()const{return glass_.failure()+" frostOn="+std::to_string(frostOn_)+" allowed="+std::to_string(frostAllowed_)+" expanded="+std::to_string(expanded_)+" inside="+std::to_string(pointerInside_)+" wx="+weatherFxKey_+" mat="+std::to_string(material_)+" drops="+[this]{int alive=0,running=0;float area=0;for(auto& d:dropField_.drops)if(d.alive){++alive;running+=d.speed>0;area+=d.r*d.r;}return std::to_string(dropsOn_)+"/"+std::to_string(alive)+"/"+std::to_string(running)+"/"+std::to_string(int(area));}();}
     // 0.18: rows of three in the Battery tab's details (for paging them with the wheel).
     int batteryRows_=0;
     bool glassAvailable()const{return glass_.available();}std::string glassError()const{return glass_.lastError_.empty()?shadow_.lastError_:glass_.lastError_;}GlassStyle glassStyle()const{return glass_.current();}UINT32 accentColor()const{return accentColor_;}

@@ -21,12 +21,16 @@ void Renderer::skyHide(){
 void Renderer::updateWeatherGlass(const ContentSnapshot& s){
     if(!weatherFx_)return;
     const Sky sky=s.weather.valid?skyOf(s.weather.code):Sky::Clear;const bool glass=material_!=0,wet=sky==Sky::Rain||sky==Sky::Drizzle||sky==Sky::Storm,cold=sky==Sky::Snow,foggy=sky==Sky::Fog;
-    const bool on=glass&&s.settings.weatherGlass&&s.settings.weather&&(wet||cold||foggy);
-    const std::string key=on?std::to_string(int(sky))+'|'+std::to_string(int(s.light))+'|'+std::to_string(int(s.reducedMotion)):std::string();
+    // Poor air (US AQI over 100, more over 150) warms the frost with a faint haze.
+    const double aqi=s.weather.valid?s.weather.now.aqi:NAN;const int haze=std::isfinite(aqi)?(aqi>150?2:aqi>100?1:0):0;
+    const bool on=glass&&s.settings.weatherGlass&&s.settings.weather&&(wet||cold||foggy||haze);
+    const std::string key=on?std::to_string(int(sky))+'|'+std::to_string(int(s.light))+'|'+std::to_string(int(s.reducedMotion))+'|'+std::to_string(haze):std::string();
     // Open, the weather steps back behind the text.
     weatherFxEffect_->SetOpacity(on?(s.expanded?.55f:1.f):0.f);
     if(key==weatherFxKey_)return;weatherFxKey_=key;
     for(auto& t:fxTiles_)t->SetContent(nullptr);dropsFx_->SetContent(nullptr);rainFx_->SetOffsetY(0.f);rainFx_->SetOffsetX(0.f);fogFx_->SetOffsetX(0.f);
+    hazeFx_->SetContent(nullptr);flashFx_->SetContent(nullptr);flashEffect_->SetOpacity(0.f);
+    const bool running=on&&wet&&!s.reducedMotion;if(running!=dropsOn_){dropsOn_=running;if(running){dropField_.reset(std::max(bodyW_,60.f),std::max(bodyH_,30.f),liveDrops_.size());dropAt_=seconds();}else for(auto& d:liveDrops_)d.effect->SetOpacity(0.f);}
     if(!on)return;
     const float W=canvasWidth,H=canvasHeight,px=scale_;const UINT32 ink=s.light?0x3a4658:0xffffff;const float strength=sky==Sky::Storm?1.4f:sky==Sky::Drizzle?.55f:1.f;
     std::mt19937 random(0xa11ce5u);std::uniform_real_distribution<float> u(0.f,1.f);
@@ -51,6 +55,22 @@ void Renderer::updateWeatherGlass(const ContentSnapshot& s){
                 b->SetColor(D2D1::ColorF(0xffffff,s.light?.45f:.28f));rt->DrawEllipse(D2D1::Ellipse({x,y},r,r*1.1f),b.Get(),.6f);
                 b->SetColor(D2D1::ColorF(0xffffff,s.light?.75f:.55f));rt->FillEllipse(D2D1::Ellipse({x-r*.35f,y-r*.4f},r*.28f,r*.28f),b.Get());}});
         dropsFx_->SetContent(dropsTile_.Get());}
+    // Lightning: a glow from inside the glass, twice in every eleven seconds (a bright flicker, then a fainter one).
+    if(sky==Sky::Storm&&!s.reducedMotion){
+        surface(flashTile_,int(W),int(canvasHeight),[&](auto* rt){D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(0xf4f6ff,.9f)},{.5f,D2D1::ColorF(0xdfe6ff,.35f)},{1,D2D1::ColorF(0xdfe6ff,0.f)}};ComPtr<ID2D1GradientStopCollection> c;check(rt->CreateGradientStopCollection(stops,3,&c));
+            ComPtr<ID2D1RadialGradientBrush> g;check(rt->CreateRadialGradientBrush(D2D1::RadialGradientBrushProperties({W*.42f,20},{0,0},W*.45f,160),c.Get(),&g));rt->FillRectangle({0,0,W,canvasHeight},g.Get());});
+        flashFx_->SetContent(flashTile_.Get());
+        ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(seconds()+1.5)));
+        const float peak=s.light?.26f:.34f;
+        struct Key{double t;float v;};const Key keys[]={{0,0},{3.0,0},{3.05,peak},{3.14,peak*.25f},{3.22,peak*.8f},{3.7,0},{8.2,0},{8.26,peak*.55f},{8.6,0},{11,0}};
+        for(size_t k=0;k+1<std::size(keys);++k){const float slope=float((keys[k+1].v-keys[k].v)/(keys[k+1].t-keys[k].t));check(a->AddCubic(keys[k].t,keys[k].v,slope,0,0));}
+        check(a->AddRepeat(11,11));flashEffect_->SetOpacity(a.Get());}
+    if(haze){
+        // A warm haze through the frost, stronger when the air is worse.
+        surface(hazeTile_,int(W),int(canvasHeight),[&](auto* rt){const UINT32 warm=s.light?0xe2a062:0xc98a4a;const float a=(haze==2?.14f:.08f)*(s.light?.9f:1.f);
+            D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(warm,a)},{.7f,D2D1::ColorF(warm,a*.7f)},{1,D2D1::ColorF(warm,a*.45f)}};ComPtr<ID2D1GradientStopCollection> c;check(rt->CreateGradientStopCollection(stops,3,&c));
+            ComPtr<ID2D1LinearGradientBrush> g;check(rt->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties({0,0},{0,160}),c.Get(),&g));rt->FillRectangle({0,0,W,canvasHeight},g.Get());});
+        hazeFx_->SetContent(hazeTile_.Get());}
     if(foggy||(sky==Sky::Drizzle)){
         // Fog: soft banks of mist, two tiles side by side drifting slowly across.
         surface(fogTile_,int(W),int(canvasHeight),[&](auto* rt){const int n=foggy?16:7;
@@ -60,6 +80,26 @@ void Renderer::updateWeatherGlass(const ContentSnapshot& s){
                 for(float shift:{-W,0.f,W}){g->SetCenter({x+shift,y});rt->FillRectangle({x+shift-r*1.7f,y-r,x+shift+r*1.7f,y+r},g.Get());}}});
         for(int k=2;k<4;++k){fxTiles_[size_t(k)]->SetContent(fogTile_.Get());fxTiles_[size_t(k)]->SetOffsetX(std::round(float(k-2)*W*px));}
         if(!s.reducedMotion){const double period=foggy?60.:90.;ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(seconds())));check(a->AddCubic(0,0,float(-W*px/period),0,0));check(a->AddRepeat(period,period));fogFx_->SetOffsetX(a.Get());}}
+}
+// One step of the running drops: each glides from where it was to where the field says it is now, over the next quarter
+// second; a drop taken in by another slides into it as it fades.
+void Renderer::stepDrops(){
+    if(!dropsOn_)return;const double now=seconds(),dt=std::clamp(now-dropAt_,.05,.5);dropAt_=now;const float shake=float(std::exp(-(now-shakeAt_)/.9));
+    dropField_.step(float(dt),shake);
+    if(!beadSurface_)surface(beadSurface_,12,12,[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(0x000000,.2f),&b));rt->FillEllipse(D2D1::Ellipse({6.3f,6.6f},5,5.4f),b.Get());
+        b->SetColor(D2D1::ColorF(0xffffff,.32f));rt->DrawEllipse(D2D1::Ellipse({6,6},5,5.4f),b.Get(),.8f);b->SetColor(D2D1::ColorF(0xffffff,.7f));rt->FillEllipse(D2D1::Ellipse({4.3f,4.1f},1.5f,1.5f),b.Get());});
+    const double span=.26;const float px=scale_;
+    auto glide=[&](float from,float to){ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(now)));check(a->AddCubic(0,from,float((to-from)/span),0,0));check(a->End(span,to));return a;};
+    for(size_t k=0;k<liveDrops_.size()&&k<dropField_.drops.size();++k){auto& v=liveDrops_[k];const auto& d=dropField_.drops[k];v.visual->SetContent(beadSurface_.Get());
+        // Taken in: it slides to the drop that took it, fading; run off or faded: gone until it comes back small.
+        float x=d.x,y=d.y,o=d.alive?1.f:0.f;if(!d.alive&&d.into>=0){x=dropField_.drops[size_t(d.into)].x;y=dropField_.drops[size_t(d.into)].y;}
+        const float r=d.r;const bool appear=v.o<=0&&o>0;
+        if(appear){v.visual->SetOffsetX(std::round((x-6)*px));v.visual->SetOffsetY(std::round((y-6)*px));}
+        else{auto ax=glide((v.x-6)*px,(x-6)*px),ay=glide((v.y-6)*px,(y-6)*px);v.visual->SetOffsetX(ax.Get());v.visual->SetOffsetY(ay.Get());}
+        v.scale->SetCenterX(6*px);v.scale->SetCenterY(6*px);if(appear){v.scale->SetScaleX(r/5);v.scale->SetScaleY(r/5);}else{auto sc=glide(v.r/5,r/5);v.scale->SetScaleX(sc.Get());v.scale->SetScaleY(sc.Get());}
+        if(appear){auto fade=glide(0,1);v.effect->SetOpacity(fade.Get());}else if(o!=v.o){auto fade=glide(v.o,o);v.effect->SetOpacity(fade.Get());}
+        v.x=x;v.y=y;v.r=r;v.o=o;}
+    commit();
 }
 void Renderer::skyScene(const ContentSnapshot& s,float x){
     // 0.17.0-preview.3: around sunrise and sunset at the chosen town the sky warms, and the sun sits low.
