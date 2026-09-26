@@ -73,14 +73,20 @@ void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UI
     }
     (void)accent;
 }
-// Light running along the island's edge when an alert arrives. The outline (the free edges only,
-// when the island is attached to the screen) is stroked three ways (a bright core line, a dimmer
-// line, a soft glow); clipped windows of each, narrowest brightest, sweep outward from the middle
-// of the edge opposite the screen, so the light falls off in steps, and the glint fades in under a second.
+// Light running along the island's edge when an alert arrives. The outline (the free edges only, when the island is
+// attached to the screen) is stroked twice (a crisp core line with a little glow, and a wide soft glow). Each runs as
+// a soft glint from the middle of the edge opposite the screen outward both ways: six nested windows around a moving
+// centre, each a sixth as bright, so the light rises and falls away smoothly at both ends; it fades in under a second.
+// Frost settles only while nothing is happening: the island compact, the pointer away, and no alert in the last four seconds.
+void Renderer::updateFrost(){
+    const double now=seconds();const bool rest=frostAllowed_&&!expanded_&&!pointerInside_&&now>=frostHold_;if(rest==frostOn_)return;frostOn_=rest;glass_.frost(rest,now,qaFrostPace);
+}
 void Renderer::splash(float w,float h,float r,bool attached,double delay,bool reduced){
+    frostHold_=seconds()+4;updateFrost();
     if(reduced||w<20||h<20)return;
     if(!splash_){check(device_->CreateVisual(&splash_));check(device_->CreateEffectGroup(&splashEffect_));splash_->SetEffect(splashEffect_.Get());splashEffect_->SetOpacity(0.f);splash_->SetBorderMode(DCOMPOSITION_BORDER_MODE_HARD);check(body_->AddVisual(splash_.Get(),FALSE,nullptr));
-        for(size_t k=0;k<splashBands_.size();++k){check(device_->CreateVisual(&splashBands_[k]));check(device_->CreateRectangleClip(&splashClips_[k]));splashBands_[k]->SetClip(splashClips_[k].Get());check(splash_->AddVisual(splashBands_[k].Get(),FALSE,nullptr));}}
+        for(size_t k=0;k<splashBands_.size();++k){check(device_->CreateVisual(&splashBands_[k]));check(device_->CreateRectangleClip(&splashClips_[k]));splashBands_[k]->SetClip(splashClips_[k].Get());
+            check(device_->CreateEffectGroup(&splashBandEffects_[k]));splashBands_[k]->SetEffect(splashBandEffects_[k].Get());splashBandEffects_[k]->SetOpacity(1.f/splashSteps);check(splash_->AddVisual(splashBands_[k].Get(),FALSE,nullptr));}}
     const int edge=edge_;r=std::min({r,w/2,h/2});
     // The stroke sits just inside the body, where its clip keeps it.
     const float i=.9f;ComPtr<ID2D1PathGeometry> path;check(d2d_->CreatePathGeometry(&path));{ComPtr<ID2D1GeometrySink> sink;check(path->Open(&sink));const D2D1_SIZE_F arc{r-i,r-i};
@@ -91,20 +97,18 @@ void Renderer::splash(float w,float h,float r,bool attached,double delay,bool re
         else{sink->BeginFigure({0,i},D2D1_FIGURE_BEGIN_HOLLOW);sink->AddLine({w-r,i});sink->AddArc({{w-i,r},arc,0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL});sink->AddLine({w-i,h-r});sink->AddArc({{w-r,h-i},arc,0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL});sink->AddLine({0,h-i});sink->EndFigure(D2D1_FIGURE_END_OPEN);}
         check(sink->Close());}
     ComPtr<ID2D1StrokeStyle> round;check(d2d_->CreateStrokeStyle(D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND,D2D1_CAP_STYLE_ROUND),nullptr,0,&round));
-    // Tiers: 0 the core line, 1 a dimmer line with a faint glow, 2 the glow alone.
-    for(size_t k=0;k<3;++k){splashSurfaces_[k].Reset();surface(splashSurfaces_[k],int(std::ceil(w)),int(std::ceil(h)),[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(0xffffff,k==2?.1f:k==1?.14f:.22f),&b));
-        rt->DrawGeometry(path.Get(),b.Get(),5,round.Get());if(k<2){b->SetColor(D2D1::ColorF(0xffffff,k?.42f:.95f));rt->DrawGeometry(path.Get(),b.Get(),1.4f,round.Get());}});}
+    // Tier 0: the core line with a little glow; tier 1: the wide soft glow.
+    for(size_t k=0;k<2;++k){splashSurfaces_[k].Reset();surface(splashSurfaces_[k],int(std::ceil(w)),int(std::ceil(h)),[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(0xffffff,k?.14f:.24f),&b));
+        rt->DrawGeometry(path.Get(),b.Get(),k?6.f:4.f,round.Get());b->SetColor(D2D1::ColorF(0xffffff,k?.30f:.95f));rt->DrawGeometry(path.Get(),b.Get(),1.4f,round.Get());});}
     // Sweeps: along x for the top dock (and a floating island), along y for side docks.
-    const bool vertical=attached&&edge!=0;const float length=vertical?h:w,centre=length/2,widths[3]{34,80,150},travel=centre+150;const double start=seconds()+delay,duration=.8;
+    const bool vertical=attached&&edge!=0;const float length=vertical?h:w,centre=length/2,halves[2]{44,120},travel=centre+halves[1];const double start=seconds()+delay,duration=.8;
     auto sweep=[&](float from,float to){ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(start)));const double d=duration;const float span=(to-from)*scale_;
         check(a->AddCubic(0,from*scale_,0,float(3*span/(d*d)),float(-2*span/(d*d*d))));check(a->End(d,to*scale_));return a;};
-    // Band k: tier k/2, going outward to the right (or down) when k is odd. Each band is the window
-    // [lead-wide, lead] (or [lead, lead+wide] going back), its lead running from the middle to past the end;
-    // the tiers' windows share the lead, so the brightest light is at the front.
-    for(size_t k=0;k<splashBands_.size();++k){const size_t tier=k/2;const bool outward=k%2==1;const float wide=widths[tier];auto* c=splashClips_[k].Get();splashBands_[k]->SetContent(splashSurfaces_[tier].Get());
-        auto lead=outward?sweep(centre,centre+travel):sweep(centre,centre-travel);auto tail=outward?sweep(centre-wide,centre+travel-wide):sweep(centre+wide,centre-travel+wide);
-        if(vertical){c->SetLeft(0.f);c->SetRight(std::ceil(w*scale_));if(outward){c->SetTop(tail.Get());c->SetBottom(lead.Get());}else{c->SetTop(lead.Get());c->SetBottom(tail.Get());}}
-        else{c->SetTop(0.f);c->SetBottom(std::ceil(h*scale_));if(outward){c->SetLeft(tail.Get());c->SetRight(lead.Get());}else{c->SetLeft(lead.Get());c->SetRight(tail.Get());}}}
+    // Band (tier, direction, step): the window centre +- half, half growing with the step, its centre running from the middle outward.
+    for(int tier=0;tier<2;++tier)for(int dir=0;dir<2;++dir)for(int step=0;step<splashSteps;++step){const size_t k=size_t((tier*2+dir)*splashSteps+step);auto* c=splashClips_[k].Get();splashBands_[k]->SetContent(splashSurfaces_[size_t(tier)].Get());
+        const float half=halves[tier]*float(step+1)/splashSteps,sign=dir?1.f:-1.f;auto lo=sweep(centre-half,centre+sign*travel-half),hi=sweep(centre+half,centre+sign*travel+half);
+        if(vertical){c->SetLeft(0.f);c->SetRight(std::ceil(w*scale_));c->SetTop(lo.Get());c->SetBottom(hi.Get());}
+        else{c->SetTop(0.f);c->SetBottom(std::ceil(h*scale_));c->SetLeft(lo.Get());c->SetRight(hi.Get());}}
     // Up quickly, a moment bright, then away.
     ComPtr<IDCompositionAnimation> fade;check(device_->CreateAnimation(&fade));check(fade->SetAbsoluteBeginTime(ticks(start)));
     check(fade->AddCubic(0,0,10,0,0));check(fade->AddCubic(.1,1,0,0,0));check(fade->AddCubic(.45,1,-float(1/.4),0,0));check(fade->End(.85,0));splashEffect_->SetOpacity(fade.Get());commit();
@@ -170,12 +174,15 @@ void Renderer::cascade(double start){
 // A soft light that follows the pointer: brightest on glass, a whisper on dark solid,
 // none on light solid (it would read as a smudge).
 void Renderer::pointer(float x,float y,bool inside,bool reduced){
-    if(!sheen_||sheenStrength_<=0){if(sheenEffect_)sheenEffect_->SetOpacity(0.f);return;}
+    if(inside!=pointerInside_){pointerInside_=inside;updateFrost();}
+    if(!sheen_||sheenStrength_<=0){if(sheenEffect_)sheenEffect_->SetOpacity(0.f);if(glass_.available()&&material_!=0){const double t=seconds();Spring none{0};glass_.sheen(none,none,none,t,0);}return;}
     const double now=seconds();const double target=inside?1:0;
     auto aim=[&](Spring& spring,double value,SpringSpec spec,bool jump){if(reduced||jump)spring.reset(value,now);else if(std::abs(spring.target()-value)>.2)spring.retarget(value,now,spec);};
     const bool appearing=inside&&sheenOpacity_.sample(now).position<.02;
     aim(sheenX_,x-130,{1,260,32},appearing);aim(sheenY_,y-130,{1,260,32},appearing);
     if(std::abs(sheenOpacity_.target()-target)>.01){if(reduced)sheenOpacity_.reset(target,now);else sheenOpacity_.retarget(target,now,{1,120,22});}
+    // Glass carries the light itself, so it runs on across the shoulders; the DirectComposition layer stays dark.
+    if(material_!=0&&glass_.available()){glass_.sheen(sheenX_,sheenY_,sheenOpacity_,now,sheenStrength_);sheenEffect_->SetOpacity(0.f);commit();return;}
     auto ox=animation(sheenX_,now,scale_),oy=animation(sheenY_,now,scale_),o=animation(sheenOpacity_,now,sheenStrength_);
     sheen_->SetOffsetX(ox.Get());sheen_->SetOffsetY(oy.Get());sheenEffect_->SetOpacity(o.Get());commit();
 }

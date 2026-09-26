@@ -123,7 +123,7 @@ std::string IslandWindow::verifySetting(const SettingItem& item){
     if(k=="scale"){UINT dx=96,dy=96;GetDpiForMonitor(MonitorFromWindow(window_,MONITOR_DEFAULTTONEAREST),MDT_EFFECTIVE_DPI,&dx,&dy);if(std::abs(dpi_-dx*settings_.scale/100.f)>.5f)return fail("scale not applied to DPI");}
     if(k=="corner"&&motion_.corner!=settings_.corner)return fail("corner radius not applied");
     if(k=="theme"){DWORD light=0,size=sizeof(light);RegGetValueW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",L"AppsUseLightTheme",RRF_RT_REG_DWORD,nullptr,&light,&size);bool expected=settings_.theme==1||(settings_.theme==2&&light);if(content_.light!=expected)return fail("theme not applied");}
-    if(k=="material"||k=="glassTint"){auto style=renderer_->glassStyle();if(renderer_->glassAvailable()&&style.visible!=settings_.glassy())return fail("glass visibility not applied");if(settings_.glassy()&&std::abs(style.tint-settings_.glassTint/100.f)>.001f)return fail("glass tint not applied");if(k=="material"&&settings_.edge==0&&std::abs(r.top-(mi.rcMonitor.top+int(settings_.verticalOffset*s)))>1)return fail("glass left the screen edge");}
+    if(k=="material"||k=="glassTint"||k=="clearTint"){auto style=renderer_->glassStyle();if(renderer_->glassAvailable()&&style.visible!=settings_.glassy())return fail("glass visibility not applied");if(settings_.glassy()&&std::abs(style.tint-settings_.tintFor()/100.f)>.001f)return fail("glass tint not applied");if(k=="material"&&settings_.edge==0&&std::abs(r.top-(mi.rcMonitor.top+int(settings_.verticalOffset*s)))>1)return fail("glass left the screen edge");}
     if(k=="preset"||k=="springStiffness"||k=="springDamping"||k=="springMass"||k=="labSpeed"){auto p=bodySpring(settings_);if(motion_.body.stiffness!=p.stiffness||motion_.body.damping!=p.damping||motion_.body.mass!=p.mass)return fail("motion preset not applied");}
     if(k=="reduceMotion"){BOOL animations=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animations,0);if(motion_.reduced!=(settings_.reduceMotion||!animations))return fail("reduced motion not applied");}
     if(k=="hoverOpen"){
@@ -143,7 +143,7 @@ void IslandWindow::settingsTestStep(){
     auto log=[&](bool pass,const std::string& line){settingsTestLog_.push_back((pass?"PASS ":"FAIL ")+line);if(!pass)++settingsTestFailures_;};
     auto click=[&](RECT r,float fx=.5f){int x=r.left+int(std::lround((r.right-r.left)*fx)),y=(r.top+r.bottom)/2;SendMessageW(settings,WM_MOUSEMOVE,0,MAKELPARAM(x,y));SendMessageW(settings,WM_LBUTTONDOWN,MK_LBUTTON,MAKELPARAM(x,y));SendMessageW(settings,WM_LBUTTONUP,0,MAKELPARAM(x,y));};
     auto probe=[&](int index)->std::optional<SettingsWindow::Probe>{for(auto& p:settingsWindow_->probes())if(p.kind==SettingsWindow::Probe::Kind::Control&&p.index==index)return p;return std::nullopt;};
-    auto testable=[&](const SettingItem& i){if(i.control==SettingControl::Preview||i.control==SettingControl::Actions||i.control==SettingControl::Note||i.control==SettingControl::Town)return false;return i.control!=SettingControl::Button||i.action==SettingAction::ResetLayout||i.action==SettingAction::ResetAll;};
+    auto testable=[&](const SettingItem& i){if(i.control==SettingControl::Glass||i.control==SettingControl::Preview||i.control==SettingControl::Actions||i.control==SettingControl::Note||i.control==SettingControl::Town)return false;return i.control!=SettingControl::Button||i.action==SettingAction::ResetLayout||i.action==SettingAction::ResetAll;};
     auto finish=[&]{
         KillTimer(window_,21);settingsWindow_.reset();
         std::ostringstream out;out<<"Settings window end-to-end test: "<<(settingsTestFailures_?"FAIL":"PASS")<<" ("<<settingsTestLog_.size()<<" checks, "<<settingsTestFailures_<<" failures)\n";for(auto& l:settingsTestLog_)out<<l<<'\n';
@@ -155,6 +155,8 @@ void IslandWindow::settingsTestStep(){
         if(next>=int(items.size())){settingsTestPhase_=20;SetTimer(window_,21,700,nullptr);return;}settingsTestPhase_=2;settingsTestValue_=0;return;}
     case 2:{auto& item=items[settingsTestItem_];if(settingsWindow_->section()!=item.section){for(auto& p:settingsWindow_->probes())if(p.kind==SettingsWindow::Probe::Kind::Section&&p.index==item.section)click(p.rect);return;}if(!settingsWindow_->settled())return;settingsTestPhase_=3;return;}
     case 3:{auto p=probe(settingsTestItem_);if(!p){log(false,items[settingsTestItem_].key+" has no control");settingsTestPhase_=1;return;}
+        // Rows that belong to one glass (Frosted's tint and frost, Clear's tint) are tested with that glass chosen.
+        {const auto& key=items[settingsTestItem_].key;const int wants=key=="glassTint"||key=="restFrost"?1:key=="clearTint"?2:-1;if(wants>=0&&settings_.material!=wants){Settings changed=settings_;changed.material=wants;receiveSettings(changed);return;}}
         if(!p->visible){if(!settingsWindow_->settled())return;RECT client{};GetClientRect(settings,&client);SendMessageW(settings,WM_MOUSEWHEEL,MAKEWPARAM(0,p->rect.top<client.bottom/2?120:-120),0);return;}
         if(!settingsWindow_->settled())return;settingsTestPhase_=4;return;}
     case 4:case 6:{

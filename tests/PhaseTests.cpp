@@ -97,7 +97,7 @@ int main(){try{
     auto items=settingItems(2);std::set<std::string> covered;for(auto& i:items)if(!i.key.empty())covered.insert(i.key);
     // The seven chip positions are one control ("chips").
     for(auto& k:keys)test(covered.contains(k)||(k.starts_with("chip")&&covered.contains("chips")),"settings window exposes every persisted preference");
-    for(auto& item:items){if(item.control==SettingControl::Chips||item.control==SettingControl::Button||item.control==SettingControl::Note||item.control==SettingControl::Order||item.control==SettingControl::Preview||item.control==SettingControl::Actions||item.control==SettingControl::Town)continue;
+    for(auto& item:items){if(item.control==SettingControl::Glass||item.control==SettingControl::Chips||item.control==SettingControl::Button||item.control==SettingControl::Note||item.control==SettingControl::Order||item.control==SettingControl::Preview||item.control==SettingControl::Actions||item.control==SettingControl::Town)continue;
         // Slow motion is a study aid and is deliberately never saved.
         if(item.key!="labSpeed")for(int v=item.lo;v<=item.hi;v+=std::max(1,(item.hi-item.lo)/12)){Settings s;item.set(s,v);std::stringstream io;s.write(io);auto back=Settings::parse(io);test(item.get(back)==item.get(s),"each control value round-trips through the settings file");}
         if(item.control==SettingControl::Slider||item.control==SettingControl::Choice||item.control==SettingControl::Swatch){Settings s;item.set(s,item.hi+1000);test(item.get(s)<=item.hi,"controls clamp above range");item.set(s,item.lo-1000);test(item.get(s)>=item.lo,"controls clamp below range");}}
@@ -599,9 +599,27 @@ int main(){try{
         for(auto it=std::sregex_iterator(src.begin(),src.end(),started);it!=std::sregex_iterator();++it)used.insert((*it)[1]);
         std::string missing;for(auto& u:used)if(!known.count(u))missing+=u+" ";
         test(used.size()>=15&&missing.empty(),("the glass's properties all exist before its expressions and springs start (missing: "+missing+")").c_str());}
+    // ---- 0.17.0-preview.3: settings v17, the sky at sunrise and sunset ---------------------------------------
+    {std::stringstream v16("version 16\nglassTint 70\n");auto s=Settings::parse(v16);test(s.version==Settings::currentVersion&&s.glassTint==70&&s.clearTint==50&&s.beatEdge&&s.restFrost,"v16 settings gain the v17 features (Clear's own tint, the beat light, the settling frost)");
+        Settings off;off.clearTint=20;off.beatEdge=false;off.restFrost=false;std::stringstream io;off.write(io);auto back=Settings::parse(io);test(back.clearTint==20&&!back.beatEdge&&!back.restFrost&&back.version==Settings::currentVersion,"v17 settings round-trip");
+        std::stringstream wild("version 17\nclearTint 300\n");test(Settings::parse(wild).clearTint==100,"Clear's tint is at most 100%");
+        Settings m;m.glassTint=30;m.clearTint=80;m.material=1;const int frosted=m.tintFor();m.material=2;const int clear=m.tintFor();test(frosted==30&&clear==80,"each glass uses its own tint");
+        int found=0;for(auto& i:settingItems()){if(i.key=="clearTint"&&i.control==SettingControl::Slider&&i.section==2)++found;if(i.key=="restFrost"&&i.control==SettingControl::Toggle&&i.section==2)++found;if(i.key=="beatEdge"&&i.control==SettingControl::Toggle&&i.section==5)++found;if(i.control==SettingControl::Glass&&i.section==2&&i.key.empty())++found;}
+        test(found==4,"Settings has Clear tint, the frost, the beat light and the glass preview");
+        test(localToUnix("2026-09-26T06:12",19800)==1790383320&&localToUnix("2026-09-26T18:20",19800)==1790427000&&localToUnix("1969-12-31T23:00",0)==-3600,"local sunrise and sunset times become the right instants");
+        test(localToUnix("sunrise",0)==0&&localToUnix("2026-13-01T06:00",0)==0&&localToUnix("2026-09-26",0)==0,"unreadable times are refused");
+        const int64_t rise=1790383320,set=1790427000;
+        test(sunPhase(rise-600,rise,set,true)==SunPhase::Dawn&&sunPhase(rise+7200,rise,set,true)==SunPhase::Day&&sunPhase(set-1200,rise,set,true)==SunPhase::Dusk&&sunPhase(set+1800,rise,set,false)==SunPhase::Dusk&&sunPhase(set+7200,rise,set,false)==SunPhase::Night,"dawn, day, dusk and night fall where the sun is");
+        test(sunPhase(rise+86400-600,rise,set,false)==SunPhase::Dawn&&sunPhase(rise-86400+7200,rise,set,true)==SunPhase::Day,"yesterday's and tomorrow's times carry over to today");
+        test(sunPhase(rise,0,set,true)==SunPhase::Day&&sunPhase(rise,rise,0,false)==SunPhase::Night&&sunPhase(rise,set,rise,true)==SunPhase::Day,"without both times the sky follows day and night");
+        auto today=parseForecast(R"({"utc_offset_seconds":19800,"current":{"temperature_2m":24.5,"weather_code":2,"is_day":1},"daily":{"time":["2026-09-26"],"sunrise":["2026-09-26T06:12"],"sunset":["2026-09-26T18:20"]}})");
+        test(today&&today->sunrise==rise&&today->sunset==set&&today->code==2,"the forecast brings today's sunrise and sunset");
+        auto bare=parseForecast(R"({"current":{"temperature_2m":10,"weather_code":0,"is_day":1},"daily":{"sunrise":["2026-09-26T18:00"],"sunset":["2026-09-26T06:00"]}})");
+        test(bare&&bare->sunrise==0&&bare->sunset==0,"a sunset before its sunrise is refused");
+        test(forecastPath(WeatherPlace{L"x",13.35,74.79}).find(L"daily=sunrise,sunset")!=std::wstring::npos,"the forecast asks for sunrise and sunset");}
     // ---- Phase 5H: settings v16, the alerts side by side, time left, towns ------------------------------
     {std::stringstream v15("version 15\nsharing 1\n");auto s=Settings::parse(v15);test(s.shelfOpen&&s.crossfade==6&&s.sharing,"v15 settings gain the v16 features (the Shelf open to your PCs, a 6 s crossfade)");
-        Settings off;off.shelfOpen=false;off.crossfade=0;std::stringstream io;off.write(io);auto back=Settings::parse(io);test(!back.shelfOpen&&back.crossfade==0&&back.version==16,"v16 settings round-trip");
+        Settings off;off.shelfOpen=false;off.crossfade=0;std::stringstream io;off.write(io);auto back=Settings::parse(io);test(!back.shelfOpen&&back.crossfade==0&&back.version==Settings::currentVersion,"v16 settings round-trip");
         std::stringstream wild("version 16\ncrossfade 40\n");test(Settings::parse(wild).crossfade==12,"a crossfade is at most 12 s");
         bool listed=false,town=false;for(auto& i:settingItems())if(i.key=="crossfade"&&i.control==SettingControl::Slider&&i.hi==12)listed=true;else if(i.key=="weatherTown"&&i.control==SettingControl::Town&&i.section==4)town=true;
         test(listed&&town,"Settings has the crossfade slider and the Town field");

@@ -41,7 +41,9 @@ void IslandWindow::updateProviders(){
     bars=bars||(settings_.waveTimeline&&visible&&content_.playback.playing&&state_!=IslandState::Compact&&!content_.live&&content_.page==Page::Media);
     // So does the beat pulse of the cover on the Home page.
     bars=bars||(settings_.artPulse&&!motion_.reduced&&visible&&content_.playback.playing&&content_.playback.artwork&&state_!=IslandState::Compact&&!content_.live&&content_.page==Page::Overview);
-    if(analyzer_)analyzer_->setActive(bars);bool delivering=bars&&analyzer_&&analyzer_->available.load();if(!analyzer_&&testing_)delivering=content_.waveform;
+    // 0.17.0-preview.3: the edge light that breathes with the beat listens too (bars alone decide what the island draws).
+    const bool beat=settings_.beatEdge&&!motion_.reduced&&visible&&content_.playback.playing;barsWanted_=bars;
+    if(analyzer_)analyzer_->setActive(bars||beat);bool delivering=bars&&analyzer_&&analyzer_->available.load();if(!analyzer_&&testing_)delivering=content_.waveform;
     if(delivering!=content_.waveform){content_.waveform=delivering;if(renderer_)refresh();}
     if(mixer_)mixer_->setMetering(visible&&state_!=IslandState::Compact&&!content_.live&&content_.page==Page::Audio&&content_.audioTab==0);
 }

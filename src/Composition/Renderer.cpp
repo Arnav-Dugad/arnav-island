@@ -77,6 +77,9 @@ void Renderer::initialize(HWND hwnd,float dpi,HWND shadow) {
         b.clip->SetTop(std::round(float(k)*48*scale_));b.clip->SetBottom(k+1==bands_.size()?std::ceil(340*scale_):std::round(float(k+1)*48*scale_));b.visual->SetClip(b.clip.Get());check(content_->AddVisual(b.visual.Get(),FALSE,nullptr));}
     check(content_->AddVisual(cardRing_.Get(),FALSE,nullptr));
     check(device_->CreateVisual(&sheen_));check(device_->CreateEffectGroup(&sheenEffect_));sheen_->SetEffect(sheenEffect_.Get());sheenEffect_->SetOpacity(0.f);check(body_->AddVisual(sheen_.Get(),TRUE,inner_.Get()));
+    // The solid island's beat light, just above its fill (beneath the pointer's light and all content).
+    check(device_->CreateVisual(&beatLight_));check(device_->CreateEffectGroup(&beatLightEffect_));beatLight_->SetEffect(beatLightEffect_.Get());beatLightEffect_->SetOpacity(0.f);check(body_->AddVisual(beatLight_.Get(),TRUE,inner_.Get()));
+    for(auto& v:beatStrips_){check(device_->CreateVisual(&v));check(beatLight_->AddVisual(v.Get(),FALSE,nullptr));}
     for(auto* v:{std::addressof(caret_),std::addressof(privacyBand_)})check(device_->CreateVisual(v->GetAddressOf()));
     for(auto pair:{std::pair{std::addressof(caretEffect_),caret_.Get()},std::pair{std::addressof(privacyEffect_),privacyBand_.Get()}}){check(device_->CreateEffectGroup(pair.first->GetAddressOf()));pair.second->SetEffect(pair.first->Get());pair.first->Get()->SetOpacity(0.f);}
     check(content_->AddVisual(caret_.Get(),FALSE,nullptr));check(body_->AddVisual(privacyBand_.Get(),FALSE,nullptr));privacyBand_->SetOffsetX(std::round(20*scale_));privacyBand_->SetOffsetY(std::round(7*scale_));cardRing_->SetOffsetX(std::round(-8*scale_));cardRing_->SetOffsetY(std::round(-8*scale_));
@@ -140,6 +143,10 @@ void Renderer::wings(float radius){
     wingLeft_->SetContent(attached_&&material_==0?leftSurface_.Get():nullptr);wingRight_->SetContent(attached_&&material_==0?rightSurface_.Get():nullptr);
 }
 void Renderer::text(ID2D1RenderTarget* rt,const std::wstring& value,float x,float y,float w,float size,UINT32 color,DWRITE_FONT_WEIGHT weight,DWRITE_TEXT_ALIGNMENT alignment,float height) {
+    // 0.17.0-preview.3: text a little too long for its room tightens (down to 86% of its size, on the same baseline) before
+    // it is cut with an ellipsis, so a long title usually shows whole.
+    if(size>=9&&w>8&&!value.empty()){const float natural=measure(value,size,weight);if(natural>w){const float fitted=std::max(size*.86f,size*w/natural);
+        if(height<=0)y+=(size-fitted)*.8f;size=fitted;}}
     ComPtr<IDWriteTextFormat> f;check(write_->CreateTextFormat(fontFamily(size),nullptr,weight,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,size,L"en-us",&f));
     f->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);f->SetTextAlignment(alignment);if(height>0)f->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     DWRITE_TRIMMING trim{DWRITE_TRIMMING_GRANULARITY_CHARACTER,0,0};ComPtr<IDWriteInlineObject> ellipsis;write_->CreateEllipsisTrimmingSign(f.Get(),&ellipsis);f->SetTrimming(&trim,ellipsis.Get());
@@ -192,7 +199,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     // Glass keeps text colors but lets fills breathe; solid surfaces stay opaque.
     const bool glass=s.settings.glassy()&&glass_.available();
     haloAlpha_=glass&&(s.settings.material==2||!s.blur)?(s.light?.40f:.48f):0.f;haloColor_=s.light?0xffffff:0x000000;
-    sheenStrength_=s.reducedMotion?0.f:glass?(s.light?.55f:.3f):s.light?0.f:.09f;
+    // The pointer's light lives in the glass (across the body and its shoulders); solid has none, since its shoulders are separate layers.
+    sheenStrength_=s.reducedMotion||!glass?0.f:(s.light?.55f:.3f);
     if(sheenStrength_>0&&sheenTone_!=0xffffff){sheenTone_=0xffffff;surface(sheenSurface_,260,260,[&](auto* rt){D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(0xffffff,.55f)},{.45f,D2D1::ColorF(0xffffff,.16f)},{1,D2D1::ColorF(0xffffff,0.f)}};ComPtr<ID2D1GradientStopCollection> c;check(rt->CreateGradientStopCollection(stops,3,&c));ComPtr<ID2D1RadialGradientBrush> b;check(rt->CreateRadialGradientBrush(D2D1::RadialGradientBrushProperties({130,130},{0,0},130,130),c.Get(),&b));rt->FillRectangle({0,0,260,260},b.Get());});sheen_->SetContent(sheenSurface_.Get());}
     const UINT32 bg=s.light?0xf7f7f9:0x090a0c,ink=s.light?0x202329:0xf1f3f7,muted=s.light?(glass?0x4d535c:0x656b75):(glass?0xa3aab6:0x8e96a4),raised=glass?0xffffff:s.light?0xeceef2:0x14171d,line=glass?(s.light?0x000000:0xffffff):s.light?0xdde1e7:0x242a33;
     const float raisedAlpha=glass?(s.light?.5f:.075f):1.f,lineAlpha=glass?(s.light?.1f:.12f):1.f;const UINT32 solidRaised=glass?(s.light?0xe6e8ec:0x1b1d23):raised,track=glass?(s.light?0xc5c9d0:0x3a3e46):line;
@@ -203,7 +211,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     const Artwork* art=s.settings.albumAccents?s.playback.artwork.get():nullptr;const UINT32 accent2=art&&art->secondary?(s.light?mixColor(art->secondary,0x000000,.5):art->secondary):accent;
     swipeInk_=ink;swipeAccent_=accent;bubbleColors_[0]=ink;bubbleColors_[1]=muted;bubbleColors_[2]=s.light?0xffffff:0x23272e;
     bool attached=!s.settings.floating();
-    GlassStyle style;style.visible=glass;style.light=s.light;style.blur=s.blur;style.material=s.settings.material;style.tint=s.settings.glassTint/100.f;style.accent=art?(art->ambient?art->ambient:art->accent):0;style.wallpaper=s.platform.wallpaper;glass_.style(style);
+    GlassStyle style;style.visible=glass;style.light=s.light;style.blur=s.blur;style.material=s.settings.material;style.tint=s.settings.tintFor()/100.f;style.accent=art?(art->ambient?art->ambient:art->accent):0;style.wallpaper=s.platform.wallpaper;glass_.style(style);
     // The soft shadow under the island: deeper under dark glass, lighter under light glass, faint under solid.
     {GlassStyle shade;shade.visible=true;shade.shadow=!s.settings.shadow?0.f:glass?(s.light?.24f:.42f):(s.light?.20f:.30f);shadow_.style(shade);}if(s.expanded&&!expanded_)skyKey_.clear();expanded_=s.expanded;live_=s.live;edge_=s.settings.edge;attached_=attached;iconMotion_=s.settings.animatedIcons&&!s.reducedMotion;
     if(!headerOnly){targets.clear();iconCursor_=pageCount;for(auto& i:icons_)i.used=false;}
@@ -221,6 +229,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     wingLeft_->SetContent(attached&&!glass?leftSurface_.Get():nullptr);wingRight_->SetContent(attached&&!glass?rightSurface_.Get():nullptr);barEffect_->SetOpacity(s.page==Page::Overview&&s.expanded&&!s.live?1.f:0.f);
     {const bool pulse=s.settings.artPulse&&!s.reducedMotion&&s.playback.playing&&bool(s.playback.artwork);
         setArtPulse(pulse);}
+    setBeatEdge(s.settings.beatEdge&&!s.reducedMotion&&s.playback.playing,accent,glass,s.reducedMotion);
+    frostAllowed_=glass&&s.settings.material==1&&s.blur&&s.settings.restFrost&&!s.reducedMotion;updateFrost();
     updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track,accent2);updateLyrics(s,ink,muted,accent);updateBubble(s);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateRing(s,accent);updateCard(s,track,accent,solidRaised,ink);updateBud(s,ink,muted,accent,solidRaised);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-3.f:30.f,stats||(shelf&&s.settings.sharing)?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||(shelf&&!(s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size())&&!(s.shelfTab==2&&s.remote.open)&&!(s.dropHover&&s.settings.sharing&&std::any_of(s.nearby.begin(),s.nearby.end(),[](auto& p){return p.paired;}))),s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
     headerSpots_.clear();compactTargets.clear();bool lyricOn=false;float sungX=0,sungW=0;
     surface(headerSurface_,600,150,[&](auto* rt){
@@ -462,7 +472,10 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             const std::wstring place=s.weather.valid?s.weather.place.substr(0,s.weather.place.find(L',')):std::wstring(L"Weather");const wchar_t* names[]={L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime",L"GPU",place.c_str()};
             skyTile_=raised;skyTileAlpha_=raised==0xffffff?raisedAlpha:1.f;
             for(int i=0;i<3;++i){int metric=s.settings.homeMetrics[i];float x=i*130.f;if(!(metric==8&&skyWanted_))box(x,126,120,68,raised,13);drawIcon(rt,d2d_.Get(),glyphs[metric],x+12,137,14,muted);text(rt,names[metric],x+33,136,77,10,muted);std::wstring number;switch(metric){case 0:number=value(s.system.cpu)+ (s.system.cpu>=0?L"%":L"");break;case 1:number=s.system.ramTotalGiB?value(s.system.ramPercent)+L"%":L"—";break;case 2:number=s.battery>=0?std::to_wstring(s.battery)+L"%":L"—";break;case 3:number=s.system.networkAvailable?rateText(s.system.download):L"—";break;case 4:number=s.system.networkAvailable?rateText(s.system.upload):L"—";break;case 5:number=s.system.diskTotalGiB?value(s.system.diskFreeGiB)+L" GB":L"—";break;case 7:number=s.system.gpu<0?L"—":value(s.system.gpu)+L"%";break;case 8:number=s.settings.weather&&s.weather.valid?temperatureText(s.weather.temperature,s.settings.weatherUnit):L"—";break;default:number=clockText(double(s.system.uptime));break;}contentSpots_.push_back({3+i,number,x+12,156,metric>=3&&metric!=7&&metric!=8?18.f:23.f,DWRITE_FONT_WEIGHT_SEMI_BOLD,ink});
-                if(metric==8&&s.weather.valid)text(rt,skyLabel(skyOf(s.weather.code)),x+60,160,56,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING,22);}
+                if(metric==8&&s.weather.valid){const auto phase=sunPhase(int64_t(std::time(nullptr)),s.weather.sunrise,s.weather.sunset,s.weather.day);
+                    // At sunrise and sunset the low sun sits in the tile's corner, so the word moves left of it.
+                    const bool low=phase==SunPhase::Dawn||phase==SunPhase::Dusk;
+                    text(rt,phase==SunPhase::Dawn?std::wstring(L"Sunrise"):phase==SunPhase::Dusk?std::wstring(L"Sunset"):std::wstring(skyLabel(skyOf(s.weather.code))),low?x+36:x+60,160,low?52.f:56.f,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING,22);}}
             iconButton(Action::Mute,s.muted?Icon::Muted:Icon::Volume,0,200,28,28);b->SetColor(D2D1::ColorF(line,lineAlpha));rt->DrawLine({38,214},{300,214},b.Get(),2);text(rt,s.muted?L"Muted":std::to_wstring(s.volume)+L"%",306,206,36,10.5f,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,16);iconButton(Action::Audio,Icon::Audio,346,200,34,28);targets.push_back({Action::VolumeSlider,38,201,262,26});
         }else if(s.page==Page::Media&&s.upNext){
             // Phase 5H: Up next. Five rows; one dragged (by its handle or anywhere on it) finds its place as the others glide aside.
@@ -854,9 +867,12 @@ void Renderer::animate(const MotionEngine& m,double now) {
     auto rx=animation(m.width,now,edge_&&!expanded_?0.f:scale_,edge_&&!expanded_?8*scale_:-58*scale_);rings_->SetOffsetX(rx.Get());rings_->SetOffsetY(edge_&&!expanded_?38*scale_:0.f);
     auto ba=animation(batteryAngle,now),ta=animation(timerAngle,now);batteryRotation_->SetAngle(ba.Get());timerRotation_->SetAngle(ta.Get());
     auto pulse=animation(m.pulse,now);pulseEffect_->SetOpacity(pulse.Get());glass_.animate(m,now,edge_,attached_);shadow_.animate(m,now,edge_,attached_);
+    // The solid beat light's right and bottom strips follow the body's size.
+    {const float band=std::round(beatBand*scale_);if(m.width.settled(now))beatStrips_[1]->SetOffsetX(restW-band);else{auto a=animation(m.width,now,scale_,-band);beatStrips_[1]->SetOffsetX(a.Get());}
+        if(m.height.settled(now))beatStrips_[3]->SetOffsetY(restH-band);else{auto a=animation(m.height,now,scale_,-band);beatStrips_[3]->SetOffsetY(a.Get());}}
     {auto slide=animation(m.slide,now,edge_==1?74*scale_:edge_==2?-74*scale_:-44*scale_);if(edge_){stage_->SetOffsetX(slide.Get());stage_->SetOffsetY(0.f);}else{stage_->SetOffsetY(slide.Get());stage_->SetOffsetX(0.f);}
         ComPtr<IDCompositionAnimation> fade;check(device_->CreateAnimation(&fade));check(fade->SetAbsoluteBeginTime(ticks(now)));double duration=0;auto curve=approximateCurve([&](double t){return m.stageOpacity(t);},[&](double t){return m.slide.settled(t);},now,duration);
-        for(auto& c:curve)check(fade->AddCubic(c.time,float(c.p),float(c.v),float(c.quadratic),float(c.cubic)));check(fade->End(duration,float(m.stageOpacity(now+10).position)));stageEffect_->SetOpacity(fade.Get());}
+        for(auto& c:curve)check(fade->AddCubic(c.time,float(c.p),float(c.v),float(c.quadratic),float(c.cubic)));check(fade->End(duration,float(m.stageOpacity(now+10).position)));stageEffect_->SetOpacity(fade.Get());if(qaGlassOnly)stageEffect_->SetOpacity(0.f);}
     if(m.card)cardIconEffect_->SetOpacity(opacity.Get());
     auto hoverX=animation(m.hoverX,now,scale_),hoverY=animation(m.hoverY,now,scale_),hoverW=animation(m.hoverW,now,scale_),hoverH=animation(m.hoverH,now,scale_),hoverOpacity=animation(m.hoverOpacity,now);hoverVisual_->SetOffsetX(hoverX.Get());hoverVisual_->SetOffsetY(hoverY.Get());hoverClip_->SetRight(hoverW.Get());hoverClip_->SetBottom(hoverH.Get());hoverEffect_->SetOpacity(hoverOpacity.Get());
     commit();

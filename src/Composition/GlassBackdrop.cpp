@@ -125,7 +125,18 @@ struct GlassBackdrop::Impl {
     ComPtr<IInspectable> queue;ComPtr<wuc::ICompositor> compositor;ComPtr<IInspectable> target;ComPtr<wuc::ICompositionPropertySet> properties;
     ComPtr<wuc::IContainerVisual> root,glass;
     // Layers of every part: material (blurred backdrop), tint, grain, depth. The body adds four lens strips.
-    struct Part{ComPtr<wuc::IContainerVisual> container;std::array<ComPtr<wuc::ISpriteVisual>,4> layers;ComPtr<IInspectable> clip;};
+    // frost: the denser, milkier material that settles over the glass while the island rests (Frosted only).
+    struct Part{ComPtr<wuc::IContainerVisual> container;std::array<ComPtr<wuc::ISpriteVisual>,4> layers;ComPtr<IInspectable> clip;ComPtr<wuc::ISpriteVisual> sheen,frost;};
+    // The pointer's light (drawn once, a soft white disc), shared by the body and both shoulders.
+    ComPtr<wuc::ICompositionSurfaceBrush> sheenBrush;bool sheenTried=false;
+    // The pointer's glint on the body's rim: a radial gradient stroke centred under the pointer, in its own clipped layer.
+    ComPtr<IInspectable> glint,glintBrush;ComPtr<wuc::IInsetClip> glintClip;
+    // The edge light that follows the beat: a soft and a crisp stroke on the body's rim and both shoulders, their
+    // colour's alpha following p.be. beatColor: the colour its expression was built for (1: none yet).
+    ComPtr<wuc::ICompositionColorBrush> beatGlow,beatCore;uint32_t beatColor=1;bool beatable=true;
+    // The frost: its level now runs from frostFrom to frostTo, after frostDelay, over frostSpan (from frostStart).
+    ComPtr<IInspectable> frostBrush;double frostFrom=0,frostTo=0,frostStart=0,frostDelay=0,frostSpan=0;
+    double frostAt(double now)const{if(frostSpan<=0)return frostTo;const double u=std::clamp((now-frostStart-frostDelay)/frostSpan,0.,1.);return frostFrom+(frostTo-frostFrom)*u*u*(3-2*u);}
     std::array<ComPtr<wuc::ISpriteVisual>,4> lens;std::array<ComPtr<IInspectable>,4> lensMasks;// edge light strips: left, right, top, bottom
     // Drawn surfaces are made on first use: grain when glass is first shown, the shadow when it first has any strength.
     bool shadowOnly=false,edgeLight=false,grainTried=false,shadowDrawn=false;std::string failure;ComPtr<IInspectable> grainBrush;
@@ -138,7 +149,7 @@ struct GlassBackdrop::Impl {
     // Phase 5G: the bud of a waiting alert below the pill (part 4), its rim and its shadow.
     ComPtr<IInspectable> budGeometry,budRim;std::array<ComPtr<IInspectable>,3> budRimShapes;ComPtr<wuc::ISpriteVisual> shadowBud;
     ComPtr<IInspectable> rim;ComPtr<wuc::IInsetClip> rimClip;std::array<ComPtr<IInspectable>,3> rimShapes;
-    struct ShoulderRim{ComPtr<IInspectable> visual;std::array<ComPtr<IInspectable>,3> shapes;};std::array<ShoulderRim,2> shoulderRims;
+    struct ShoulderRim{ComPtr<IInspectable> visual;std::array<ComPtr<IInspectable>,5> shapes;};std::array<ShoulderRim,2> shoulderRims;
     ComPtr<IInspectable> hostBrush,materialBrush;ComPtr<wuc::ICompositionColorBrush> tintBrush;bool vibrancy=false;
     ComPtr<IInspectable> depthBrush,rimBrush,glowBrush;std::array<ComPtr<wuc::ICompositionColorBrush>,4> edgeBrushes;// rim top, rim bottom, glow top, glow bottom
     float scale=1,canvasWidth=600,canvasHeight=500,radius=0;int edge=-1;bool attached=false;GlassStyle current;bool styled=false;
@@ -171,9 +182,16 @@ struct GlassBackdrop::Impl {
         ComPtr<wuc::ICompositionEffectBrush> brush;check(factory->CreateBrush(&brush));String name(L"backdrop");check(brush->SetSourceParameter(name,as<wuc::ICompositionBrush>(hostBrush).Get()));return brush;
     }
     static ComPtr<glassabi::effects::IGraphicsEffect> make(GUID id,std::vector<glassabi::Property> p,std::vector<ComPtr<glassabi::effects::IGraphicsEffectSource>> sources){ComPtr<glassabi::effects::IGraphicsEffect> e;e.Attach(new glassabi::Effect(id,std::move(p),std::move(sources)));return e;}
-    ComPtr<IInspectable> materialOf(float saturation,float gain,const float offset[3]){
+    ComPtr<glassabi::effects::IGraphicsEffect> materialEffect(float saturation,float gain,const float offset[3],const ComPtr<glassabi::effects::IGraphicsEffectSource>& source){
         using K=glassabi::Property::Kind;const auto m=glassabi::material(saturation,gain,offset);
-        return effectBrush(make(glassabi::colorMatrixEffect,{{K::Floats,std::vector<float>(m.begin(),m.end())},{K::UInt,{},1},{K::Boolean,{},0}},{backdropParameter()}));
+        return make(glassabi::colorMatrixEffect,{{K::Floats,std::vector<float>(m.begin(),m.end())},{K::UInt,{},1},{K::Boolean,{},0}},{source});
+    }
+    ComPtr<IInspectable> materialOf(float saturation,float gain,const float offset[3]){return effectBrush(materialEffect(saturation,gain,offset,backdropParameter()));}
+    // The resting frost: the material paler and milkier, then blurred a little more.
+    ComPtr<IInspectable> frostOf(float saturation,float gain,const float offset[3]){
+        using K=glassabi::Property::Kind;constexpr GUID gaussianBlur{0x1feb6d69,0x2fe6,0x4ac9,{0x8c,0x58,0x1d,0x7f,0x93,0xe7,0xa6,0xa5}};
+        auto milk=as<glassabi::effects::IGraphicsEffectSource>(materialEffect(saturation,gain,offset,backdropParameter()));
+        return effectBrush(make(gaussianBlur,{{K::Floats,{10*scale}},{K::UInt,{},1},{K::UInt,{},1}},{milk}));
     }
     // A GPU drawing surface drawn once with Direct2D, as a surface brush.
     ComPtr<wuc::ICompositionSurfaceBrush> drawn(UINT w,UINT h,const std::function<void(ID2D1DeviceContext*)>& draw){
@@ -290,6 +308,7 @@ void GlassBackdrop::Impl::layout(){
         return;
     }
     start(geometry,L"Offset",offset);start(geometry,L"Size",size);start(geometry,L"CornerRadius",L"Vector2("+rc+L","+rc+L")");
+    for(auto& part:parts)if(part.sheen){start(part.sheen,L"Offset",L"Vector3("+x0+L"+p.px,"+y0+L"+p.py,0)");start(part.sheen,L"Opacity",L"Clamp(p.po,0,1)");}
     for(size_t k=0;k<parts.size();++k){auto& part=parts[k];
         // The shoulders' layers follow SW (the body's frame until a pill drops); the stub's cover the stub.
         std::wstring o=layerOffset,z=layerSize;
@@ -298,15 +317,19 @@ void GlassBackdrop::Impl::layout(){
         else if(k==4){o=L"Vector3(0,0,0)";z=L"Vector2("+cw+L","+ch+L")";}
         for(size_t l=0;l<part.layers.size();++l){if(!part.layers[l])continue;start(part.layers[l],L"Offset",o);
             // Grain covers the whole canvas and moves with the pane.
-            start(part.layers[l],L"Size",l==2?L"Vector2("+cw+L","+ch+L")":z);}}
+            start(part.layers[l],L"Size",l==2?L"Vector2("+cw+L","+ch+L")":z);}
+        if(part.frost){start(part.frost,L"Offset",o);start(part.frost,L"Size",z);start(part.frost,L"Opacity",L"Clamp(p.fr,0,1)*0.9");}}
     {
         // Edge light runs along the free edges (not the screen edge the island is attached to).
         const std::wstring band=px(14);const bool free[4]={!(attached&&left),!(attached&&edge==1),!(attached&&!side),true};
-        const std::wstring offsets[4]={L"Vector3("+x0+L","+y0+L",0)",L"Vector3("+x1+L"-"+band+L","+y0+L",0)",L"Vector3("+x0+L","+y0+L",0)",L"Vector3("+x0+L","+y1+L"-"+band+L",0)"};
-        const std::wstring sizes[4]={L"Vector2("+band+L","+y1+L"-"+y0+L")",L"Vector2("+band+L","+y1+L"-"+y0+L")",L"Vector2("+x1+L"-"+x0+L","+band+L")",L"Vector2("+x1+L"-"+x0+L","+band+L")"};
+        const std::wstring seam=drops?L"(p.r*(1-Clamp(p.d*8,0,1)))":L"0",sideTop=L"("+y0+L"+"+seam+L")";
+        const std::wstring offsets[4]={L"Vector3("+x0+L","+sideTop+L",0)",L"Vector3("+x1+L"-"+band+L","+sideTop+L",0)",L"Vector3("+x0+L","+y0+L",0)",L"Vector3("+x0+L","+y1+L"-"+band+L",0)"};
+        const std::wstring sizes[4]={L"Vector2("+band+L",Max("+y1+L"-"+sideTop+L",0))",L"Vector2("+band+L",Max("+y1+L"-"+sideTop+L",0))",L"Vector2("+x1+L"-"+x0+L","+band+L")",L"Vector2("+x1+L"-"+x0+L","+band+L")"};
         for(int k=0;k<4;++k)if(lens[k]){start(lens[k],L"Offset",offsets[k]);start(lens[k],L"Size",sizes[k]);check(visual(lens[k])->put_IsVisible(free[k]&&current.blur&&current.material!=2&&vibrancy&&edgeLight));}
         // The body's rim stops where a shoulder takes over (the shoulder is exactly r deep).
-        start(rimClip,L"TopInset",drops?L"(p.r*(1-Clamp(p.d*8,0,1)))":L"0");start(rimClip,L"RightInset",edge==1&&attached?L"p.r":L"0");start(rimClip,L"LeftInset",left&&attached?L"p.r":L"0");
+        for(auto* clip:{rimClip.Get(),glintClip.Get()})if(clip){ComPtr<wuc::IInsetClip> c(clip);start(c,L"TopInset",drops?L"(p.r*(1-Clamp(p.d*8,0,1)))":L"0");start(c,L"RightInset",edge==1&&attached?L"p.r":L"0");start(c,L"LeftInset",left&&attached?L"p.r":L"0");}
+        // The glint sits under the pointer (the sheen's centre); it shows while the pointer's light does, a little stronger.
+        if(glint){start(glintBrush,L"EllipseCenter",L"Vector2("+x0+L"+p.px+"+px(130)+L","+y0+L"+p.py+"+px(130)+L")");start(glint,L"Opacity",L"Clamp(p.po*1.8,0,1)");}
         // The rim's light tilts while the island moves: a drag or a change of size swings it, then it settles back.
         const std::wstring centre=L"Vector2(("+x0+L"+"+x1+L")/2,("+y0+L"+"+y1+L")/2)",tilt=L"Clamp(p.dx*0.35+(p.w-p.tw)*0.06+(p.h-p.th)*0.05,-26,26)";
         for(auto* brush:{std::addressof(rimBrush),std::addressof(glowBrush)}){start(*brush,L"StartPoint",side?L"Vector2(0,"+T+L")":attached?L"Vector2(0,p.r+"+dp+L")":L"Vector2(0,0)");start(*brush,L"EndPoint",side?L"Vector2(0,"+B+L")":L"Vector2(0,"+y1+L")");
@@ -319,7 +342,7 @@ void GlassBackdrop::Impl::layout(){
         if(drops){const std::wstring Es=L"(p.sr+"+px(2)+L")",tall=L"(Min(p.sh,Max("+top+L",0)+"+px(1)+L")+"+Es+L")",corner=L"Min(p.sr,"+tall+L"/2)";
             start(stubGeometry,L"Offset",L"Vector2("+Ls+L",-"+Es+L")");start(stubGeometry,L"Size",L"Vector2("+Rs+L"-"+Ls+L","+tall+L")");start(stubGeometry,L"CornerRadius",L"Vector2("+corner+L","+corner+L")");
             start(parts[3].container,L"Opacity",L"Clamp(("+detach+L"+"+px(1)+L")/"+px(1)+L",0,1)");start(stubRimClip,L"TopInset",L"p.sr");}
-        check(visual(parts[4].container)->put_IsVisible(drops));
+        check(visual(parts[4].container)->put_IsVisible(drops));if(drops)start(parts[4].container,L"Opacity",L"Clamp(p.b*8,0,1)");
         if(drops){start(budGeometry,L"Offset",L"Vector2("+budLeft+L","+budTop+L")");start(budGeometry,L"Size",L"Vector2("+budW+L","+budBottom+L"-"+budTop+L")");start(budGeometry,L"CornerRadius",L"Vector2("+budCorner+L","+budCorner+L")");}
         if(!attached)return;
     }
@@ -342,7 +365,7 @@ void GlassBackdrop::Impl::layout(){
         // stroke carries on into the body's own rim below the join.
         Figure rimArea;rimArea.start=point(0,-over,pad);rimArea.line(point(along+strip,-over,pad));rimArea.line(point(along+strip,depth,pad));rimArea.line(point(along,depth,pad));curveTo(rimArea,pad);
         Figure curve;curve.closed=false;curve.start=point(along,depth,pad);curveTo(curve,pad);
-        auto& r=shoulderRims[which];const auto curveGeometry=path(curve);for(auto& sprite:r.shapes)check(as<SpriteShape>(sprite)->put_Geometry(curveGeometry.Get()));
+        auto& r=shoulderRims[which];const auto curveGeometry=path(curve);for(auto& sprite:r.shapes)if(sprite)check(as<SpriteShape>(sprite)->put_Geometry(curveGeometry.Get()));
         const float extent=along+2*pad+strip;check(visual(r.visual)->put_Size({extent,extent}));
         check(visual(r.visual)->put_Clip(as<wuc::ICompositionClip>(geometricClip(path(rimArea))).Get()));
         start(r.visual,L"CenterPoint",L"Vector3("+ax+L"+"+ap+L","+ay+L"+"+ap+L",0)");start(r.visual,L"Scale",L"Vector3("+k+L","+k+L",1)");
@@ -350,6 +373,48 @@ void GlassBackdrop::Impl::layout(){
         // Side docking: the lower shoulder takes the rim's lower colours.
         const bool lower=side&&which==1;check(as<SpriteShape>(r.shapes[0])->put_StrokeBrush(as<wuc::ICompositionBrush>(edgeBrushes[lower?3:2]).Get()));check(as<SpriteShape>(r.shapes[1])->put_StrokeBrush(as<wuc::ICompositionBrush>(edgeBrushes[lower?3:2]).Get()));check(as<SpriteShape>(r.shapes[2])->put_StrokeBrush(as<wuc::ICompositionBrush>(edgeBrushes[lower?1:0]).Get()));
     }
+}
+void GlassBackdrop::sheen(const Spring& x,const Spring& y,const Spring& opacity,double now,float strength){
+    if(!available_||impl_->shadowOnly)return;auto& i=*impl_;
+    try{
+        // Its own clock (tp), so the island's springs keep theirs.
+        String tp(L"tp");ComPtr<wuc::IScalarKeyFrameAnimation> clock;check(i.compositor->CreateScalarKeyFrameAnimation(&clock));
+        ComPtr<wuc::ICompositionEasingFunction> linear;{ComPtr<wuc::ILinearEasingFunction> l;check(i.compositor->CreateLinearEasingFunction(&l));check(l.As(&linear));}
+        const float span=6;check(clock->InsertKeyFrame(0,0));check(clock->InsertKeyFrameWithEasingFunction(1,span,linear.Get()));ABI::Windows::Foundation::TimeSpan duration{LONGLONG(span*1e7)};check(as<KeyFrameAnimation>(clock)->put_Duration(duration));
+        ComPtr<IInspectable> props;check(i.properties.As(&props));const double s=i.scale;
+        i.start(props,L"px",springExpression(SpringTerms::from(x,now),s,L"p.tp"));i.start(props,L"py",springExpression(SpringTerms::from(y,now),s,L"p.tp"));i.start(props,L"po",springExpression(SpringTerms::from(opacity,now),strength,L"p.tp"));
+        check(as<wuc::ICompositionObject>(i.properties)->StartAnimation(tp,as<wuc::ICompositionAnimation>(clock).Get()));
+    }catch(const std::exception& e){lastError_=std::string("sheen: ")+e.what();}
+}
+void GlassBackdrop::beat(double from,double velocity,double to,double span,uint32_t rgb){
+    if(!available_||impl_->shadowOnly||!impl_->beatable)return;auto& i=*impl_;
+    try{
+        ComPtr<IInspectable> props;check(i.properties.As(&props));
+        // The colour: its alpha follows the level (a soft band at 45%, the crisp line at 85%).
+        if(rgb!=i.beatColor){i.beatColor=rgb;const std::wstring r=number((rgb>>16)&255),g=number((rgb>>8)&255),b=number(rgb&255);
+            i.start(i.beatGlow,L"Color",L"ColorRGB(Clamp(p.be,0,1)*"+number(255*.45)+L","+r+L","+g+L","+b+L")");i.start(i.beatCore,L"Color",L"ColorRGB(Clamp(p.be,0,1)*"+number(255*.85)+L","+r+L","+g+L","+b+L")");}
+        // The level: the glide's cubic on its own clock (tb), held at `to` once it has run.
+        span=std::max(span,1e-3);const double a=(3*(to-from)-2*velocity*span)/(span*span),c=(2*(from-to)+velocity*span)/(span*span*span);const std::wstring S=L"Min(p.tb,"+number(span)+L")";
+        i.start(props,L"be",number(from)+L"+"+S+L"*("+number(velocity)+L"+"+S+L"*("+number(a)+L"+"+S+L"*"+number(c)+L"))");
+        String tb(L"tb");ComPtr<wuc::IScalarKeyFrameAnimation> clock;check(i.compositor->CreateScalarKeyFrameAnimation(&clock));
+        ComPtr<wuc::ICompositionEasingFunction> linear;{ComPtr<wuc::ILinearEasingFunction> l;check(i.compositor->CreateLinearEasingFunction(&l));check(l.As(&linear));}
+        const float length=2;check(clock->InsertKeyFrame(0,0));check(clock->InsertKeyFrameWithEasingFunction(1,length,linear.Get()));ABI::Windows::Foundation::TimeSpan duration{LONGLONG(length*1e7)};check(as<KeyFrameAnimation>(clock)->put_Duration(duration));
+        check(as<wuc::ICompositionObject>(i.properties)->StartAnimation(tb,as<wuc::ICompositionAnimation>(clock).Get()));
+    }catch(const std::exception& e){i.beatable=false;i.failure=std::string("beat light: ")+e.what();try{check(i.beatGlow->put_Color(color(0xffffff,0)));check(i.beatCore->put_Color(color(0xffffff,0)));}catch(...){}}
+}
+void GlassBackdrop::frost(bool resting,double now,double pace){
+    if(!available_||impl_->shadowOnly)return;auto& i=*impl_;
+    try{
+        const double from=i.frostAt(now),to=resting?1:0,delay=resting?6*pace:0,span=resting?24*pace:.35;
+        i.frostFrom=from;i.frostTo=to;i.frostStart=now;i.frostDelay=delay;i.frostSpan=span;
+        // Smoothstep from the level now to the target, after the delay, on its own clock (tf).
+        ComPtr<IInspectable> props;check(i.properties.As(&props));const std::wstring u=L"Clamp((p.tf-"+number(delay)+L")/"+number(span)+L",0,1)";
+        i.start(props,L"fr",number(from)+L"+"+number(to-from)+L"*"+u+L"*"+u+L"*(3-2*"+u+L")");
+        String tf(L"tf");ComPtr<wuc::IScalarKeyFrameAnimation> clock;check(i.compositor->CreateScalarKeyFrameAnimation(&clock));
+        ComPtr<wuc::ICompositionEasingFunction> linear;{ComPtr<wuc::ILinearEasingFunction> l;check(i.compositor->CreateLinearEasingFunction(&l));check(l.As(&linear));}
+        const float length=float(delay+span+1);check(clock->InsertKeyFrame(0,0));check(clock->InsertKeyFrameWithEasingFunction(1,length,linear.Get()));ABI::Windows::Foundation::TimeSpan duration{LONGLONG(double(length)*1e7)};check(as<KeyFrameAnimation>(clock)->put_Duration(duration));
+        check(as<wuc::ICompositionObject>(i.properties)->StartAnimation(tf,as<wuc::ICompositionAnimation>(clock).Get()));
+    }catch(const std::exception& e){lastError_=std::string("frost: ")+e.what();}
 }
 GlassBackdrop::~GlassBackdrop(){
     if(!impl_)return;
@@ -397,9 +462,10 @@ bool GlassBackdrop::initialize(HWND window,float scale,float canvasWidth,float c
             check(c->CreateContainerVisual(&part.container));if(k>=3)check(glassChildren->InsertAtBottom(i.visual(part.container).Get()));else check(glassChildren->InsertAtTop(i.visual(part.container).Get()));
             ComPtr<wuc::IVisualCollection> children;check(part.container->get_Children(&children));
             auto add=[&](ComPtr<wuc::ISpriteVisual>& sprite,const ComPtr<IInspectable>& brush){check(c->CreateSpriteVisual(&sprite));if(brush)check(sprite->put_Brush(as<wuc::ICompositionBrush>(brush).Get()));check(children->InsertAtTop(i.visual(sprite).Get()));};
-            add(part.layers[0],i.hostBrush);
+            add(part.layers[0],i.hostBrush);add(part.frost,nullptr);check(i.visual(part.frost)->put_IsVisible(false));
             if(k==0)for(int l=0;l<4;++l){add(i.lens[l],nullptr);check(i.visual(i.lens[l])->put_IsVisible(false));}
             add(part.layers[1],i.tintBrush);add(part.layers[2],nullptr);add(part.layers[3],i.depthBrush);
+            if(k<3){add(part.sheen,nullptr);check(i.visual(part.sheen)->put_Size({260*scale,260*scale}));check(i.visual(part.sheen)->put_Opacity(0));}
         }
         i.parts[0].clip=i.geometricClip(i.geometry);check(i.visual(i.parts[0].container)->put_Clip(as<wuc::ICompositionClip>(i.parts[0].clip).Get()));
         {
@@ -409,6 +475,18 @@ bool GlassBackdrop::initialize(HWND window,float scale,float canvasWidth,float c
             check(c->CreateInsetClip(&i.rimClip));check(i.visual(i.rim)->put_Clip(as<wuc::ICompositionClip>(i.rimClip).Get()));
             const float widths[3]={8,3.5f,1.6f};
             for(int k=0;k<3;++k){i.rimShapes[k]=i.shape(i.rim,widths[k]);check(as<SpriteShape>(i.rimShapes[k])->put_Geometry(i.geometry.Get()));check(as<SpriteShape>(i.rimShapes[k])->put_StrokeBrush(as<wuc::ICompositionBrush>(k==2?i.rimBrush:i.glowBrush).Get()));}
+            // The beat's light rides on the rim (a soft band and a crisp line), transparent until music plays.
+            check(c->CreateColorBrushWithColor(color(0xffffff,0),&i.beatGlow));check(c->CreateColorBrushWithColor(color(0xffffff,0),&i.beatCore));
+            for(int k=0;k<2;++k){auto s=i.shape(i.rim,k?2.f:9.f);check(as<SpriteShape>(s)->put_Geometry(i.geometry.Get()));check(as<SpriteShape>(s)->put_StrokeBrush(as<wuc::ICompositionBrush>(k?i.beatCore:i.beatGlow).Get()));}
+            // The pointer's glint: brightest on the rim right under the pointer, fading along it both ways.
+            try{check(as<Compositor5>(c)->CreateShapeVisual(&i.glint));check(i.visual(i.glint)->put_Size({canvasWidth*scale,canvasHeight*scale}));check(i.visual(i.glint)->put_Opacity(0));
+                {ComPtr<wuc::IVisualCollection> children;check(i.parts[0].container->get_Children(&children));check(children->InsertAtTop(i.visual(i.glint).Get()));}
+                check(c->CreateInsetClip(&i.glintClip));check(i.visual(i.glint)->put_Clip(as<wuc::ICompositionClip>(i.glintClip).Get()));
+                check(as<CompositorWithRadialGradient>(c)->CreateRadialGradientBrush(&i.glintBrush));check(as<GradientBrush2>(i.glintBrush)->put_MappingMode(0));
+                check(as<RadialGradientBrush>(i.glintBrush)->put_EllipseRadius({78*scale,78*scale}));
+                {ComPtr<IInspectable> collection;check(as<GradientBrush>(i.glintBrush)->get_ColorStops(&collection));auto list=vector(collection,stopVector);for(int k=0;k<3;++k)check(list->Append(i.stop(k*.5f,color(0xffffff,0)).Get()));}
+                for(int k=0;k<2;++k){auto s=i.shape(i.glint,k?1.8f:6.f);check(as<SpriteShape>(s)->put_Geometry(i.geometry.Get()));check(as<SpriteShape>(s)->put_StrokeBrush(as<wuc::ICompositionBrush>(i.glintBrush).Get()));}
+            }catch(...){if(i.glint)(void)i.visual(i.glint)->put_IsVisible(false);i.glint.Reset();i.glintBrush.Reset();i.glintClip.Reset();}
             // The stub's rim, like the body's: its top is left to the shoulders (they are the stub's radius deep).
             check(as<Compositor5>(c)->CreateRoundedRectangleGeometry(&i.stubGeometry));i.parts[3].clip=i.geometricClip(i.stubGeometry);check(i.visual(i.parts[3].container)->put_Clip(as<wuc::ICompositionClip>(i.parts[3].clip).Get()));
             check(as<Compositor5>(c)->CreateShapeVisual(&i.stubRim));check(i.visual(i.stubRim)->put_Size({canvasWidth*scale,canvasHeight*scale}));
@@ -420,7 +498,10 @@ bool GlassBackdrop::initialize(HWND window,float scale,float canvasWidth,float c
             check(as<Compositor5>(c)->CreateShapeVisual(&i.budRim));check(i.visual(i.budRim)->put_Size({canvasWidth*scale,canvasHeight*scale}));
             {ComPtr<wuc::IVisualCollection> children;check(i.parts[4].container->get_Children(&children));check(children->InsertAtTop(i.visual(i.budRim).Get()));}
             for(int k=0;k<3;++k){i.budRimShapes[k]=i.shape(i.budRim,widths[k]);check(as<SpriteShape>(i.budRimShapes[k])->put_Geometry(i.budGeometry.Get()));check(as<SpriteShape>(i.budRimShapes[k])->put_StrokeBrush(as<wuc::ICompositionBrush>(k==2?i.rimBrush:i.glowBrush).Get()));}
-            for(auto& r:i.shoulderRims){check(as<Compositor5>(c)->CreateShapeVisual(&r.visual));check(glassChildren->InsertAtTop(i.visual(r.visual).Get()));for(int k=0;k<3;++k)r.shapes[k]=i.shape(r.visual,widths[k]);check(i.visual(r.visual)->put_IsVisible(false));}
+            for(auto& r:i.shoulderRims){check(as<Compositor5>(c)->CreateShapeVisual(&r.visual));check(glassChildren->InsertAtTop(i.visual(r.visual).Get()));for(int k=0;k<3;++k)r.shapes[k]=i.shape(r.visual,widths[k]);
+                // The beat's light carries on round the shoulders.
+                r.shapes[3]=i.shape(r.visual,9.f);r.shapes[4]=i.shape(r.visual,2.f);check(as<SpriteShape>(r.shapes[3])->put_StrokeBrush(as<wuc::ICompositionBrush>(i.beatGlow).Get()));check(as<SpriteShape>(r.shapes[4])->put_StrokeBrush(as<wuc::ICompositionBrush>(i.beatCore).Get()));
+                check(i.visual(r.visual)->put_IsVisible(false));}
             // Edge-light masks fade from the edge inward (a squircle-like falloff in three stops).
             const Vector2 from[4]={{0,.5f},{1,.5f},{.5f,0},{.5f,1}},to[4]={{1,.5f},{0,.5f},{.5f,1},{.5f,0}};
             for(int k=0;k<4;++k){i.lensMasks[k]=i.gradient(false);auto linear=as<LinearGradientBrush>(i.lensMasks[k]);check(linear->put_StartPoint(from[k]));check(linear->put_EndPoint(to[k]));
@@ -443,6 +524,11 @@ void GlassBackdrop::style(const GlassStyle& s){
             {String so(L"so");check(i.properties->InsertScalar(so,s.shadow));}if(i.edge>=0)i.layout();return;}
         // Grain needs a GPU drawing surface; without one the glass simply has none.
         if(!i.grainTried){i.grainTried=true;try{i.grainBrush=i.grain();for(auto& part:i.parts)if(part.layers[2])check(part.layers[2]->put_Brush(as<wuc::ICompositionBrush>(i.grainBrush).Get()));}catch(...){i.grainBrush.Reset();}}
+        if(!i.sheenTried){i.sheenTried=true;try{const UINT size=UINT(std::ceil(260*i.scale));const float half=float(size)/2;
+                i.sheenBrush=i.drawn(size,size,[&](ID2D1DeviceContext* dc){D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(0xffffff,.55f)},{.45f,D2D1::ColorF(0xffffff,.16f)},{1,D2D1::ColorF(0xffffff,0.f)}};
+                    ComPtr<ID2D1GradientStopCollection> c;check(dc->CreateGradientStopCollection(stops,3,&c));ComPtr<ID2D1RadialGradientBrush> b;check(dc->CreateRadialGradientBrush(D2D1::RadialGradientBrushProperties({half,half},{0,0},half,half),c.Get(),&b));
+                    dc->FillRectangle(D2D1::RectF(0,0,float(size),float(size)),b.Get());});
+                check(i.sheenBrush->put_Stretch(wuc::CompositionStretch_Fill));for(auto& part:i.parts)if(part.sheen)check(part.sheen->put_Brush(as<wuc::ICompositionBrush>(i.sheenBrush).Get()));}catch(...){i.sheenBrush.Reset();}}
         // Frosted: Windows' blurred backdrop run through the material matrix (vibrancy and a
         // luminosity map, tinted toward the wallpaper), with light gathered along the free
         // edges; otherwise a dense translucent frost. Clear: never blurred, a light tint you
@@ -454,7 +540,7 @@ void GlassBackdrop::style(const GlassStyle& s){
         // The wallpaper's colour tints the offset a little, so the glass belongs to the desktop it sits on.
         float offset[3];for(int k=0;k<3;++k)offset[k]=s.light?(1-gain)*.95f+(s.wallpaper?.05f*(wall[k]-.6f):0):.03f+(s.wallpaper?.05f*wall[k]:0);
         i.vibrancy=false;
-        i.edgeLight=false;i.materialBrush.Reset();
+        i.edgeLight=false;i.materialBrush.Reset();i.frostBrush.Reset();
         if(blurred){
             try{i.materialBrush=i.materialOf(saturation,gain,offset);i.vibrancy=true;}catch(const std::exception& e){i.materialBrush.Reset();i.failure=std::string("material: ")+e.what();}
             // Thick glass gathers light at its edges: the same backdrop, brighter and more saturated, fading inward.
@@ -463,7 +549,10 @@ void GlassBackdrop::style(const GlassStyle& s){
                 const auto edgeLight=i.materialOf(saturation+.35f,std::min(1.f,gain*(s.light?1.12f:1.45f)),edgeOffset);
                 for(int k=0;k<4;++k){ComPtr<IInspectable> mask;check(as<Compositor2>(i.compositor)->CreateMaskBrush(&mask));
                     check(as<MaskBrush>(mask)->put_Source(edgeLight.Get()));check(as<MaskBrush>(mask)->put_Mask(i.lensMasks[k].Get()));check(i.lens[k]->put_Brush(as<wuc::ICompositionBrush>(mask).Get()));}
-                i.edgeLight=true;}catch(const std::exception& e){i.failure=std::string("edge light: ")+e.what();}}
+                i.edgeLight=true;}catch(const std::exception& e){i.failure=std::string("edge light: ")+e.what();}
+            // The resting frost: paler (less saturated), milkier and a little softer than the material.
+            if(i.vibrancy)try{float frostOffset[3];for(int k=0;k<3;++k)frostOffset[k]=offset[k]+(s.light?.1f:.09f);i.frostBrush=i.frostOf(saturation*.5f,gain*(s.light?.86f:1.05f),frostOffset);}catch(const std::exception& e){i.frostBrush.Reset();i.failure=std::string("frost: ")+e.what();}}
+        for(auto& part:i.parts)if(part.frost){check(i.visual(part.frost)->put_IsVisible(bool(i.frostBrush)));if(i.frostBrush)check(part.frost->put_Brush(as<wuc::ICompositionBrush>(i.frostBrush).Get()));}
         for(auto& part:i.parts){check(i.visual(part.layers[0])->put_IsVisible(blurred));check(part.layers[0]->put_Brush(as<wuc::ICompositionBrush>(i.materialBrush?i.materialBrush:i.hostBrush).Get()));}
         // The tint now only unifies the material; without blur (or on clear glass) it carries the frost itself.
         // Clear glass keeps a dimming scrim, enough for text over any wallpaper, like Apple's clear material.
@@ -484,6 +573,7 @@ void GlassBackdrop::style(const GlassStyle& s){
         // A soft inner glow just inside the edge gives the pane thickness, like light caught in a lens.
         const auto glowTop=color(0xffffff,s.light?(clear?.26f:.18f):(clear?.06f:.045f)),glowBottom=color(0xffffff,s.light?(clear?.10f:.07f):(clear?.025f:.018f));
         i.stops(i.glowBrush,{{0,glowTop},{.4f,color(0xffffff,s.light?(clear?.12f:.08f):(clear?.02f:.012f))},{1,glowBottom}});
+        if(i.glintBrush)i.stops(i.glintBrush,{{0,color(0xffffff,s.light?1.f:clear?.95f:.85f)},{.35f,color(0xffffff,s.light?.55f:clear?.42f:.34f)},{1,color(0xffffff,0)}});
         check(i.edgeBrushes[0]->put_Color(rimTop));check(i.edgeBrushes[1]->put_Color(rimBottom));check(i.edgeBrushes[2]->put_Color(glowTop));check(i.edgeBrushes[3]->put_Color(glowBottom));
         // Edge-light visibility depends on the material and the docking, which layout() knows.
         if(i.edge>=0)i.layout();else for(auto& l:i.lens)if(l)check(i.visual(l)->put_IsVisible(false));

@@ -28,7 +28,11 @@ const Icon sectionIcons[]={Icon::Settings,Icon::Island,Icon::Sun,Icon::Spark,Ico
 const UINT32 swatchColors[]={0xa4deca,0xa6cafa,0xccb8f1,0xefc7a6};
 struct Palette {UINT32 bg,card,border,ink,muted,accent,onAccent,pill;float bgAlpha,cardAlpha;bool light;};
 bool systemLight(){DWORD light=0,size=sizeof(light);RegGetValueW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",L"AppsUseLightTheme",RRF_RT_REG_DWORD,nullptr,&light,&size);return light!=0;}
-struct Row {int item=-1;D2D1_RECT_F row{},control{};std::vector<D2D1_RECT_F> parts;};
+// base: the row's own height (its controls are centred in it); open (0-1): how far its preview has opened below that, into preview.
+struct Row {int item=-1;D2D1_RECT_F row{},control{};std::vector<D2D1_RECT_F> parts;float base=64,open=0;D2D1_RECT_F preview{};};
+// 0.17.0-preview.3: a row's preview opens this far below it.
+constexpr float PreviewHeight=98;
+constexpr SpringSpec Reveal{1,380,36};
 struct Hit {int item=-1,part=-1,section=-1;bool operator==(const Hit&)const=default;};
 float lerp(float a,float b,float t){return a+(b-a)*t;}
 bool inside(const D2D1_RECT_F& r,float x,float y){return x>=r.left&&x<r.right&&y>=r.top&&y<r.bottom;}
@@ -46,7 +50,9 @@ public:
     LRESULT message(HWND,UINT,WPARAM,LPARAM);
     bool animating();void render();bool dirty=true;
     // Test runs only: every section, a window's height at a time, saved as the window drew it (never a screen copy).
-    std::wstring sweepDir_;int sweepPage_=0;bool sweepShot_=false;void sweepStep();void saveFrame(const std::wstring& file,UINT32 background);
+    std::wstring sweepDir_,sweepFile_;int sweepPage_=0,sweepPreview_=-1;bool sweepShot_=false;void sweepStep();void saveFrame(const std::wstring& file,UINT32 background);
+    // A picture keeps moving (the glass preview on screen, or a row's preview open): the window draws at about 30 fps.
+    bool live();
 private:
     HWND island_,hwnd_=nullptr;SettingsWindow::State& shared_;Settings s_;SettingsContext context_;std::vector<SettingItem> items_;int section_=0;unsigned posted_=0;
     ComPtr<ID3D11Device> d3d_;ComPtr<IDXGISwapChain1> swap_;ComPtr<ID2D1Factory1> factory_;ComPtr<ID2D1Device> device2d_;ComPtr<ID2D1DeviceContext> dc_;ComPtr<IDWriteFactory> write_;
@@ -58,6 +64,15 @@ private:
     Hit hover_,press_,focus_;int dragItem_=-1;double confirmUntil_=0;int confirmItem_=-1;bool tracking_=false;
     // Animation Lab: a spring that plays the island's own motion in miniature.
     Spring preview_{0};double previewStart_=-10;bool previewForward_=false;void replay();void drawPreview(const D2D1_RECT_F& area,const Palette& p,float alpha);
+    // 0.17.0-preview.3: rows that show what they do. Resting the pointer on one for 450 ms opens a small moving picture under it
+    // (a click first cancels the wait, so clicking through rows never opens one); it closes when the pointer moves to another row.
+    std::map<int,Spring> opens_;int dwellItem_=-1,openItem_=-1;double openedAt_=0;float pointerX_=-1,pointerY_=-1;
+    bool scene(const SettingItem&)const;void openPreview(int item,bool instant=false);void closePreview();
+    // The pictures: a stand-in wallpaper, and a miniature island drawn in any theme and material over it.
+    struct Mini{D2D1_RECT_F box{};float radius=12;bool top=true,shadow=true,content=true;float beat=0,frost=0,splash=-1;D2D1_POINT_2F glint{-1,-1};int material=-1,theme=-1,tint=-1;};
+    void backdrop(const D2D1_RECT_F& area,double t,float blur,float alpha);ComPtr<ID2D1PathGeometry> islandPath(const D2D1_RECT_F& box,float radius,bool top,bool closed);
+    void mini(const D2D1_RECT_F& area,const Mini&,double t,float alpha);void drawScene(const SettingItem&,const D2D1_RECT_F& area,float alpha);void drawGlass(const D2D1_RECT_F& area,float alpha,int item);
+    double frostLevel_=0,frostAt_=0;
     float W()const{return width_*96.f/dpi_;}float H()const{return height_*96.f/dpi_;}
     Palette palette()const;bool enabled(const SettingItem&)const;std::wstring detail(const SettingItem&)const;
     IDWriteTextFormat* format(float size,DWRITE_FONT_WEIGHT weight);float measure(const std::wstring&,float size,DWRITE_FONT_WEIGHT weight=DWRITE_FONT_WEIGHT_NORMAL);
@@ -85,7 +100,9 @@ Palette SettingsUi::palette()const{
     return {0x141518,0x1e1f24,0x2b2d33,0xf2f3f6,0x9b9ea8,accent,0x101114,0x34363d,mica_?0.f:1.f,mica_?.62f:1.f,false};
 }
 bool SettingsUi::enabled(const SettingItem& i)const{
-    if(i.key=="glassTint")return s_.material!=0;
+    if(i.key=="glassTint")return s_.material==1;
+    if(i.key=="clearTint")return s_.material==2;
+    if(i.key=="restFrost")return s_.material==1;
     if(i.key=="compactWidth")return s_.uiMode!=0;
     if(i.key=="hoverDelay")return s_.hoverOpen;
     if(i.key=="accent")return true;
@@ -118,7 +135,10 @@ std::vector<Row> SettingsUi::layout(float& contentHeight,std::vector<D2D1_RECT_F
     std::vector<Row> rows;const float left=Sidebar+20,right=W()-32,R=right-Pad,scroll=float(at(scroll_));float y=CardTop-scroll+(about()?92:0);
     for(size_t index=0;index<items_.size();++index){auto& item=items_[index];if(item.section!=section_||(item.action==SettingAction::OpenArmoury&&!context_.armoury))continue;
         const size_t listed=item.control==SettingControl::Town&&townListed()?context_.townResults.size():0;
-        Row row;row.item=int(index);float h=item.control==SettingControl::Order?52:item.control==SettingControl::Preview?216:item.control==SettingControl::Chips?122:item.control==SettingControl::Town?64+(listed?float(listed)*38+10:0.f):64;row.row={left,y,right,y+h};float cy=y+h/2;
+        Row row;row.item=int(index);float h=item.control==SettingControl::Order?52:item.control==SettingControl::Preview?216:item.control==SettingControl::Glass?176:item.control==SettingControl::Chips?122:item.control==SettingControl::Town?64+(listed?float(listed)*38+10:0.f):64;
+        const float base=h;float cy=y+base/2;row.base=base;
+        if(scene(item)){auto it=opens_.find(int(index));if(it!=opens_.end())row.open=float(std::clamp(it->second.sample(seconds()).position,0.,1.));}
+        h+=row.open*PreviewHeight;row.row={left,y,right,y+h};row.preview={left+Pad,y+base-4,R,y+base-4+PreviewHeight-14};
         switch(item.control){
         case SettingControl::Toggle:row.control={R-44,cy-11,R,cy+11};row.parts={row.control};break;
         case SettingControl::Slider:row.control={R-220,cy-12,R,cy+12};row.parts={row.control};break;
@@ -127,7 +147,7 @@ std::vector<Row> SettingsUi::layout(float& contentHeight,std::vector<D2D1_RECT_F
         case SettingControl::Swatch:{float x=R-float(item.options.size())*38+10;row.control={x,cy-14,R,cy+14};for(size_t k=0;k<item.options.size();++k)row.parts.push_back({x+k*38.f,cy-14,x+k*38.f+28,cy+14});break;}
         case SettingControl::Button:{float w=std::max(96.f,measure(confirmItem_==int(index)?L"Click again to confirm":item.options.front(),13,DWRITE_FONT_WEIGHT_MEDIUM)+36);row.control={R-w,cy-16,R,cy+16};row.parts={row.control};break;}
         case SettingControl::Order:row.control={R-72,cy-15,R,cy+15};row.parts={{R-72,cy-15,R-40,cy+15},{R-32,cy-15,R,cy+15}};break;
-        case SettingControl::Preview:row.control={left+Pad,y+44,R,y+h-14};row.parts={row.control};break;
+        case SettingControl::Preview:case SettingControl::Glass:row.control={left+Pad,y+44,R,y+base-14};row.parts={row.control};break;
         // A strip like the compact island, with the chips in their order.
         // The field at the right of the row's first line; the matches under it, across the row.
         case SettingControl::Town:{row.control={R-300,y+16,R,y+48};row.parts={row.control};for(size_t k=0;k<listed;++k){const float ty=y+64+float(k)*38;row.parts.push_back({left+Pad-6,ty,R,ty+34});}break;}
@@ -186,16 +206,25 @@ void SettingsUi::saveFrame(const std::wstring& file,UINT32 background){
 }
 // One shot, then the next: down the section a window's height at a time, then the next section.
 void SettingsUi::sweepStep(){
+    // After the sections: each row's preview, open, a little over a second into its motion.
+    if(sweepPreview_>=0){
+        if(!sweepFile_.empty()){sweepShot_=true;dirty=true;render();closePreview();opens_.clear();}
+        int index=-1,seen=0;for(size_t k=0;k<items_.size();++k)if(scene(items_[k])&&seen++==sweepPreview_){index=int(k);break;}
+        if(index<0){std::ofstream(std::filesystem::path(sweepDir_)/L"done.txt")<<"done";return;}
+        ++sweepPreview_;selectSection(items_[size_t(index)].section);openPreview(index,true);
+        float height;for(auto& row:layout(height))if(row.item==index){const float max=std::max(0.f,height-H());scrollTarget_=std::clamp(double(at(scroll_))+row.row.top-(CardTop+10),0.,double(max));scroll_.reset(scrollTarget_,seconds());}
+        sweepFile_=L"settings-preview-"+std::wstring(items_[size_t(index)].key.begin(),items_[size_t(index)].key.end())+L".png";dirty=true;SetTimer(hwnd_,4,1300,nullptr);return;}
     sweepShot_=true;dirty=true;render();
     float height;layout(height);const float max=std::max(0.f,height-H()),pageStep=std::max(120.f,H()-CardTop-40);const double now=seconds();
     if((sweepPage_+1)*pageStep<max+pageStep-1&&max>0&&sweepPage_*pageStep<max){++sweepPage_;scrollTarget_=std::min(double(max),double(sweepPage_*pageStep));scroll_.reset(scrollTarget_,now);dirty=true;SetTimer(hwnd_,4,500,nullptr);return;}
     if(section_+1<int(settingSections().size())){sweepPage_=0;selectSection(section_+1);SetTimer(hwnd_,4,900,nullptr);return;}
-    std::ofstream(std::filesystem::path(sweepDir_)/L"done.txt")<<"done";
+    sweepPreview_=0;SetTimer(hwnd_,4,300,nullptr);
 }
 void SettingsUi::selectSection(int section){
     section=std::clamp(section,0,int(settingSections().size())-1);if(section==section_)return;section_=section;double now=seconds();
     if(!s_.reduceMotion){page_.reset(0,now);page_.retarget(1,now,Page);}scrollTarget_=0;scroll_.reset(0,now);confirmItem_=-1;dirty=true;
     if(section_==3){previewForward_=false;preview_.reset(0,now);replay();}
+    KillTimer(hwnd_,5);dwellItem_=-1;openItem_=-1;opens_.clear();
 }
 void SettingsUi::activate(const Hit& h,float x){
     if(h.section>=0){selectSection(h.section);return;}
@@ -221,7 +250,7 @@ void SettingsUi::activate(const Hit& h,float x){
     default:break;
     }
 }
-std::vector<Hit> SettingsUi::focusOrder(){std::vector<Hit> order;for(int i=0;i<int(settingSections().size());++i)order.push_back({-1,-1,i});float height;for(auto& row:layout(height)){auto& item=items_[row.item];if(!enabled(item))continue;order.push_back({row.item,item.control==SettingControl::Toggle?0:item.control==SettingControl::Choice||item.control==SettingControl::Swatch?item.get(s_):0,-1});}return order;}
+std::vector<Hit> SettingsUi::focusOrder(){std::vector<Hit> order;for(int i=0;i<int(settingSections().size());++i)order.push_back({-1,-1,i});float height;for(auto& row:layout(height)){auto& item=items_[row.item];if(!enabled(item)||item.control==SettingControl::Glass)continue;order.push_back({row.item,item.control==SettingControl::Toggle?0:item.control==SettingControl::Choice||item.control==SettingControl::Swatch?item.get(s_):0,-1});}return order;}
 void SettingsUi::key(WPARAM k){
     keyboard_=true;dirty=true;auto order=focusOrder();
     auto index=[&]{for(size_t i=0;i<order.size();++i)if(order[i].section==focus_.section&&order[i].item==focus_.item)return int(i);return -1;};
@@ -317,7 +346,7 @@ void SettingsUi::resize(){
 bool SettingsUi::animating(){
     double now=seconds();auto moving=[&](const Spring& s){return !s.settled(now);};
     if(moving(navY_)||moving(page_)||moving(scroll_)||moving(preview_))return true;
-    for(auto* map:{&knobs_,&hovers_,&pillX_,&pillW_,&thumbs_,&rings_})for(auto& [k,s]:*map)if(moving(s))return true;
+    for(auto* map:{&knobs_,&hovers_,&pillX_,&pillW_,&thumbs_,&rings_,&opens_})for(auto& [k,s]:*map)if(moving(s))return true;
     return false;
 }
 void SettingsUi::render(){
@@ -343,12 +372,12 @@ void SettingsUi::render(){
         brush_->SetColor(D2D1::ColorF(p.ink));dc_->FillRoundedRectangle(D2D1::RoundedRect({left+20,card.top+26,left+64,card.top+50},12,12),brush_.Get());brush_->SetColor(D2D1::ColorF(p.accent));dc_->FillEllipse(D2D1::Ellipse({left+55,card.top+38},3,3),brush_.Get());
         text(L"Arnav Island "+context_.version,{left+80,card.top+14,right-20,card.top+38},15,p.ink,1,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(L"Native Windows preview · No account, cloud or telemetry upload. Preferences stay on this device.",{left+80,card.top+38,right-20,card.top+60},12,p.muted);}
     if(!rows.empty()){D2D1_RECT_F card{left,rows.front().row.top,right,rows.back().row.bottom};fill(card,10,p.card,p.cardAlpha);stroke(card,10,p.border,1);}
-    for(size_t r=0;r<rows.size();++r){auto& row=rows[r];auto& item=items_[row.item];bool on=enabled(item);float alpha=on?1:.42f;float cy=(row.row.top+row.row.bottom)/2,R=row.row.right-Pad;
+    for(size_t r=0;r<rows.size();++r){auto& row=rows[r];auto& item=items_[row.item];bool on=enabled(item);float alpha=on?1:.42f;float cy=row.row.top+row.base/2,R=row.row.right-Pad;
         if(row.row.bottom<0||row.row.top>H()+20)continue;
         if(r>0){brush_->SetColor(D2D1::ColorF(p.border));dc_->DrawLine({row.row.left+Pad,row.row.top},{row.row.right-Pad,row.row.top},brush_.Get(),1);}
         auto& rowHover=spring(hovers_,row.item*100+98,0);aim(rowHover,hover_.item==row.item&&on?1:0,Hover);fill({row.row.left+4,row.row.top+4,row.row.right-4,row.row.bottom-4},7,p.light?0x000000:0xffffff,float(at(rowHover))*(p.light?.02f:.025f));
         float textRight=item.control==SettingControl::Chips?row.row.right-Pad:row.control.left-16;
-        if(item.control==SettingControl::Preview){text(item.title,{row.row.left+Pad,row.row.top+12,row.row.right-Pad,row.row.top+32},14,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);text(detail(item),{row.row.left+Pad,row.row.top+12,row.row.right-Pad,row.row.top+32},12,p.muted,alpha,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
+        if(item.control==SettingControl::Preview||item.control==SettingControl::Glass){text(item.title,{row.row.left+Pad,row.row.top+12,row.row.right-Pad,row.row.top+32},14,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);text(detail(item),{row.row.left+Pad,row.row.top+12,row.row.right-Pad,row.row.top+32},12,p.muted,alpha,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
         else if(item.control==SettingControl::Order){int page=item.get(s_);text(item.title,{row.row.left+Pad,row.row.top+6,textRight,row.row.top+22},11,p.muted,alpha);drawIcon(dc_.Get(),factory_.Get(),std::array<Icon,pageCount>{Icon::Home,Icon::Music,Icon::Stats,Icon::Focus,Icon::Settings,Icon::Shelf,Icon::Audio,Icon::Sliders}[size_t(std::clamp(page,0,pageCount-1))],row.row.left+Pad,row.row.top+25,16,p.ink);text(item.options[page],{row.row.left+Pad+24,row.row.top+22,textRight,row.row.top+44},14,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);}
         else if(item.control==SettingControl::Chips){text(item.title,{row.row.left+Pad,row.row.top+12,textRight,row.row.top+32},14,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);text(detail(item),{row.row.left+Pad,row.row.top+33,textRight,row.row.top+52},12,p.muted,alpha);}
         else{bool hasDetail=!detail(item).empty();text(item.title,{row.row.left+Pad,hasDetail?row.row.top+12:cy-11,textRight,hasDetail?row.row.top+32:cy+11},14,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM);if(hasDetail)text(detail(item),{row.row.left+Pad,row.row.top+33,textRight,row.row.top+52},12,p.muted,alpha);}
@@ -377,6 +406,7 @@ void SettingsUi::render(){
             else{fill(r,7,p.ink,(.07f+std::min(g,1.f)*.05f-std::max(0.f,g-1)*.04f)*alpha);stroke(r,7,p.ink,.08f*alpha,1);text(item.options.front(),r,13,p.ink,alpha,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER);}break;}
         case SettingControl::Order:{int slot=row.item;for(int b=0;b<2;++b){auto r=row.parts[b];bool possible=b?item.key!="nav"+std::to_string(pageCount-1):item.key!="nav0";auto& h=spring(thumbs_,100000+slot*10+b,0);aim(h,press_.item==row.item&&press_.part==b?2:hovered(b)?1:0,Hover);float g=float(at(h));fill(r,15,p.ink,(.06f+std::min(g,1.f)*.06f)*(possible?1:.4f));drawIcon(dc_.Get(),factory_.Get(),b?Icon::ArrowDown:Icon::ArrowUp,r.left+8,r.top+8,14,p.ink,possible?1:.35f);}break;}
         case SettingControl::Preview:drawPreview(row.control,p,alpha);break;
+        case SettingControl::Glass:drawGlass(row.control,alpha,row.item);break;
         case SettingControl::Town:{
             // The field: a search mark, the text (or its hint) and a blinking caret while it has the keyboard.
             const auto c=row.parts[0];auto& h=spring(thumbs_,400000+row.item,0);aim(h,townFocus_?2:hovered(0)?1:0,Hover);const float g=float(at(h));
@@ -411,12 +441,148 @@ void SettingsUi::render(){
         default:break;
         }
         if(keyboard_&&focus_.item==row.item){auto r=row.control;if(focus_.part>=0&&focus_.part<int(row.parts.size())&&item.control!=SettingControl::Slider)r=row.parts[focus_.part];stroke({r.left-3,r.top-3,r.right+3,r.bottom+3},9,p.accent,1,2);}
+        // The row's preview, revealed from its top edge as it opens.
+        if(row.open>.01f){dc_->PushAxisAlignedClip({row.row.left,row.row.top+row.base-6,row.row.right,row.row.bottom},D2D1_ANTIALIAS_MODE_ALIASED);drawScene(item,row.preview,alpha*std::min(1.f,row.open*1.3f));dc_->PopAxisAlignedClip();}
     }
     dc_->PopLayer();dc_->SetTransform(base);dc_->PopAxisAlignedClip();
     if(maxScroll>0){float track=H()-24,thumb=std::max(40.f,track*H()/contentHeight),y=12+(track-thumb)*scroll/maxScroll;fill({W()-7,y,W()-4,y+thumb},1.5f,p.ink,.22f);}
     HRESULT hr=dc_->EndDraw();if(hr==D2DERR_RECREATE_TARGET){resize();return;}check(hr);
-    if(sweepShot_){sweepShot_=false;try{saveFrame(sweepDir_+L"\\settings-"+std::to_wstring(section_)+L"-"+std::to_wstring(sweepPage_)+L".png",p.bg);}catch(...){}}
+    if(sweepShot_){sweepShot_=false;try{saveFrame(!sweepFile_.empty()?sweepDir_+L"\\"+sweepFile_:sweepDir_+L"\\settings-"+std::to_wstring(section_)+L"-"+std::to_wstring(sweepPage_)+L".png",p.bg);}catch(...){}sweepFile_.clear();}
     check(swap_->Present(1,0));dirty=false;publish();
+}
+// ---- 0.17.0-preview.3: pictures of what settings do -----------------------------------------------------------
+bool SettingsUi::scene(const SettingItem& i)const{
+    static const char* keys[]={"theme","glassTint","clearTint","restFrost","corner","shadow","edgeSplash","notifyStyle","stackAlerts","edge","compactWidth","waveformStyle","artPulse","beatEdge"};
+    for(auto* k:keys)if(i.key==k)return true;return false;
+}
+void SettingsUi::openPreview(int item,bool instant){
+    if(openItem_>=0&&openItem_!=item)closePreview();openItem_=item;openedAt_=seconds();auto& s=spring(opens_,item,0);if(instant)s.reset(1,openedAt_);else aim(s,1,Reveal);dirty=true;
+}
+void SettingsUi::closePreview(){if(openItem_<0)return;aim(spring(opens_,openItem_,0),0,Reveal);openItem_=-1;dirty=true;}
+bool SettingsUi::live(){
+    if(s_.reduceMotion||!hwnd_||IsIconic(hwnd_)||!IsWindowVisible(hwnd_))return false;if(openItem_>=0)return true;
+    float height;for(auto& row:layout(height))if(row.open>.01f||(items_[size_t(row.item)].control==SettingControl::Glass&&row.row.bottom>0&&row.row.top<H()))return true;
+    return false;
+}
+// A stand-in wallpaper: three soft colour fields drifting slowly over a deep (or pale) base, and fine diagonal lines, so
+// glass has something to blur, dim and bend. blur softens it the way frosted glass does (wider, fainter fields and lines).
+void SettingsUi::backdrop(const D2D1_RECT_F& a,double t,float blur,float alpha){
+    const auto p=palette();const float w=a.right-a.left,h=a.bottom-a.top;const UINT32 wall=context_.wallpaper?context_.wallpaper:0x5b7fd6;
+    brush_->SetColor(D2D1::ColorF(p.light?0xdfe4ec:0x161a24,alpha));dc_->FillRectangle(a,brush_.Get());
+    const UINT32 colours[3]={wall,p.accent,p.light?UINT32(0xf2a07b):UINT32(0xc0567a)};
+    for(int k=0;k<3;++k){const double phase=t*(.13+.05*k)+k*2.1;const float base=h*(.62f+.12f*float(k)),r=base+blur*1.6f;
+        const float cx=a.left+w*float(.5+.4*std::sin(phase)),cy=a.top+h*float(.5+.34*std::cos(phase*1.3+k)),peak=(p.light?.6f:.72f)*base/r*alpha;
+        D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(colours[k],peak)},{.6f,D2D1::ColorF(colours[k],peak*.35f)},{1,D2D1::ColorF(colours[k],0.f)}};
+        ComPtr<ID2D1GradientStopCollection> c;if(FAILED(dc_->CreateGradientStopCollection(stops,3,&c)))continue;ComPtr<ID2D1RadialGradientBrush> b;
+        if(FAILED(dc_->CreateRadialGradientBrush(D2D1::RadialGradientBrushProperties({cx,cy},{0,0},r,r),c.Get(),&b)))continue;dc_->FillRectangle(a,b.Get());}
+    brush_->SetColor(D2D1::ColorF(p.light?0x000000:0xffffff,(p.light?.13f:.10f)*alpha/(1+blur/2.5f)));
+    for(float x=a.left-h;x<a.right;x+=22)dc_->DrawLine({x,a.bottom},{x+h,a.top},brush_.Get(),1+blur*.2f);
+}
+// The island's outline: hanging from the top edge with concave shoulders (top), or a free pill. Open (closed false): the
+// same outline without the screen edge, for its rim.
+ComPtr<ID2D1PathGeometry> SettingsUi::islandPath(const D2D1_RECT_F& b,float r,bool top,bool closed){
+    r=std::max(1.f,std::min({r,(b.right-b.left)/2,(b.bottom-b.top)/2}));ComPtr<ID2D1PathGeometry> path;check(factory_->CreatePathGeometry(&path));ComPtr<ID2D1GeometrySink> s;check(path->Open(&s));
+    const D2D1_SIZE_F arc{r,r};const auto ccw=D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,cw=D2D1_SWEEP_DIRECTION_CLOCKWISE;
+    if(top){const float d=std::max(2.f,std::min(r*.8f,b.bottom-b.top-r));
+        s->BeginFigure({b.left-d,b.top},closed?D2D1_FIGURE_BEGIN_FILLED:D2D1_FIGURE_BEGIN_HOLLOW);s->AddBezier({{b.left-d*.45f,b.top},{b.left,b.top+d*.55f},{b.left,b.top+d}});
+        s->AddLine({b.left,b.bottom-r});s->AddArc({{b.left+r,b.bottom},arc,0,ccw,D2D1_ARC_SIZE_SMALL});s->AddLine({b.right-r,b.bottom});s->AddArc({{b.right,b.bottom-r},arc,0,ccw,D2D1_ARC_SIZE_SMALL});
+        s->AddLine({b.right,b.top+d});s->AddBezier({{b.right,b.top+d*.55f},{b.right+d*.45f,b.top},{b.right+d,b.top}});s->EndFigure(closed?D2D1_FIGURE_END_CLOSED:D2D1_FIGURE_END_OPEN);}
+    else{s->BeginFigure({b.left+r,b.top},D2D1_FIGURE_BEGIN_FILLED);s->AddLine({b.right-r,b.top});s->AddArc({{b.right,b.top+r},arc,0,cw,D2D1_ARC_SIZE_SMALL});s->AddLine({b.right,b.bottom-r});s->AddArc({{b.right-r,b.bottom},arc,0,cw,D2D1_ARC_SIZE_SMALL});
+        s->AddLine({b.left+r,b.bottom});s->AddArc({{b.left,b.bottom-r},arc,0,cw,D2D1_ARC_SIZE_SMALL});s->AddLine({b.left,b.top+r});s->AddArc({{b.left+r,b.top},arc,0,cw,D2D1_ARC_SIZE_SMALL});s->EndFigure(D2D1_FIGURE_END_CLOSED);}
+    check(s->Close());return path;
+}
+// The island in miniature, as the real one draws itself: solid; frosted (the wallpaper softened, dimmed by the tint, the
+// frost settling as milk, light gathered at the edges); or clear (only the tint). Then its rim, and the lights: the beat,
+// the alert glint (splash, 0-1 round the edge) and the pointer's glint, all on the inner half of the edge.
+void SettingsUi::mini(const D2D1_RECT_F& area,const Mini& m,double t,float alpha){
+    const int theme=m.theme>=0?m.theme:s_.theme;const bool light=theme==1||(theme==2&&systemLight());const auto p=palette();
+    const int material=m.material>=0?m.material:s_.material;const float tint=float(m.tint>=0?m.tint:material==2?s_.clearTint:s_.glassTint)/100.f;
+    auto shape=islandPath(m.box,m.radius,m.top,true),edge=islandPath(m.box,m.radius,m.top,false);
+    if(m.shadow)for(int k=1;k<=4;++k){const float g=float(k)*2.4f;fill({m.box.left-g*.5f,m.box.top+1+g*.5f,m.box.right+g*.5f,m.box.bottom+2+g},m.radius+g,0x000000,(light?.03f:.055f)*alpha);}
+    ComPtr<ID2D1Layer> layer;dc_->CreateLayer(nullptr,&layer);dc_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),shape.Get(),D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,D2D1::IdentityMatrix(),alpha),layer.Get());
+    const UINT32 ink=light?0xf6f7f9:0x0b0c10;
+    if(material==0){brush_->SetColor(D2D1::ColorF(light?0xf7f7f9:0x090a0c));dc_->FillRectangle(area,brush_.Get());}
+    else{if(material==1)backdrop(area,t,14+10*m.frost,1);
+        const float a=material==2?std::clamp((light?.44f:.46f)*(.6f+tint*1.1f),.08f,light?.78f:.62f):std::clamp((light?.52f:.42f)*(.55f+tint*.9f),.06f,.92f);
+        brush_->SetColor(D2D1::ColorF(ink,a));dc_->FillRectangle(area,brush_.Get());
+        if(material==1&&m.frost>0){brush_->SetColor(D2D1::ColorF(light?0xffffff:0xa9b2c2,(light?.24f:.13f)*m.frost));dc_->FillRectangle(area,brush_.Get());}
+        if(material==1){brush_->SetColor(D2D1::ColorF(0xffffff,light?.16f:.09f));dc_->DrawGeometry(edge.Get(),brush_.Get(),9);}}
+    if(m.content){const float h=m.box.bottom-m.box.top,x=m.box.left+(h>=40?12.f:9.f);const UINT32 text=light?0x202329:0xf1f3f7;
+        if(h>=40){const float s=h-24;fill({x,m.box.top+12,x+s,m.box.top+12+s},6,p.accent,.9f);fill({x+s+10,m.box.top+15,m.box.right-40,m.box.top+21},3,text,.7f);fill({x+s+10,m.box.top+27,m.box.right-70,m.box.top+32},2.5f,text,.35f);}
+        else{const float cy=(m.box.top+m.box.bottom)/2;fill({x,cy-5,x+10,cy+5},3,p.accent,.9f);fill({x+16,cy-2,m.box.right-24,cy+2},2,text,.45f);}}
+    if(m.beat>0){brush_->SetColor(D2D1::ColorF(p.accent,.4f*m.beat));dc_->DrawGeometry(edge.Get(),brush_.Get(),9);brush_->SetColor(D2D1::ColorF(p.accent,.85f*m.beat));dc_->DrawGeometry(edge.Get(),brush_.Get(),2.2f);}
+    auto glint=[&](D2D1_POINT_2F at,float radius,float strength){D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(0xffffff,strength)},{.4f,D2D1::ColorF(0xffffff,strength*.4f)},{1,D2D1::ColorF(0xffffff,0.f)}};
+        ComPtr<ID2D1GradientStopCollection> c;if(FAILED(dc_->CreateGradientStopCollection(stops,3,&c)))return;ComPtr<ID2D1RadialGradientBrush> b;if(FAILED(dc_->CreateRadialGradientBrush(D2D1::RadialGradientBrushProperties(at,{0,0},radius,radius),c.Get(),&b)))return;
+        dc_->DrawGeometry(edge.Get(),b.Get(),6);dc_->DrawGeometry(edge.Get(),b.Get(),2);};
+    // The alert's glint runs from the middle of the bottom edge outward both ways, fading as it goes.
+    if(m.splash>=0&&m.splash<=1){const float cx=(m.box.left+m.box.right)/2,half=(m.box.right-m.box.left)/2+(m.box.bottom-m.box.top),f=m.splash,fade=f<.15f?f/.15f:1-(f-.15f)/.85f;
+        for(float sign:{-1.f,1.f}){const float along=f*half;D2D1_POINT_2F at=along<(m.box.right-m.box.left)/2?D2D1_POINT_2F{cx+sign*along,m.box.bottom}:D2D1_POINT_2F{sign<0?m.box.left:m.box.right,m.box.bottom-(along-(m.box.right-m.box.left)/2)};glint(at,26,.95f*fade);}}
+    if(m.glint.x>=0&&material!=0)glint(m.glint,34,light?.95f:.8f);
+    dc_->PopLayer();
+    if(material!=0){D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(0xffffff,(light?.95f:material==2?.46f:.36f)*alpha)},{1,D2D1::ColorF(0xffffff,(light?.42f:.13f)*alpha)}};ComPtr<ID2D1GradientStopCollection> c;ComPtr<ID2D1LinearGradientBrush> b;
+        if(SUCCEEDED(dc_->CreateGradientStopCollection(stops,2,&c))&&SUCCEEDED(dc_->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties({0,m.box.top},{0,m.box.bottom}),c.Get(),&b)))dc_->DrawGeometry(edge.Get(),b.Get(),1.1f);}
+}
+// Each row's picture: the stand-in wallpaper in a rounded frame, and the island doing what the row changes.
+void SettingsUi::drawScene(const SettingItem& item,const D2D1_RECT_F& a,float alpha){
+    const auto p=palette();const double t=s_.reduceMotion?1.3:seconds()-openedAt_,now=s_.reduceMotion?2.:seconds();const std::string& k=item.key;
+    ComPtr<ID2D1RoundedRectangleGeometry> frame;if(FAILED(factory_->CreateRoundedRectangleGeometry(D2D1::RoundedRect(a,9,9),&frame)))return;ComPtr<ID2D1Layer> layer;dc_->CreateLayer(nullptr,&layer);
+    dc_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),frame.Get(),D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,D2D1::IdentityMatrix(),alpha),layer.Get());backdrop(a,now,0,1);
+    const float cx=(a.left+a.right)/2,top=a.top;auto ease=[](double x){x=std::clamp(x,0.,1.);return float(x*x*(3-2*x));};
+    auto phase=[&](double period){return std::fmod(t,period)/period;};
+    auto box=[&](float w,float h,float y=0){return D2D1_RECT_F{cx-w/2,top+y,cx+w/2,top+y+h};};
+    auto mix=[&](const D2D1_RECT_F& x,const D2D1_RECT_F& y,float f){return D2D1_RECT_F{lerp(x.left,y.left,f),lerp(x.top,y.top,f),lerp(x.right,y.right,f),lerp(x.bottom,y.bottom,f)};};
+    // Open, hold, close, rest: the island breathing between compact and open every four seconds.
+    const double c=phase(4.);const float open=ease(c<.25?c*4:c<.55?1.:c<.8?(.8-c)*4:0.);const D2D1_RECT_F compact=box(118,22),expanded=box(236,62);
+    // One beat every half second (120 bpm): a flare that falls away.
+    const float beat=.22f+.7f*float(std::exp(-std::fmod(t,.5)*9));
+    Mini m;m.box=mix(compact,expanded,open);m.radius=lerp(11,16,open);
+    if(k=="corner"){m.radius=lerp(11,float(s_.corner)*.72f,open);}
+    else if(k=="glassTint"){m.material=1;m.box=expanded;}
+    else if(k=="clearTint"){m.material=2;m.box=expanded;}
+    else if(k=="restFrost"){m.material=1;m.box=expanded;const double f=phase(6.);m.frost=s_.restFrost?(f<.7?ease(f/.7):1-ease((f-.7)/.12)):0.f;
+        // The pointer arrives, and the frost clears.
+        if(f>.66){const float q=ease((f-.66)/.1);const D2D1_POINT_2F at{lerp(a.right-30,cx+60,q),lerp(a.bottom-10,expanded.bottom-12,q)};brush_->SetColor(D2D1::ColorF(0xffffff,.95f));dc_->FillEllipse(D2D1::Ellipse(at,4,4),brush_.Get());if(q>.9f)m.glint=at;}}
+    else if(k=="shadow"){m.top=false;m.box=box(200,40,14+3*ease(phase(3.)<.5?phase(3.)*2:2-phase(3.)*2));m.radius=20;m.shadow=s_.shadow;}
+    else if(k=="edgeSplash"){m.box=box(170,30);m.radius=15;if(s_.edgeSplash){const double f=std::fmod(t,2.6);if(f<1.)m.splash=float(f);}}
+    else if(k=="beatEdge"){m.box=box(170,30);m.radius=15;m.beat=s_.beatEdge?beat:0.f;}
+    else if(k=="notifyStyle"||k=="stackAlerts"){
+        const double f=phase(4.2);const float out=ease(f<.3?f/.3:f<.75?1.:(.9-f)/.15);
+        if(k=="notifyStyle"&&s_.notifyStyle==0){m.box=mix(compact,box(210,54),out);m.radius=lerp(11,18,out);}
+        else{m.box=compact;m.content=false;mini(a,m,now,1);Mini pill;pill.top=false;pill.box=box(lerp(118,190,out),lerp(22,34,out),lerp(0,28,out));pill.radius=lerp(11,17,out);mini(a,pill,now,out);
+            if(k=="stackAlerts"&&s_.stackAlerts){const float bud=ease((f-.3)/.2)*out;if(bud>0){Mini b;b.top=false;b.content=false;b.box=box(lerp(40,110,bud),lerp(8,22,bud),pill.box.bottom-top+4*bud);b.radius=lerp(4,11,bud);mini(a,b,now,bud);}}
+            dc_->PopLayer();return;}}
+    else if(k=="edge"){
+        // A small screen, with the island on the chosen edge.
+        const D2D1_RECT_F screen{cx-92,a.top+8,cx+92,a.bottom-8};fill(screen,6,0x000000,.28f);stroke(screen,6,0xffffff,.25f,1);dc_->PushAxisAlignedClip(screen,D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        const float my=(screen.top+screen.bottom)/2;Mini s;s.content=false;s.shadow=false;
+        if(s_.edge==0){s.box={cx-34,screen.top,cx+34,screen.top+14};s.radius=7;}else{s.top=false;s.radius=8;s.box=s_.edge==1?D2D1_RECT_F{screen.right-18,my-26,screen.right+8,my+26}:D2D1_RECT_F{screen.left-8,my-26,screen.left+18,my+26};}
+        mini(a,s,now,1);dc_->PopAxisAlignedClip();dc_->PopLayer();return;}
+    else if(k=="compactWidth"){m.box=box(float(s_.compactWidth)*.5f,22);m.radius=11;}
+    else if(k=="waveformStyle"){m.box=box(170,26);m.radius=13;m.content=false;mini(a,m,now,1);
+        // The title line stops short of the sound, which sits at the island's end.
+        const float y=(m.box.top+m.box.bottom)/2,x=m.box.right-30;const bool light=s_.theme==1||(s_.theme==2&&systemLight());
+        fill({m.box.left+9,y-5,m.box.left+19,y+5},3,p.accent,.9f);fill({m.box.left+25,y-2,x-10,y+2},2,light?0x202329:0xf1f3f7,.45f);brush_->SetColor(D2D1::ColorF(p.accent));
+        if(s_.waveformStyle==0){for(int b=0;b<5;++b){const float v=.3f+.7f*float(std::abs(std::sin(t*5.3+b*1.7)));const float bh=4+9*v;dc_->FillRoundedRectangle(D2D1::RoundedRect({x+b*4.5f,y-bh/2,x+b*4.5f+2.4f,y+bh/2},1.2f,1.2f),brush_.Get());}}
+        else{const float r=7+1.4f*beat;for(int q=0;q<16;++q){const float ang=float(q)*6.2831853f/16;const float v=.4f+.6f*float(std::abs(std::sin(t*4+q)));dc_->DrawLine({x+10+std::cos(ang)*r,y+std::sin(ang)*r},{x+10+std::cos(ang)*(r+2.5f*v),y+std::sin(ang)*(r+2.5f*v)},brush_.Get(),1.4f);}}
+        dc_->PopLayer();return;}
+    else if(k=="artPulse"){m.box=expanded;m.radius=16;m.content=false;mini(a,m,now,1);const float s=(62-24)*(1+(s_.artPulse?.06f*(beat-.22f)/.7f:0.f)),x=m.box.left+12+19,y=m.box.top+12+19;
+        fill({x-s/2,y-s/2,x+s/2,y+s/2},6,p.accent,.95f);const UINT32 text=(s_.theme==1||(s_.theme==2&&systemLight()))?0x202329:0xf1f3f7;fill({m.box.left+60,m.box.top+15,m.box.right-40,m.box.top+21},3,text,.7f);fill({m.box.left+60,m.box.top+27,m.box.right-70,m.box.top+32},2.5f,text,.35f);dc_->PopLayer();return;}
+    mini(a,m,now,1);dc_->PopLayer();
+}
+// The glass preview: the island over a moving wallpaper in the chosen theme, material and tint. Point at it and its light
+// follows the pointer on the rim; away from it Frosted glass frosts over (a few seconds here); music's beat lights the edge.
+void SettingsUi::drawGlass(const D2D1_RECT_F& a,float alpha,int item){
+    const auto p=palette();const double now=seconds();const bool over=hover_.item==item&&inside(a,pointerX_,pointerY_);
+    ComPtr<ID2D1RoundedRectangleGeometry> frame;if(FAILED(factory_->CreateRoundedRectangleGeometry(D2D1::RoundedRect(a,10,10),&frame)))return;ComPtr<ID2D1Layer> layer;dc_->CreateLayer(nullptr,&layer);
+    const double bt=s_.reduceMotion?2.:now;dc_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),frame.Get(),D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,D2D1::IdentityMatrix(),alpha),layer.Get());backdrop(a,bt,0,1);
+    // The frost level eases toward its target: in over four seconds, out in a third of one.
+    const bool frosting=s_.restFrost&&s_.material==1&&!over&&!s_.reduceMotion;const double dt=std::clamp(now-frostAt_,0.,.1);frostAt_=now;frostLevel_=frosting?std::min(1.,frostLevel_+dt/4):std::max(0.,frostLevel_-dt/.3);
+    const float cx=(a.left+a.right)/2;Mini m;m.box={cx-std::min(170.f,(a.right-a.left)*.34f),a.top,cx+std::min(170.f,(a.right-a.left)*.34f),a.top+72};m.radius=std::clamp(float(s_.corner)*.8f,14.f,22.f);m.frost=float(frostLevel_*frostLevel_*(3-2*frostLevel_));
+    if(s_.beatEdge&&!s_.reduceMotion)m.beat=.22f+.7f*float(std::exp(-std::fmod(now,.5)*9));if(over&&s_.material!=0)m.glint={pointerX_,pointerY_};m.shadow=s_.shadow;mini(a,m,bt,1);
+    // What it shows, on a small chip.
+    const wchar_t* names[]={L"Solid",L"Frosted glass",L"Clear glass"};std::wstring label=names[std::clamp(s_.material,0,2)];if(s_.material)label+=L"  ·  "+std::to_wstring(s_.material==2?s_.clearTint:s_.glassTint)+L"% tint";
+    const float lw=measure(label,11.5f,DWRITE_FONT_WEIGHT_MEDIUM)+20;const D2D1_RECT_F chip{a.left+10,a.bottom-30,a.left+10+lw,a.bottom-10};fill(chip,10,p.card,.86f);text(label,chip,11.5f,p.ink,1,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER);
+    dc_->PopLayer();
 }
 // A miniature island on a screen edge, morphing with the island's spring, beside
 // the spring's step response with its overshoot and settling time.
@@ -461,12 +627,15 @@ LRESULT SettingsUi::message(HWND h,UINT m,WPARAM w,LPARAM l){
     case WM_TIMER:if(w==1){KillTimer(h,1);dirty=true;}
         // 2: the typing has paused, so the town is looked up; 3: the caret blinks.
         if(w==2){KillTimer(h,2);const auto q=trimmedTown();if(q.size()>=2){auto owned=std::make_unique<std::wstring>(q);if(PostMessageW(island_,SettingsTownMessage,0,reinterpret_cast<LPARAM>(owned.get())))owned.release();}}
-        if(w==3)dirty=true;if(w==4){KillTimer(h,4);sweepStep();}return 0;
+        if(w==3)dirty=true;if(w==4){KillTimer(h,4);sweepStep();}
+        if(w==5){KillTimer(h,5);if(dwellItem_>=0&&hover_.item==dwellItem_&&press_.item<0&&dragItem_<0)openPreview(dwellItem_);dwellItem_=-1;}return 0;
     case WM_MOUSEMOVE:{auto [x,y]=point();if(!tracking_){TRACKMOUSEEVENT t{sizeof(t),TME_LEAVE,h,0};TrackMouseEvent(&t);tracking_=true;}if(dragItem_>=0){slide(dragItem_,x);return 0;}if(chipDrag_>=0){chipX_=x;dirty=true;
             // Phase 5G: a soft click each time the dragged chip passes another's place.
-            float height;for(auto& row:layout(height))if(row.item==press_.item){const int to=chipTarget(row);if(to!=chipHeard_){if(s_.sounds)playSound(Sound::Click);chipHeard_=to;}}return 0;}auto next=hit(x,y);if(!(next==hover_)){hover_=next;dirty=true;}return 0;}
-    case WM_MOUSELEAVE:tracking_=false;if(dragItem_<0){hover_={};dirty=true;}return 0;
-    case WM_LBUTTONDOWN:{auto [x,y]=point();keyboard_=false;press_=hit(x,y);SetCapture(h);
+            float height;for(auto& row:layout(height))if(row.item==press_.item){const int to=chipTarget(row);if(to!=chipHeard_){if(s_.sounds)playSound(Sound::Click);chipHeard_=to;}}return 0;}auto next=hit(x,y);pointerX_=x;pointerY_=y;
+            if(next.item!=hover_.item){KillTimer(h,5);dwellItem_=-1;if(openItem_>=0&&next.item!=openItem_)closePreview();if(next.item>=0&&next.item!=openItem_&&scene(items_[size_t(next.item)])&&enabled(items_[size_t(next.item)])){dwellItem_=next.item;SetTimer(h,5,450,nullptr);}}
+            if(!(next==hover_)){hover_=next;dirty=true;}return 0;}
+    case WM_MOUSELEAVE:tracking_=false;KillTimer(h,5);dwellItem_=-1;pointerX_=pointerY_=-1;if(dragItem_<0){hover_={};closePreview();dirty=true;}return 0;
+    case WM_LBUTTONDOWN:{auto [x,y]=point();keyboard_=false;press_=hit(x,y);SetCapture(h);KillTimer(h,5);dwellItem_=-1;
         if(townFocus_&&!(press_.item>=0&&items_[press_.item].control==SettingControl::Town&&press_.part>=0))townFocus(false);if(press_.item>=0&&items_[press_.item].control==SettingControl::Slider&&press_.part==0&&enabled(items_[press_.item])){dragItem_=press_.item;slide(dragItem_,x);}
         if(press_.item>=0&&items_[press_.item].control==SettingControl::Chips&&press_.part>=0){float height;for(auto& row:layout(height))if(row.item==press_.item){chipDrag_=press_.part;chipHeard_=press_.part;chipGrab_=x-row.parts[size_t(press_.part)].left;chipX_=x;}}if(press_.item>=0||press_.section>=0)focus_=press_.section>=0?press_:Hit{press_.item,std::max(0,press_.part),-1};dirty=true;return 0;}
     case WM_LBUTTONUP:{
@@ -510,6 +679,8 @@ void SettingsWindow::run(Settings s,SettingsContext c,int section){
         MSG msg{};bool running=true,moving=false;
         while(running){
             if(ui.animating()){moving=true;while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){if(msg.message==WM_QUIT){running=false;break;}TranslateMessage(&msg);DispatchMessageW(&msg);}if(running&&IsWindow(h))ui.render();}
+            // A moving picture on screen: a frame about every 30 ms, waking at once for input.
+            else if(ui.live()){moving=true;MsgWaitForMultipleObjects(0,nullptr,FALSE,28,QS_ALLINPUT);while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)){if(msg.message==WM_QUIT){running=false;break;}TranslateMessage(&msg);DispatchMessageW(&msg);}if(running&&IsWindow(h))ui.render();}
             // The last animated frame can land just before the springs settle; draw the resting frame once before blocking.
             else if(moving){moving=false;if(IsWindow(h))ui.render();}
             else{if(GetMessageW(&msg,nullptr,0,0)<=0)break;TranslateMessage(&msg);DispatchMessageW(&msg);if(ui.dirty&&IsWindow(h))ui.render();}

@@ -13,7 +13,7 @@ namespace nexus {
 // wallpaper: the desktop's colour (0 when unknown) that tints the material; shadow: the drop shadow's opacity (shadow window only).
 // Every property the glass's expressions read (p.<name>), created with the property set. An expression or animation
 // that names one missing from here fails, and the glass stops following the island (0.17.0-preview.1: sp and ss).
-inline constexpr const wchar_t* glassProperties[]={L"t",L"w",L"h",L"r",L"dx",L"dy",L"s",L"tw",L"th",L"so",L"d",L"sw",L"sr",L"sh",L"b",L"bw",L"bh",L"sp",L"ss",L"bt0",L"bb0",L"bw0",L"bl",L"bt",L"bv",L"bb",L"bc"};
+inline constexpr const wchar_t* glassProperties[]={L"t",L"w",L"h",L"r",L"dx",L"dy",L"s",L"tw",L"th",L"so",L"d",L"sw",L"sr",L"sh",L"b",L"bw",L"bh",L"sp",L"ss",L"bt0",L"bb0",L"bw0",L"bl",L"bt",L"bv",L"bb",L"bc",L"px",L"py",L"po",L"tp",L"be",L"tb",L"fr",L"tf"};
 struct GlassStyle {bool visible=false,light=false,blur=true;int material=1;float tint=.5f;uint32_t accent=0,wallpaper=0;float shadow=0;};
 class GlassBackdrop {
     struct Impl;Impl* impl_=nullptr;bool available_=false;
@@ -26,6 +26,16 @@ public:
     bool initialize(HWND,float scale,float canvasWidth,float canvasHeight,bool shadowOnly=false,ID3D11Device* device=nullptr);
     void style(const GlassStyle&);
     void animate(const MotionEngine&,double now,int edge,bool attached);
+    // 0.17.0-preview.3: the light that follows the pointer, in the glass itself, so it runs on across the shoulders.
+    // x and y place its top-left corner relative to the body (DIPs); opacity 0..1 is scaled by strength.
+    void sheen(const Spring& x,const Spring& y,const Spring& opacity,double now,float strength);
+    // The edge light that breathes with the music: its level (0-1) glides from `from` (moving at `velocity` per second)
+    // to `to` over `span` seconds, as a Glide does; color is the light's (the island's accent).
+    void beat(double from,double velocity,double to,double span,uint32_t color);
+    // Frosted glass thickens while the island rests: resting, the frost settles in over half a minute after a
+    // short pause; otherwise it clears within a third of a second.
+    // pace scales the settling (test runs only, to watch it in a second).
+    void frost(bool resting,double now,double pace=1);
     bool vibrant()const;
     // Phase 5F: whether the glass can lean with the island while it is dragged.
     bool leans()const;

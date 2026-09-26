@@ -23,7 +23,25 @@ inline const wchar_t* skyLabel(Sky s){return s==Sky::Storm?L"Storm":skyName(s);}
 inline std::wstring temperatureText(double celsius,int unit){const double v=unit?celsius*9/5+32:celsius;const long n=std::lround(v);return std::to_wstring(n==0?0:n)+L"°";}
 // The chosen place: a name to show and coordinates rounded to two decimals (about a kilometre).
 struct WeatherPlace {std::wstring name;double latitude=0,longitude=0;bool operator==(const WeatherPlace&)const=default;};
-struct WeatherNow {double temperature=0;int code=-1;bool day=true;};
+// sunrise, sunset: today's at the place, as Unix seconds (0: unknown).
+struct WeatherNow {double temperature=0;int code=-1;bool day=true;int64_t sunrise=0,sunset=0;};
+// 0.17.0-preview.3: "2026-09-26T06:12" at a place utcOffset seconds ahead of UTC, as Unix seconds (0 when unreadable).
+inline int64_t localToUnix(std::string_view text,int64_t utcOffset){
+    int y=0,mo=0,d=0,h=0,mi=0;if(text.size()<16||std::sscanf(std::string(text.substr(0,16)).c_str(),"%d-%d-%dT%d:%d",&y,&mo,&d,&h,&mi)!=5||mo<1||mo>12||d<1||d>31||h<0||h>23||mi<0||mi>59)return 0;
+    // Days from the civil date (Howard Hinnant's algorithm).
+    y-=mo<=2;const int era=(y>=0?y:y-399)/400;const unsigned yoe=unsigned(y-era*400),doy=unsigned((153*(mo+(mo>2?-3:9))+2)/5+d-1),doe=yoe*365+yoe/4-yoe/100+doy;const int64_t days=int64_t(era)*146097+int64_t(doe)-719468;
+    return days*86400+h*3600+mi*60-utcOffset;
+}
+// Where the sun is for the sky: dawn from 45 minutes before sunrise to 35 after, dusk from 40 before sunset to 35 after.
+// Times from another day are moved by whole days to the ones nearest now. Unknown times: day or night as reported.
+enum class SunPhase{Night,Dawn,Day,Dusk};
+inline SunPhase sunPhase(int64_t now,int64_t sunrise,int64_t sunset,bool day){
+    if(sunrise<=0||sunset<=0||sunset<=sunrise||sunset-sunrise>86400)return day?SunPhase::Day:SunPhase::Night;
+    auto nearest=[&](int64_t t){while(t-now>43200)t-=86400;while(now-t>43200)t+=86400;return t;};const int64_t rise=nearest(sunrise),set=nearest(sunset);
+    if(now>=rise-45*60&&now<rise+35*60)return SunPhase::Dawn;if(now>=set-40*60&&now<set+35*60)return SunPhase::Dusk;
+    // Between the two: day when sunrise came first (today's), night when sunset did.
+    return (rise<=now&&now<set)||(set<rise&&(now<set||now>=rise))?SunPhase::Day:SunPhase::Night;
+}
 // Open-Meteo's geocoding answer: every match, named "Town, Region, Country" (Phase 5G: the region
 // tells towns of one name apart, "Manipal, Karnataka, India"), coordinates rounded to two decimals.
 inline std::vector<WeatherPlace> parseGeocodeAll(std::string_view json,size_t limit=8){
@@ -44,10 +62,15 @@ inline std::optional<WeatherPlace> parseGeocode(std::string_view json){auto all=
 inline std::optional<WeatherNow> parseForecast(std::string_view json){
     auto doc=Json::parse(json);if(!doc)return std::nullopt;auto* current=doc->find("current");if(!current||current->type!=Json::Type::Object)return std::nullopt;
     auto* t=current->find("temperature_2m");auto* code=current->find("weather_code");if(!t||!code||t->type!=Json::Type::Number||code->type!=Json::Type::Number||!std::isfinite(t->number)||t->number<-100||t->number>70)return std::nullopt;
-    return WeatherNow{t->number,int(code->number),current->num("is_day",1)!=0};
+    WeatherNow w{t->number,int(code->number),current->num("is_day",1)!=0};
+    // Today's sunrise and sunset (local times, with the place's offset from UTC).
+    const int64_t offset=int64_t(doc->num("utc_offset_seconds",0));
+    if(auto* daily=doc->find("daily");daily&&daily->type==Json::Type::Object){auto first=[&](const char* key)->int64_t{auto* list=daily->find(key);if(!list||list->type!=Json::Type::Array||list->items.empty()||list->items[0].type!=Json::Type::String)return 0;return localToUnix(list->items[0].text,offset);};
+        w.sunrise=first("sunrise");w.sunset=first("sunset");if(w.sunrise<=0||w.sunset<=w.sunrise)w.sunrise=w.sunset=0;}
+    return w;
 }
 inline std::wstring geocodePath(const std::wstring& town,int count=1){return L"/v1/search?count="+std::to_wstring(std::clamp(count,1,10))+L"&language=en&format=json&name="+fromUtf8(urlEncode(toUtf8(town)));}
-inline std::wstring forecastPath(const WeatherPlace& p){wchar_t b[160];swprintf(b,160,L"/v1/forecast?latitude=%.2f&longitude=%.2f&current=temperature_2m,weather_code,is_day&timezone=auto",p.latitude,p.longitude);return b;}
+inline std::wstring forecastPath(const WeatherPlace& p){wchar_t b[220];swprintf(b,220,L"/v1/forecast?latitude=%.2f&longitude=%.2f&current=temperature_2m,weather_code,is_day&daily=sunrise,sunset&forecast_days=1&timezone=auto",p.latitude,p.longitude);return b;}
 // weather.nexus: the chosen place only.
 inline void writePlace(std::ostream& out,const WeatherPlace& p){char b[64];snprintf(b,sizeof b,"%.2f %.2f",p.latitude,p.longitude);out<<"weather 1\n"<<b<<'\n'<<toUtf8(p.name)<<'\n';}
 inline std::optional<WeatherPlace> readPlace(std::istream& in){std::string magic,name;int version=0;WeatherPlace p;if(!(in>>magic>>version>>p.latitude>>p.longitude)||magic!="weather"||version!=1||std::abs(p.latitude)>90||std::abs(p.longitude)>180)return std::nullopt;

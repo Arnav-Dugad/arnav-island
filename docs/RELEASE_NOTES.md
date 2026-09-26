@@ -1,3 +1,50 @@
+# Arnav Island 0.17.0-preview.3 — glass that listens, frost that settles, Settings that show you
+
+## Fixed
+- **The ends of the island's curves.** Where the shoulders meet the body, the glass changed colour and texture. There were two causes:
+  - The pointer's light stopped at the body.
+  - The edge light ran down the join, not the edge.
+  The light now runs across the shoulders, and the edge light starts below the join. Measured on Frosted glass over a plain backdrop, the shoulder and the body now match to within one step of colour.
+- **Lines across the island.** For a few seconds after an alert, lines could show across the island. They came from the light that runs along the edge: it was drawn through hard-edged windows. It now rises and fades away smoothly at both ends.
+- **Long titles** are tightened (down to 86% of their size) before anything is cut, so more of a song or file name fits.
+
+## Glass
+- **A glint on the rim.** On Frosted and Clear glass, the rim brightens right under the pointer and fades away along it.
+- **Frost that settles.** While the island rests, Frosted glass slowly turns denser and milkier. It starts after a few seconds and takes about half a minute. It clears in a third of a second when you point at the island, open it, or an alert arrives. Turn it off in Settings › Appearance › *Frost that settles*.
+- **An edge light to the beat.** While music plays, the island's rim breathes with the bass. It rests brighter when the bass is heavier, flares on each hit, and falls back over about half a second. On glass it runs round the shoulders too; on Solid it's a soft light inside the free edges. It uses the song's accent colour. Turn it off in Settings › Media & sound › *Edge light to the beat*. It is off with Reduce motion.
+- **Separate tints.** Frosted and Clear each have their own tint, so changing one no longer changes the other. Settings › Appearance › *Frosted tint* and *Clear tint*.
+
+## Settings
+- **A live preview of the glass.** Settings › Appearance › *Preview* shows your island over a moving wallpaper, in your theme, material and tint. Point at it and the glint follows the pointer. Leave it, and Frosted glass frosts over. With *Edge light to the beat* on, the rim keeps a beat.
+- **Rows that show what they do.** Rest the pointer on one of 14 rows for about half a second and it opens a small moving picture of the setting:
+  - Theme, Frosted tint, Clear tint and Frost that settles
+  - Corner radius, Soft shadow, Compact width and Dock edge
+  - Light along the edge, Alerts and Two alerts at once
+  - Live audio style, Artwork pulses to the beat and Edge light to the beat
+
+  Move to another row and it closes. Clicking never opens one.
+
+## Weather
+- **Sunrise and sunset.** The Home weather tile warms around sunrise and sunset in your town:
+  - lavender to peach at dawn
+  - indigo to rose and orange at dusk
+  - the sun low on the horizon
+
+  The tile reads *Sunrise* or *Sunset* then. The times come with the forecast from Open-Meteo, in your town's own time zone.
+
+## Not in this release
+- **Refraction that bends the wallpaper.** Frosted glass is drawn from the blurred desktop that Windows hands to apps. Windows accepts colour and blur effects on it, but it refused every effect that moves pixels (a 2D transform and a scale, with each option tried). Clear glass shows the desktop directly, and apps can't resample it at all. Bending the wallpaper would mean copying the screen behind the island continuously, and the island doesn't do that. The rim still gathers light at the edges.
+
+## Checks
+- **Unit suites:** core 11,682; model 2,061; phase 5,656 (35 new); share 165; provider lifecycle passing.
+- **Native UI test:** 50 of 50 stages, including Clear and Frosted glass through every shape with no glass errors.
+- **Settings end to end:** 198 of 198, including both tints, the frost and the beat light, each switched both ways.
+- **Glass, measured over a plain test backdrop:**
+  - frost: dark 32,36,44 → 43,45,49; light 125 → 136
+  - beat light: rim 43 → 64–96 with the music, back to rest without it
+  - glint: rim 45 → 88 under the pointer, fading on both sides
+- **Visual audit:** every Settings section and all 14 row previews, drawn by the Settings window itself.
+
 # Arnav Island 0.17.0-preview.2 — glass fixed, lyrics on time
 
 ## Fixed

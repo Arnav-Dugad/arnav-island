@@ -125,9 +125,40 @@ void Renderer::waveform(const std::array<float,64>& heights,bool reduced){
 // and only a hit swells it, by up to 4%.
 void Renderer::beat(const SpectrumFrame& f){
     const double now=seconds(),dt=std::clamp(now-beatAt_,0.,.2);beatAt_=now;float bass=0;for(int b=0;b<4;++b)bass=std::max(bass,f.bands[size_t(b)]);
-    bassAverage_+=float((bass-bassAverage_)*(1-std::exp(-dt/.45)));if(!artPulseOn_)return;
+    bassAverage_+=float((bass-bassAverage_)*(1-std::exp(-dt/.45)));
     const float hit=f.resting?0.f:std::clamp((bass-bassAverage_)*4.f,0.f,1.f);
+    if(beatEdgeOn_)edgeBeat(f.resting?-1.f:hit,now);
+    if(!artPulseOn_)return;
     artBeat_.to(1+.04*hit,now,.07);auto a=glideAnimation(device_.Get(),artBeat_,now,1,0);artPulse_->SetScaleX(a.Get());artPulse_->SetScaleY(a.Get());
+}
+// The edge light rests brighter the more weight the bass carries (its half-second average), so it breathes with the
+// music; each hit flares it within 70 ms and it falls back over about half a second. hit < 0: silence, it settles low.
+void Renderer::edgeBeat(float hit,double now){
+    const double rest=hit<0?.08:.14+.34*std::clamp(double(bassAverage_)*1.4,0.,1.),current=edgeBeat_.sample(now).position;
+    if(hit>.12f){const double peak=std::min(1.,rest+.2+.62*double(hit));if(peak>current+.05){edgeBeat_.to(peak,now,.07);edgeAttack_=now+.07;edgeLight(now);return;}}
+    if(now>=edgeAttack_&&std::abs(edgeBeat_.p1-rest)>.03){edgeBeat_.to(rest,now,.55);edgeLight(now);}
+}
+// Hands the level's glide, from where it is now, to whichever material shows it.
+void Renderer::edgeLight(double now){
+    if(beatMaterial_==1){const auto c=edgeBeat_.sample(now);glass_.beat(c.position,c.velocity,edgeBeat_.p1,std::max(0.,edgeBeat_.t0+edgeBeat_.span-now),beatColor_);}
+    else if(beatLightEffect_){auto a=glideAnimation(device_.Get(),edgeBeat_,now,1,0);beatLightEffect_->SetOpacity(a.Get());}
+}
+// On while music plays (and the setting allows): the light wakes with the next beat. Off: it fades out.
+void Renderer::setBeatEdge(bool on,UINT32 color,bool glass,bool reduced){
+    const double now=seconds();const int material=glass?1:0;
+    // Moving between glass and solid: the one left behind goes dark at once.
+    if(beatMaterial_!=material){if(beatMaterial_==1)glass_.beat(0,0,0,0,beatColor_);else if(beatMaterial_==0)beatLightEffect_->SetOpacity(0.f);beatMaterial_=material;if(beatEdgeOn_)edgeLight(now);}
+    if(!glass){
+        // The solid strips: the accent at the edge, gone a third of the way in; only on edges away from the screen.
+        const bool free[4]={!(attached_&&edge_==2),!(attached_&&edge_==1),!(attached_&&edge_==0),true};const int key=int(color&0xffffff)^(edge_<<24)^(int(attached_)<<27);
+        if(key!=beatStripKey_){if(beatSurfaceColor_!=color||!beatSurfaces_[0]){beatSurfaceColor_=color;for(int k=0;k<4;++k){const bool vertical=k<2;const int w=vertical?int(beatBand):int(canvasWidth),h=vertical?int(canvasHeight):int(beatBand);
+                    surface(beatSurfaces_[size_t(k)],w,h,[&](auto* rt){D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(color,.62f)},{.35f,D2D1::ColorF(color,.2f)},{1,D2D1::ColorF(color,0.f)}};ComPtr<ID2D1GradientStopCollection> c;check(rt->CreateGradientStopCollection(stops,3,&c));
+                        const D2D1_POINT_2F from=k==0?D2D1::Point2F(0,0):k==1?D2D1::Point2F(beatBand,0):k==2?D2D1::Point2F(0,0):D2D1::Point2F(0,beatBand),to=k==0?D2D1::Point2F(beatBand,0):k==1?D2D1::Point2F(0,0):k==2?D2D1::Point2F(0,beatBand):D2D1::Point2F(0,0);
+                        ComPtr<ID2D1LinearGradientBrush> b;check(rt->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(from,to),c.Get(),&b));rt->FillRectangle({0,0,float(w),float(h)},b.Get());});}}
+            beatStripKey_=key;for(size_t k=0;k<4;++k)beatStrips_[k]->SetContent(free[k]?beatSurfaces_[k].Get():nullptr);}}
+    if(color!=beatColor_){beatColor_=color;if(beatEdgeOn_&&glass)edgeLight(now);}
+    if(on==beatEdgeOn_)return;beatEdgeOn_=on;
+    if(!on){edgeBeat_.to(0,now,reduced?.01:.6);edgeLight(now);}
 }
 // Off (paused, no cover, reduced motion): the cover settles back to its size.
 void Renderer::setArtPulse(bool on){
@@ -139,7 +170,7 @@ void Renderer::spectrum(const SpectrumFrame& frame){
     // so the bass lifts the crown and the treble the bottom, the same on both sides.
     if(ringOn_){const double now=seconds();for(size_t k=0;k<ringTicks_.size();++k){auto& t=ringTicks_[k];const size_t j=k<=12?k:24-k;const float v=frame.resting?0.f:std::pow(std::clamp(frame.bands[std::min<size_t>(Spectrum::bandCount-1,j*2)],0.f,1.f),.85f);
         t.glide.to(.22+.78*v,now,.06);auto a=glideAnimation(device_.Get(),t.glide,now,1,0);t.scale->SetScaleY(a.Get());}}
-    if(barMode_<0||barCount_<=0){if(artPulseOn_||ringOn_)commit();return;}double now=seconds();const float lo=.15f,hi=barMode_==3?1.f:barMode_==1?.62f:.78f;
+    if(barMode_<0||barCount_<=0){if(artPulseOn_||ringOn_||beatEdgeOn_)commit();return;}double now=seconds();const float lo=.15f,hi=barMode_==3?1.f:barMode_==1?.62f:.78f;
     for(int i=0;i<barCount_;++i){int a=i*Spectrum::bandCount/barCount_,b=std::max(a+1,(i+1)*Spectrum::bandCount/barCount_);float v=0;for(int k=a;k<b;++k)v=std::max(v,frame.bands[k]);
         if(barMode_!=3)v=std::pow(v,.8f);float target=frame.resting?lo:lo+(hi-lo)*v;auto& bar=bars_[i];bar.glide.to(target,now,.055);auto anim=glideAnimation(device_.Get(),bar.glide,now,1,0);bar.scale->SetScaleY(anim.Get());}
     commit();

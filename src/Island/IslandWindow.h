@@ -124,7 +124,7 @@ class IslandWindow {
     struct HeldCard{ContentSnapshot::Notice notice;Activity activity;};std::deque<HeldCard> heldCards_;ContentSnapshot::Notice shownNotice_;
     bool holdCard(const Activity&);bool budAt(double x,double y)const;bool promoteCard(bool swap=false);void syncBud();static std::wstring budTitle(const ContentSnapshot::Notice&);
     void skipTrack(int direction);bool qaFullscreen_=false,fullscreenHidden_=false,peeking_=false,peekTimer_=false;double peekIdle_=0;void syncPeek();void peekTick();bool mediaReachable_=false;
-    void updateSessions();void switchSession(int delta,bool absolute=false);void updateProviders();void levelIndicator();void setMixerAt(LPARAM);long glanceShown_=-2;bool systemRequested_=false,contentDirty_=true;Action pressedAction_=Action::None;
+    void updateSessions();void switchSession(int delta,bool absolute=false);void updateProviders();void levelIndicator();void setMixerAt(LPARAM);long glanceShown_=-2;bool systemRequested_=false,contentDirty_=true,barsWanted_=false;Action pressedAction_=Action::None;
     void setVolumeAt(LPARAM);void scrubAt(LPARAM,bool begin=false);void endScrub(bool commit);void requestPreviews(const std::vector<ShelfItem>& incoming={});void perform(Action);Action hit(LPARAM);void refresh();void clockTimer();
     std::unique_ptr<ShelfPreviews> previews_;RouteConfirmation route_;std::wstring routeName_;ComPtr<ShelfDropTarget> dropTarget_;bool visibilityAudit_=false,testing_=false,positioning_=false,motionStudy_=false;unsigned motionStudyStep_=0;
     void feedback(Action,float x=0,float y=0,bool press=false);void applySettings(bool rebuild=false,bool reposition=false);void dragShelf(size_t);

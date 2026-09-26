@@ -11,7 +11,8 @@ namespace nexus {
 // Preview is the Animation Lab's live spring; Actions is a row of one-shot buttons.
 // Chips: the compact island's chips, dragged into order (v14).
 // Town (Phase 5G): a search field whose matches are listed under it; it sets the weather's place, not a Settings value.
-enum class SettingControl { Toggle,Slider,Choice,Stepper,Swatch,Button,Order,Note,Preview,Actions,Chips,Town };
+// Glass (0.17.0-preview.3): a live picture of the island in the chosen theme, material and tint; it sets nothing.
+enum class SettingControl { Toggle,Slider,Choice,Stepper,Swatch,Button,Order,Note,Preview,Actions,Chips,Town,Glass };
 enum class SettingAction { None,OpenLab,ResetAll,OpenLogs,ClearLogs,TransparencySettings,ResetLayout,DisplaySettings,SoundSettings,BluetoothSettings,PowerSettings,OpenArmoury,ClearClipboard,PrivacySettings,ClearWorkspaces,OpenCommand,LabPlay,ClearLyrics };
 struct SettingItem {
     int section=0;std::wstring title,detail;SettingControl control=SettingControl::Toggle;std::string key;
@@ -55,7 +56,10 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     number(1,C::Slider,L"Corner radius",L"Roundness of the expanded island","corner",&Settings::corner,14,28,1,{},L" px");
     number(2,C::Choice,L"Theme",L"Colors for the island and this window","theme",&Settings::theme,0,2,1,{L"Dark",L"Light",L"System"});
     number(2,C::Choice,L"Material",L"Frosted softens what is behind the island; Clear lets it show through","material",&Settings::material,0,2,1,{L"Solid",L"Frosted glass",L"Clear glass"});
-    number(2,C::Slider,L"Glass tint",L"More tint improves text contrast","glassTint",&Settings::glassTint,0,100,1,{},L"%");
+    {SettingItem i;i.section=2;i.control=SettingControl::Glass;i.title=L"Preview";i.detail=L"Your island with these settings. Point at it";v.push_back(std::move(i));}
+    number(2,C::Slider,L"Frosted tint",L"How dense Frosted glass is. More tint, more contrast","glassTint",&Settings::glassTint,0,100,1,{},L"%");
+    number(2,C::Slider,L"Clear tint",L"How much Clear glass dims what is behind it","clearTint",&Settings::clearTint,0,100,1,{},L"%");
+    toggle(2,L"Frost that settles",L"Frosted glass slowly thickens while the island rests, and clears as you reach for it","restFrost",&Settings::restFrost);
     button(2,L"Windows transparency effects",L"Lets Frosted glass blur what is behind it",L"Open Windows settings",SettingAction::TransparencySettings);
     number(2,C::Swatch,L"Accent",L"Used when artwork colors are off \u00b7 the last one follows your wallpaper","accent",&Settings::accent,0,4,1,{L"Mint",L"Sky",L"Lilac",L"Peach",L"Wallpaper"});
     toggle(2,L"Artwork colors",L"Tint controls and a soft glow from the current cover","albumAccents",&Settings::albumAccents);
@@ -109,6 +113,7 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     number(5,C::Slider,L"Crossfade",L"The island’s own songs blend into each other. Set to 0 to turn it off","crossfade",&Settings::crossfade,0,12,1,{},L" s");
     toggle(5,L"Continue on my other PC",L"Send what plays to a paired PC from Media \u203a Continue on. Only the song\u2019s details go, encrypted","handoff",&Settings::handoff);
     toggle(5,L"Artwork pulses to the beat",L"The cover swells gently with the bass of what Windows is playing","artPulse",&Settings::artPulse);
+    toggle(5,L"Edge light to the beat",L"The island\u2019s rim breathes with the bass while music plays","beatEdge",&Settings::beatEdge);
     button(5,L"Saved lyrics",L"Remove the lyrics kept on this PC",L"Clear",SettingAction::ClearLyrics);
     toggle(5,L"App logos",L"Show the real icon of the app that is playing","appIcons",&Settings::appIcons);
     toggle(5,L"Follow the active player",L"Switch to whichever app Windows marks as current","followSession",&Settings::followSession);

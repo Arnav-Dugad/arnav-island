@@ -1,4 +1,5 @@
 #include "Renderer.h"
+#include <ctime>
 namespace nexus {
 // Phase 5F: the weather tile's sky. A small layer over the Home weather statistic plays the
 // current conditions: sun rays turning, stars twinkling, clouds drifting, rain streaks, snow,
@@ -14,8 +15,10 @@ void Renderer::skyHide(){
     skyEffect_->SetOpacity(0.f);for(auto& p:skyParts_){p.visual->SetContent(nullptr);}skyShown_=false;skyKey_.clear();
 }
 void Renderer::skyScene(const ContentSnapshot& s,float x){
-    const Sky sky=skyOf(s.weather.code);const bool day=s.weather.day;
-    const std::wstring key=std::to_wstring(int(sky))+L"|"+std::to_wstring(int(day))+L"|"+std::to_wstring(int(x))+L"|"+std::to_wstring(int(s.light))+L"|"+std::to_wstring(material_)+L"|"+std::to_wstring(skyTile_)+L"|"+std::to_wstring(int(skyTileAlpha_*1000));
+    // 0.17.0-preview.3: around sunrise and sunset at the chosen town the sky warms, and the sun sits low.
+    const SunPhase phase=sunPhase(int64_t(std::time(nullptr)),s.weather.sunrise,s.weather.sunset,s.weather.day);
+    const Sky sky=skyOf(s.weather.code);const bool day=phase==SunPhase::Day||phase==SunPhase::Dawn||phase==SunPhase::Dusk,low=phase==SunPhase::Dawn||phase==SunPhase::Dusk;
+    const std::wstring key=std::to_wstring(int(sky))+L"|"+std::to_wstring(int(phase))+L"|"+std::to_wstring(int(day))+L"|"+std::to_wstring(int(x))+L"|"+std::to_wstring(int(s.light))+L"|"+std::to_wstring(material_)+L"|"+std::to_wstring(skyTile_)+L"|"+std::to_wstring(int(skyTileAlpha_*1000));
     if(skyShown_&&key==skyKey_)return;
     if(!sky_){
         check(device_->CreateVisual(&sky_));check(device_->CreateEffectGroup(&skyEffect_));sky_->SetEffect(skyEffect_.Get());check(device_->CreateRectangleClip(&skyClip_));
@@ -49,6 +52,10 @@ void Renderer::skyScene(const ContentSnapshot& s,float x){
         ComPtr<ID2D1LinearGradientBrush> b;check(rt->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties({0,5},{150,5}),collection.Get(),&b));rt->FillRoundedRectangle(D2D1::RoundedRect({0,2,150,8},3,3),b.Get());});
     surface(skyStar_,5,5,[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(light?0x55657a:0xffffff,.9f),&b));rt->FillEllipse(D2D1::Ellipse({2.5f,2.5f},1.3f,1.3f),b.Get());});
     surface(skyFlash_,int(tileW),int(tileH),[&](auto* rt){rt->Clear(D2D1::ColorF(light?0xffffff:0xdfe8ff,light?.35f:.2f));});
+    // Dawn: lavender above, peach at the horizon; dusk: indigo above, a warm rose-orange glow low down.
+    skyGlow_.Reset();if(low)surface(skyGlow_,int(tileW),int(tileH),[&](auto* rt){const bool dawn=phase==SunPhase::Dawn;const float a=light?.30f:.36f;
+        D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(dawn?0x8f8ad6:0x4c4f9e,a*.35f)},{.55f,D2D1::ColorF(dawn?0xf3a6b8:0xe8708a,a*.7f)},{1,D2D1::ColorF(dawn?0xffc08a:0xff9a52,a)}};ComPtr<ID2D1GradientStopCollection> c;check(rt->CreateGradientStopCollection(stops,3,&c));
+        ComPtr<ID2D1LinearGradientBrush> b;check(rt->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties({0,0},{0,tileH}),c.Get(),&b));rt->FillRectangle({0,0,tileW,tileH},b.Get());});
     const double now=seconds();
     // A linear run from `from` to `to` every `period` seconds, started `phase` seconds ago, until the run ends; it then holds
     // where it is (so nothing jumps when the scene comes to rest).
@@ -62,6 +69,8 @@ void Renderer::skyScene(const ContentSnapshot& s,float x){
     for(auto& p:skyParts_){p.visual->SetContent(nullptr);p.visual->SetTransform(static_cast<IDCompositionTransform*>(nullptr));p.effect->SetOpacity(1.f);p.visual->SetOffsetX(0.f);p.visual->SetOffsetY(0.f);}
     size_t next=0;auto part=[&]()->SkyPart&{return skyParts_[std::min(next++,skyParts_.size()-1)];};
     const float px=scale_;
+    // The warm light sits beneath everything else in the scene.
+    if(low){auto& p=part();p.visual->SetContent(skyGlow_.Get());}
     auto sunAt=[&](float cx,float cy,double speed){auto& p=part();p.visual->SetContent(skySun_.Get());p.visual->SetOffsetX(std::round((cx-32)*px));p.visual->SetOffsetY(std::round((cy-32)*px));p.visual->SetTransform(skyRays_.Get());
         auto turn=loop(0,0,360,360/speed);skyRays_->SetAngle(turn.Get());};
     auto cloud=[&](float y,double period,double phase){auto& p=part();p.visual->SetContent(skyCloud_.Get());p.visual->SetOffsetY(std::round(y*px));auto drift=loop(phase,-50*px,(tileW+4)*px,period);p.visual->SetOffsetX(drift.Get());};
@@ -72,10 +81,10 @@ void Renderer::skyScene(const ContentSnapshot& s,float x){
     switch(sky){
     case Sky::Clear:
         // The sun sits in the corner, above the place name.
-        if(day)sunAt(tileW-6,3,12);
+        if(low)sunAt(tileW-10,tileH-4,8);else if(day)sunAt(tileW-6,3,12);
         else{const float spots[][2]={{tileW-22,10},{tileW-40,22},{tileW-12,30},{tileW-58,8},{tileW-30,44}};for(int k=0;k<5;++k){auto& p=part();p.visual->SetContent(skyStar_.Get());p.visual->SetOffsetX(std::round(spots[k][0]*px));p.visual->SetOffsetY(std::round(spots[k][1]*px));auto twinkle=sway(k*.37,.25,1,.9+k*.23);p.effect->SetOpacity(twinkle.Get());}}
         break;
-    case Sky::PartlyCloudy:if(day)sunAt(tileW-7,4,9);cloud(18,34,8);cloud(38,48,30);break;
+    case Sky::PartlyCloudy:if(low)sunAt(tileW-10,tileH-4,7);else if(day)sunAt(tileW-7,4,9);cloud(18,34,8);cloud(38,48,30);break;
     case Sky::Cloudy:cloud(8,30,4);cloud(26,44,26);cloud(42,38,15);break;
     case Sky::Fog:for(int k=0;k<3;++k){auto& p=part();p.visual->SetContent(skyFog_.Get());p.visual->SetOffsetY(std::round((14+k*18)*px));auto drift=sway(k*1.7,-34*px,4*px,5.5+k*1.3);p.visual->SetOffsetX(drift.Get());}break;
     case Sky::Drizzle:cloud(4,40,10);streaks(7,1.25,false);break;

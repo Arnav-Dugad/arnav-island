@@ -168,3 +168,15 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Big transfers | 5 GB or more: a ring in the compact island filling with progress, its stroke from 1.6 to 4.4 DIPs with speed (full at 110 MB/s), the speed beside it and the time left in the label; speed and time left on Nearby rows | Speed is smoothed over quarter-second samples |
 | Side by side | Pointing at two alerts: the pill moves left and the waiting alert becomes a card as tall as it, 8 DIPs to its right (spring), clickable there; closes up 0.38 s after the pointer leaves | Drop pill (top dock) |
 | Screen readers | UI Automation: the island is a pane (expand and collapse) whose children are its current targets in reading order, with names; Invoke for buttons, Toggle for switches, RangeValue for sliders; alerts, pages, songs and levels announced | The Settings window is not yet exposed |
+
+| v0.17.0-preview.3 feature | Implemented | Limits |
+|---|---|---|
+| Rim glint | A radial-gradient stroke (78 DIP radius) on the body's rim under the pointer, with the pointer's light | Glass only; the shoulders' curves keep their own rim |
+| Settling frost | Frosted: a paler (half saturation), milkier, 10 px softer material over the glass; in over 24 s after 6 s at rest, out in 0.35 s on hover, opening or an alert; *Frost that settles* | Needs Windows transparency effects |
+| Beat edge light | Bass against its half-second average; a rim stroke on glass (and shoulders), soft strips inside the free edges on Solid, in the accent; *Edge light to the beat* | Music playing and the island visible; off with Reduce motion |
+| Clear tint | `clearTint` (v17), separate from Frosted's `glassTint` | — |
+| Glass preview | Settings › Appearance › Preview: the island over a moving wallpaper in the chosen theme, material and tint, with glint, frost and beat | A drawing of the look, not the Windows glass itself |
+| Row previews | 14 rows open an animated picture after 450 ms at rest; close on moving to another row | Pointer only |
+| Dynamic type | Text of 9 pt or more that is wider than its space shrinks, by up to 14%, before it is cut | — |
+| Sunrise and sunset sky | Open-Meteo daily sunrise and sunset (local time and offset); dawn 45 min before to 35 after sunrise, dusk 40 before to 35 after sunset; warm gradient, a low sun, *Sunrise*/*Sunset* label | Home weather tile |
+| Refraction | Not shipped: Windows refuses geometric effects on the host backdrop | — |

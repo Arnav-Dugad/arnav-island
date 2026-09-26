@@ -92,3 +92,44 @@
 | 9 s | 8.91 s | 6.04 s | 2.87 s | 8.91 s |
 
 **Audit.** 78 island views from its internal render, and 18 Settings pages saved by the Settings window itself (`--qa-settings-sweep`, test runs only), reviewed one by one. No screen was captured.
+
+## 0.17.0-preview.3
+
+**The shoulder seam.** Two things differed between the body and the shoulders:
+- The DirectComposition sheen was a child of the body, so its clip cut it off at the shoulders. The light now lives in the glass: a sprite in each of the body and both shoulders, placed by `p.px`, `p.py` and faded by `p.po` on its own clock (`p.tp`).
+- The left and right edge-light strips started at the body's top, which (when docked) is the shoulders' inner edge, so light ran down the join. They now start `p.r` lower while the island is docked.
+
+Over a plain backdrop, Frosted: shoulder 31,34,41 and body 30,34,41.
+
+**The lines.** The alert glint was a band swept by one clip rectangle whose ends were hard. It's now four bands (core and glow, each way), each drawn through six nested windows at a sixth of the brightness. The light rises and falls over the width of the windows.
+
+**Why refraction isn't in.** Probed at run time:
+
+| Effect over the host backdrop | Result |
+|---|---|
+| Colour matrix | Accepted |
+| Gaussian blur | Accepted |
+| Border | Accepted |
+| 2D affine transform (matrix only, three or four properties, each interpolation and border mode, identity) | `E_INVALIDARG` |
+| 2D affine transform after a colour matrix | `E_INVALIDARG` |
+| Scale | `E_INVALIDARG` |
+
+Composition never asked for a named property mapping, so the effect itself is refused. The code that tried it was removed; the edge light is unchanged.
+
+**The frost.** Measured over a plain backdrop, from the island's own capture, with the settling sped up for the test (`--qa-frost`):
+
+| Theme | Rest | Settled |
+|---|---|---|
+| Dark | 32, 36, 44 | 43, 45, 49 |
+| Light | 125, 128, 130 | 136, 138, 141 |
+
+A first test looked like the frost did nothing. The sped-up pace was set after the frost had started at its real pace. The test hook now restarts it.
+
+**The beat light.** `Renderer::beat` compares the bass (50–130 Hz) with its half-second average. The level rests at 0.14 plus up to 0.34 with the average, flares within 70 ms on a hit, and falls back over 0.55 s. On glass, the rim's two beat strokes take their colour's alpha from `p.be`, a Hermite glide on its own clock (`p.tb`). The loopback analyser now also runs for the light while music plays and the island is visible. The bars' `waveform` flag is unaffected.
+
+**Settings previews.** Rows gain `base` (their own height; controls stay centred in it) and `open`. A click kills the 450 ms dwell timer, so the Settings test, which moves and clicks at once, never opens one. The window draws at about 30 fps while a picture moves, and `settled` ignores it.
+
+**Found in the audit.**
+- **The low sun on the label.** At dawn and dusk, the low sun sat on *Sunrise* or *Sunset*. The word now moves left of it.
+- **Live audio style preview.** The ring sat over the preview's title line. The line now stops short of it.
+- **The Settings test** left Material on Clear, so it clicked Frosted's tint and frost while they were disabled (4 failures). It now picks the glass each of those rows belongs to first.

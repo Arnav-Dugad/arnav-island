@@ -94,7 +94,8 @@ struct ContentSnapshot {
     float seekHover=-1;unsigned detentPulse=0;int appVolume=-1;std::wstring appVolumeName;bool micMuted=false,micAvailable=false;
     // Clipboard mode ("clip ..." or Alt+Shift+V) lists copies and shows more rows.
     // Phase 5F: the weather at the chosen place (Open-Meteo, opt-in), when known.
-    struct Weather{bool valid=false;double temperature=0;int code=-1;bool day=true;std::wstring place;} weather;
+    // sunrise, sunset: today's at the place (Unix seconds; 0 unknown), for the dawn and dusk sky.
+    struct Weather{bool valid=false;double temperature=0;int code=-1;bool day=true;std::wstring place;int64_t sunrise=0,sunset=0;} weather;
     // Phase 5F: the Controls page. Radios and dark mode: 1 on, 0 off, -1 unknown, -2 none. busy: switches
     // being changed (1 Wi-Fi, 2 Bluetooth, 4 airplane, 8 dark mode).
     struct Controls{int wifi=-1,bluetooth=-1,dark=-1,busy=0;} controls;
@@ -239,7 +240,7 @@ public:bool queueGliding()const{return queueGliding_;}private:
     // The Home weather tile's animated sky (Sky.cpp).
     struct SkyPart{ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionEffectGroup> effect;};std::array<SkyPart,14> skyParts_;
     ComPtr<IDCompositionVisual> sky_;ComPtr<IDCompositionRectangleClip> skyClip_;ComPtr<IDCompositionEffectGroup> skyEffect_;ComPtr<IDCompositionRotateTransform> skyRays_;
-    ComPtr<IDCompositionSurface> skySun_,skyStreak_,skyFlake_,skyCloud_,skyFog_,skyStar_,skyFlash_;
+    ComPtr<IDCompositionSurface> skySun_,skyStreak_,skyFlake_,skyCloud_,skyFog_,skyStar_,skyFlash_,skyGlow_;
     // The tile the sky plays in, drawn beneath it (the content's own box is left out), so the tile's text stays above the weather.
     ComPtr<IDCompositionVisual> skyBase_;ComPtr<IDCompositionSurface> skyBaseSurface_;UINT32 skyTile_=0x14171d;float skyTileAlpha_=1;std::wstring skyKey_;bool skyShown_=false,skyWanted_=false;float skyX_=0;
     void skyScene(const ContentSnapshot&,float x);void skyHide();
@@ -253,7 +254,9 @@ public:bool queueGliding()const{return queueGliding_;}private:
     ComPtr<IDCompositionAnimation> curveOf(const std::function<double(double)>& value,double now,const std::function<bool(double)>& settled);
     // Phase 5F: light that runs along the island's edge when an alert arrives: a bright core inside a dimmer and a soft tier
     // sweeping out from the middle of the free edge, over a stroke of the outline.
-    ComPtr<IDCompositionVisual> splash_;std::array<ComPtr<IDCompositionVisual>,6> splashBands_;std::array<ComPtr<IDCompositionRectangleClip>,6> splashClips_;ComPtr<IDCompositionEffectGroup> splashEffect_;std::array<ComPtr<IDCompositionSurface>,3> splashSurfaces_;void updateRing(const ContentSnapshot&,UINT32 accent);
+    // The alert glint: two tiers (a crisp core, a wide glow) x two directions x six nested windows, each a sixth as bright,
+    // so the light falls off smoothly at both ends of each run (hard-edged windows looked like tearing lines on glass).
+    static constexpr int splashSteps=6;ComPtr<IDCompositionVisual> splash_;std::array<ComPtr<IDCompositionVisual>,4*splashSteps> splashBands_;std::array<ComPtr<IDCompositionRectangleClip>,4*splashSteps> splashClips_;std::array<ComPtr<IDCompositionEffectGroup>,4*splashSteps> splashBandEffects_;ComPtr<IDCompositionEffectGroup> splashEffect_;std::array<ComPtr<IDCompositionSurface>,2> splashSurfaces_;void updateRing(const ContentSnapshot&,UINT32 accent);
     // Ease-out cubic from `from` to `to` over `duration`, beginning at `start`.
     ComPtr<IDCompositionAnimation> ease(double start,float from,float to,double duration);
     void ensureNowPlaying();void updateLyrics(const ContentSnapshot&,UINT32 ink,UINT32 muted,UINT32 accent);void updateBubble(const ContentSnapshot&);
@@ -305,9 +308,21 @@ public:
     void setRest(bool expanded,bool compact){restExpanded_=expanded;restCompact_=compact;}
     void animate(const MotionEngine&,double);
     void iconFeedback(Action,bool pressed,bool enabled);
+    // Test runs only (--qa-glass-only): the DirectComposition layers hidden, so the glass alone can be measured.
+    bool qaGlassOnly=false;
+    // Test runs only (--qa-frost): the resting frost settles in about a second instead of half a minute.
+    double qaFrostPace=1;void qaFrost(double pace){qaFrostPace=pace;if(frostOn_){frostOn_=false;glass_.frost(false,seconds());}updateFrost();}std::string glassFailure()const{return glass_.failure()+" frostOn="+std::to_string(frostOn_)+" allowed="+std::to_string(frostAllowed_)+" expanded="+std::to_string(expanded_)+" inside="+std::to_string(pointerInside_);}
     bool glassAvailable()const{return glass_.available();}std::string glassError()const{return glass_.lastError_.empty()?shadow_.lastError_:glass_.lastError_;}GlassStyle glassStyle()const{return glass_.current();}UINT32 accentColor()const{return accentColor_;}
     void spectrum(const SpectrumFrame&);
     // Phase 5E: the artwork beat pulse (a scale about the cover's centre, before its size scale).
+    // 0.17.0-preview.3: the edge light that breathes with the beat. Glass carries it in its rim; solid islands show four
+    // soft strips inside their free edges (beatLight_), in the accent. edgeBeat_ is its level (0-1).
+    static constexpr float beatBand=12;Glide edgeBeat_{0,0,0,0,0};double edgeAttack_=0;bool beatEdgeOn_=false;int beatMaterial_=-1,beatStripKey_=-1;UINT32 beatColor_=1,beatSurfaceColor_=1;
+    ComPtr<IDCompositionVisual> beatLight_;ComPtr<IDCompositionEffectGroup> beatLightEffect_;std::array<ComPtr<IDCompositionVisual>,4> beatStrips_;std::array<ComPtr<IDCompositionSurface>,4> beatSurfaces_;
+    void setBeatEdge(bool on,UINT32 color,bool glass,bool reduced);void edgeBeat(float hit,double now);void edgeLight(double now);
+    // 0.17.0-preview.3: Frosted glass thickens while the island rests (compact, the pointer away, no alert just in) and
+    // clears when reached for.
+    bool frostAllowed_=false,frostOn_=false,pointerInside_=false;double frostHold_=0;void updateFrost();
     ComPtr<IDCompositionScaleTransform> artPulse_;Glide artBeat_{1,0,1,0,0};float bassAverage_=0;double beatAt_=0;bool artPulseOn_=false;void beat(const SpectrumFrame&);void setArtPulse(bool on);void energize(bool reduced,bool charging);void meters(const std::vector<MixerEntry>&,int offset,bool visible);
     // The Media page shows lyric lines instead of title and artist.
     static bool lyricsPanel(const ContentSnapshot&);

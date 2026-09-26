@@ -169,6 +169,15 @@ struct NineGridBrush:IInspectable {
     virtual HRESULT STDMETHODCALLTYPE get_Source(IInspectable**)=0;virtual HRESULT STDMETHODCALLTYPE put_Source(IInspectable*)=0;
     virtual HRESULT STDMETHODCALLTYPE get_TopInset(FLOAT*)=0;virtual HRESULT STDMETHODCALLTYPE put_TopInset(FLOAT)=0;
 };
+// 0.17.0-preview.3: the pointer's glint on the rim is a radial gradient stroke.
+struct CompositorWithRadialGradient:IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE CreateRadialGradientBrush(IInspectable**)=0;
+};
+struct RadialGradientBrush:IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE get_EllipseCenter(Vector2*)=0;virtual HRESULT STDMETHODCALLTYPE put_EllipseCenter(Vector2)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_EllipseRadius(Vector2*)=0;virtual HRESULT STDMETHODCALLTYPE put_EllipseRadius(Vector2)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_GradientOriginOffset(Vector2*)=0;virtual HRESULT STDMETHODCALLTYPE put_GradientOriginOffset(Vector2)=0;
+};
 struct LayerVisual2:IInspectable {
     virtual HRESULT STDMETHODCALLTYPE get_Shadow(IInspectable**)=0;virtual HRESULT STDMETHODCALLTYPE put_Shadow(IInspectable*)=0;
 };
@@ -211,4 +220,6 @@ __CRT_UUID_DECL(nexus::wincomp::DropShadow,0xcb977c07,0xa154,0x4851,0x85,0xe7,0x
 __CRT_UUID_DECL(nexus::wincomp::LayerVisual2,0x98f9aeeb,0x6f23,0x49f1,0x90,0xb1,0x1f,0x59,0xa1,0x4f,0xbc,0xe3)
 __CRT_UUID_DECL(nexus::wincomp::MaskBrush,0x522cf09e,0xbe6b,0x4f41,0xbe,0x49,0xf9,0x22,0x6d,0x47,0x1b,0x4a)
 __CRT_UUID_DECL(nexus::wincomp::DrawingSurfaceInterop,0xfd04e6e3,0xfe0c,0x4c3c,0xab,0x19,0xa0,0x76,0x01,0xa5,0x76,0xee)
+__CRT_UUID_DECL(nexus::wincomp::CompositorWithRadialGradient,0x98b9c1a7,0x8e71,0x4b53,0xb4,0xa8,0x69,0xba,0x5d,0x19,0xdc,0x5b)
+__CRT_UUID_DECL(nexus::wincomp::RadialGradientBrush,0x3d3b50c5,0xe3fa,0x4ce2,0xb9,0xfc,0x3e,0xe1,0x25,0x61,0x78,0x8f)
 __CRT_UUID_DECL(nexus::wincomp::KeyFrameAnimation,0x126e7f22,0x3ae9,0x4540,0x9a,0x8a,0xde,0xae,0x8a,0x4a,0x4a,0x84)

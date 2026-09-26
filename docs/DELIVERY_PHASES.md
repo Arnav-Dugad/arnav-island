@@ -241,3 +241,21 @@ Guards added:
 - A phase test reads the glass source and fails if any `p.<name>` it reads or animates isn't created with the property set.
 - A phase test fails if any expression number has an exponent.
 - The UI test fails if the glass reports any error, and runs Clear and Frosted through every shape.
+
+## Status after v0.17.0-preview.3 — glass that listens, frost, Settings previews — 2026-09-26
+
+Shipped, as asked:
+- **The colour change at the ends of the curves:** fixed. The pointer's light moved into the glass (body and both shoulders), and the side edge light now starts below the shoulder join.
+- **Lines across the island for a few seconds:** fixed. The alert's edge light was drawn through hard-edged windows; it now uses six nested windows, each a sixth as bright, so it rises and falls smoothly.
+- **A glint that follows the pointer across the rim:** a radial-gradient stroke on the body's rim, centred under the pointer.
+- **A frost that thickens as the island rests:** a paler, milkier, softer material fades in over 24 s after 6 s at rest, and clears in 0.35 s.
+- **Separate tints for Clear and Frosted:** settings v17 (`clearTint`).
+- **A live preview of the glass in Settings:** Appearance › Preview.
+- **Rows that open with small animated previews:** 14 rows, after a 450 ms rest.
+- **Dynamic type:** titles shrink to 86% before being cut.
+- **A sunrise and sunset sky:** Open-Meteo's daily sunrise and sunset, in the town's own time zone.
+- **A breathing edge light to the beat:** glass rim and shoulders, or soft strips on Solid, driven by the bass.
+
+Not shipped:
+- **Refraction that bends the wallpaper.** Windows' composition accepts colour and blur effects on the host backdrop, but refused every geometric effect (2D affine transform with each interpolation and border mode, identity included, and scale) with `E_INVALIDARG`. Clear glass has no backdrop to resample. The alternative, copying the screen behind the island continuously, isn't something the island does.
+

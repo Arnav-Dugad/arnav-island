@@ -151,3 +151,9 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **Screen readers** read the island through Windows' UI Automation, on this PC: the names on its buttons (song titles, file names, your PCs' names) and its alerts, as they would for any app. Nothing is sent anywhere. Test runs log only that an announcement was made, never what it said.
 - **Crossfades and fades** change only the island's own volume. For another app's music moving to your other PC, that app's volume in the Windows mixer goes down and is put back after it pauses.
 - Public screenshots show Windows' own sounds, illustrative PCs and files, and a made-up transfer. They're drawn by the island itself, never taken from the screen.
+
+## v0.17.0-preview.3 sunrise, sunset and the beat
+
+- **The forecast** now also asks Open-Meteo for today's sunrise and sunset at the same rounded coordinates, in the same request. Nothing else is sent.
+- **The edge light to the beat** listens to what Windows is playing, the same way the waveform does: loudness in a few frequency bands, computed in memory, never recorded or kept. It runs only while music plays and the island is on screen.
+- **Settings previews** are drawn by the Settings window. They show a made-up wallpaper tinted with your wallpaper's colour, not your wallpaper.

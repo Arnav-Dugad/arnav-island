@@ -55,7 +55,10 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     // QA: the weekly battery card with illustrative numbers.
     if(testing_&&cmd.find(L"--qa-weekly")!=std::wstring::npos){content_.week={6,17.6,21.5,7};content_.healthNow=.843;content_.healthBefore=.846;showNotice(13);}
     // QA: illustrative weather (no network): --qa-weather=<WMO code>.
-    if(auto at=cmd.find(L"--qa-weather");testing_&&at!=std::wstring::npos){int code=3;auto eq=cmd.find(L'=',at);if(eq!=std::wstring::npos&&eq<cmd.find(L' ',at))code=_wtoi(cmd.c_str()+eq+1);settings_.weather=true;settings_.homeMetrics={0,7,8};content_.weather={true,14.4,code,cmd.find(L"--qa-night")==std::wstring::npos,L"Sample town"};refresh();}
+    if(auto at=cmd.find(L"--qa-weather");testing_&&at!=std::wstring::npos){int code=3;auto eq=cmd.find(L'=',at);if(eq!=std::wstring::npos&&eq<cmd.find(L' ',at))code=_wtoi(cmd.c_str()+eq+1);settings_.weather=true;settings_.homeMetrics={0,7,8};content_.weather={true,14.4,code,cmd.find(L"--qa-night")==std::wstring::npos,L"Sample town"};
+        // --qa-dawn / --qa-dusk: today's sunrise or sunset is now, for the sky's warm light.
+        {const int64_t unix=int64_t(std::time(nullptr));if(cmd.find(L"--qa-dawn")!=std::wstring::npos){content_.weather.sunrise=unix+600;content_.weather.sunset=unix+12*3600;}else if(cmd.find(L"--qa-dusk")!=std::wstring::npos){content_.weather.sunrise=unix-11*3600;content_.weather.sunset=unix-300;}}
+        refresh();}
     if(cmd.find(L"--video-layout")!=std::wstring::npos){settings_.mediaLayout=2;refresh();}
     if(cmd.find(L"--music-layout")!=std::wstring::npos){settings_.mediaLayout=1;refresh();}
         if(cmd.find(L"--scale110")!=std::wstring::npos&&testing_){settings_.scale=110;applySettings(true);}
@@ -64,6 +67,8 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     if(cmd.find(L"--light")!=std::wstring::npos){settings_.theme=1;applySettings();}
     if(cmd.find(L"--right")!=std::wstring::npos){settings_.edge=1;applySettings(true);}
     if(testing_&&cmd.find(L"--qa-pattern")!=std::wstring::npos)showcasePattern_=true;
+    // --qa-matte-first: the matte goes up at launch, long before the capture (so glass samples only the matte, even mid-animation).
+    if(testing_&&cmd.find(L"--qa-matte-first")!=std::wstring::npos)SetTimer(window_,73,60,nullptr);
     if(testing_&&cmd.find(L"--qa-showcase")!=std::wstring::npos){
         auto art=std::make_shared<Artwork>();art->width=art->height=256;art->pixels.resize(256*256*4);for(unsigned y=0;y<256;++y)for(unsigned x=0;x<256;++x){size_t i=(y*256+x)*4;art->pixels[i]=BYTE(150+x/3);art->pixels[i+1]=BYTE(70+y/2);art->pixels[i+2]=BYTE(230-x/3);art->pixels[i+3]=255;}paintArtwork(*art);
         auto player=resolveApp(L"Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic"),browser=resolveApp(L"MSEdge"),calculator=resolveApp(L"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App");
@@ -85,6 +90,8 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     if(testing_&&cmd.find(L"--qa-wide")!=std::wstring::npos){settings_.uiMode=1;settings_.compactWidth=560;settings_.compactClock=true;applySettings();transition(IslandState::Compact);}
     if(testing_&&cmd.find(L"--qa-peek")!=std::wstring::npos){content_.hovered=Action::ShelfItemBase;refresh();}
     if(cmd.find(L"--settings")!=std::wstring::npos&&!settingsTest_){auto at=cmd.find(L"--settings-section=");openSettings(at==std::wstring::npos?-1:_wtoi(cmd.c_str()+at+19));}
+    if(testing_&&cmd.find(L"--qa-glass-only")!=std::wstring::npos&&renderer_)renderer_->qaGlassOnly=true;
+    if(testing_&&cmd.find(L"--qa-frost")!=std::wstring::npos&&renderer_)renderer_->qaFrost(.04);
     if(testing_&&cmd.find(L"--qa-glass")!=std::wstring::npos){settings_.material=cmd.find(L"--qa-clear")!=std::wstring::npos?2:1;applySettings(false,true);}
     // --qa-adaptive: Clear glass with adaptive text over an illustrative backdrop (bright left half, dark right half).
     if(testing_&&cmd.find(L"--qa-adaptive")!=std::wstring::npos){qaBackdrop_=true;settings_.material=2;settings_.adaptiveText=true;applySettings(false,true);}
@@ -117,7 +124,7 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     auto qaDevices=[sample]{if(!sample)return BluetoothProvider::enumerate();auto make=[](const wchar_t* name,bool connected,int battery,DeviceKind kind,const char* brand){BluetoothDevice d;d.name=name;d.connected=connected;d.audio=kind==DeviceKind::Headphones||kind==DeviceKind::Earbuds||kind==DeviceKind::Speaker;d.battery=battery;d.kind=kind;d.brand=brand;return d;};
         return std::vector<BluetoothDevice>{make(L"Galaxy Buds3 Pro",true,82,DeviceKind::Earbuds,"samsung"),make(L"WH-1000XM5",true,64,DeviceKind::Headphones,"sony"),make(L"DualSense Wireless Controller",false,41,DeviceKind::Gamepad,"playstation"),make(L"JBL Flip 6",false,-1,DeviceKind::Speaker,"jbl")};};
     // QA: the pointer light placed over the island, for captures.
-    if(testing_&&cmd.find(L"--qa-sheen")!=std::wstring::npos){refresh();renderer_->pointer(250,70,true,true);}
+    if(testing_&&cmd.find(L"--qa-sheen")!=std::wstring::npos){refresh();if(cmd.find(L"--qa-sheen-left")!=std::wstring::npos)SetTimer(window_,72,2000,nullptr);else renderer_->pointer(250,70,true,true);}
     // Phase 4 QA states, with illustrative content only.
     // QA: the synthetic showcase track "heard" up to its playhead (deterministic envelope), for waveform captures.
     if(testing_&&cmd.find(L"--qa-wave")!=std::wstring::npos&&content_.playback.duration>0){auto& p=content_.playback;auto& w=waves_.track(WaveformLibrary::key(p.title,p.artist,p.duration));
@@ -430,7 +437,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
         if(state_==IslandState::Expanded&&content_.page==Page::System&&content_.statsTab==2){content_.deviceOffset=std::clamp(content_.deviceOffset+(GET_WHEEL_DELTA_WPARAM(w)>0?-1:1),0,std::max(0,int(content_.devices.size())-4));refresh();return 0;}if(state_==IslandState::Expanded&&content_.page==Page::Shelf&&content_.shelfTab==1){content_.clipOffset=std::clamp(content_.clipOffset+(GET_WHEEL_DELTA_WPARAM(w)>0?-1:1),0,std::max(0,int(content_.clips.size())-4));refresh();return 0;}if(state_!=IslandState::Compact&&(content_.page==Page::Shelf||content_.page==Page::Audio)){bool mixer=content_.page==Page::Audio&&content_.audioTab==0;auto& offset=content_.page==Page::Shelf?content_.shelfOffset:mixer?content_.mixerOffset:content_.audioOffset;int count=int(content_.page==Page::Shelf?content_.shelf.size():mixer?content_.mixer.size():content_.outputs.size());offset=std::clamp(offset+(GET_WHEEL_DELTA_WPARAM(w)>0?-1:1),0,std::max(0,count-4));refresh();return 0;}if(audio_&&audio_->available){POINT p{GET_X_LPARAM(l),GET_Y_LPARAM(l)};ScreenToClient(window_,&p);if(settings_.wheelVolume||hit(MAKELPARAM(p.x,p.y))==Action::VolumeSlider)audio_->setVolume(audio_->value+(GET_WHEEL_DELTA_WPARAM(w)>0?2:-2));}return 0;
     case MediaMessage:if(media_)updateSessions();return 0;
     case LyricsMessage:syncLyrics();refresh();return 0;
-    case SpectrumMessage:if(analyzer_){analyzer_->pending=false;bool delivering=analyzer_->active()&&analyzer_->available.load();if(delivering!=content_.waveform){content_.waveform=delivering;refresh();}if(delivering){auto frame=analyzer_->frame();renderer_->spectrum(frame);
+    case SpectrumMessage:if(analyzer_){analyzer_->pending=false;const bool live=analyzer_->active()&&analyzer_->available.load(),delivering=live&&barsWanted_;if(delivering!=content_.waveform){content_.waveform=delivering;refresh();}if(live){auto frame=analyzer_->frame();renderer_->spectrum(frame);
         // The waveform timeline learns the track's loudness from what is actually heard.
         auto& p=content_.playback;if(settings_.waveTimeline&&p.playing&&p.duration>0&&!content_.scrub.active){double position=p.position+std::max(0.,seconds()-p.sampledAt);if(waves_.track(WaveformLibrary::key(p.title,p.artist,p.duration)).hear(position,p.duration,frame.level)>=0)pushWaveform(frame.level);}}}return 0;
     case MixerMessage:if(mixer_){mixer_->pending=false;auto entries=mixer_->entries();bool layout=entries.size()!=content_.mixer.size();for(size_t i=0;!layout&&i<entries.size();++i){auto& a=entries[i];auto& b=content_.mixer[i];layout=a.pid!=b.pid||a.name!=b.name||a.muted!=b.muted||a.active!=b.active||std::abs(a.volume-b.volume)>.004f||a.icon!=b.icon;}
@@ -474,12 +481,12 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
         // 2: the Town field's matches are in; otherwise the weather (or why it failed), which Settings shows too.
         if(w==2){townBusy_=false;townStatus_=weather_&&weather_->searchFailed()?L"Open-Meteo couldn\u2019t be reached \u2014 check the connection":L"";pushSettingsContext();return 0;}
         if(weather_&&w==1&&!townStatus_.empty())townStatus_=weather_->status();else if(w==0)townStatus_.clear();pushSettingsContext();
-        if(weather_){auto now=weather_->now();auto place=weather_->place();if(now&&place)content_.weather={true,now->temperature,now->code,now->day,place->name};
+        if(weather_){auto now=weather_->now();auto place=weather_->place();if(now&&place)content_.weather={true,now->temperature,now->code,now->day,place->name,now->sunrise,now->sunset};
         if(weatherAsked_&&content_.command.active){weatherAsked_=false;if(w)commandStatus(weather_->status(),true);else if(now&&place)commandStatus(place->name+L"  \u00b7  "+temperatureText(now->temperature,settings_.weatherUnit)+L"  "+skyName(skyOf(now->code)));}
         refresh();}return 0;
     case ControlStateMessage:{auto& c=content_.controls;auto part=[&](int shift){return int((w>>shift)&15)-2;};c.wifi=part(0);c.bluetooth=part(4);c.dark=part(8);c.busy&=~int(l);
         if(state_!=IslandState::Compact&&content_.page==Page::Control)refresh();return 0;}
-    case WM_TIMER: if(w==17){KillTimer(window_,17);fullscreen();return 0;}if(w==SpreadTimer){KillTimer(window_,SpreadTimer);spreadAlerts(false);return 0;}if(w==69&&testing_){KillTimer(window_,69);spreadAlerts(true);return 0;}if(w==71&&testing_){KillTimer(window_,71);shareCard(qaLateCard_==17?17:15,qaLateCard_==17?L"Blue in Green":L"Studio PC",qaLateCard_==17?L"Miles Davis  ·  from Studio PC":L"Holiday photos  ·  12 files  ·  48.2 MB",{},60);return 0;}if(w==66&&testing_){KillTimer(window_,66);perform(Action::Shelf);return 0;}if(w==63){KillTimer(window_,63);syncBud();return 0;}if(w==68&&testing_){KillTimer(window_,68);const double t=seconds();renderer_->swipeFollow(-52,float(motion_.width.sample(t).position),float(motion_.height.sample(t).position),true,false);return 0;}if(w==67&&testing_){KillTimer(window_,67);shareCard(16,L"Received from Travel laptop",L"Trip notes.pdf",{},8);return 0;}
+    case WM_TIMER: if(w==17){KillTimer(window_,17);fullscreen();return 0;}if(w==SpreadTimer){KillTimer(window_,SpreadTimer);spreadAlerts(false);return 0;}if(w==69&&testing_){KillTimer(window_,69);spreadAlerts(true);return 0;}if(w==72&&testing_){KillTimer(window_,72);renderer_->pointer(24,14,true,true);return 0;}if(w==71&&testing_){KillTimer(window_,71);shareCard(qaLateCard_==17?17:15,qaLateCard_==17?L"Blue in Green":L"Studio PC",qaLateCard_==17?L"Miles Davis  ·  from Studio PC":L"Holiday photos  ·  12 files  ·  48.2 MB",{},60);return 0;}if(w==66&&testing_){KillTimer(window_,66);perform(Action::Shelf);return 0;}if(w==63){KillTimer(window_,63);syncBud();return 0;}if(w==68&&testing_){KillTimer(window_,68);const double t=seconds();renderer_->swipeFollow(-52,float(motion_.width.sample(t).position),float(motion_.height.sample(t).position),true,false);return 0;}if(w==67&&testing_){KillTimer(window_,67);shareCard(16,L"Received from Travel laptop",L"Trip notes.pdf",{},8);return 0;}
         if(w==47){controlJob(0,0);return 0;}
         if(w==46){peekTick();return 0;}
         // QA: alternate two currency answers so the rolling digits can be filmed.
@@ -691,15 +698,18 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
         if(w==7){KillTimer(window_,7);if(state_==IslandState::Compact&&content_.hovered!=Action::None)return 0;if(settings_.autoHide&&!pointerOffEdge()){edgeHold_=true;return 0;}if(settings_.hoverOpen&&interaction_==InteractionState::Hover&&state_==IslandState::Compact)transition(settings_.uiMode==2?IslandState::Expanded:IslandState::LiveActivity);}
         if(w==8){KillTimer(window_,8);if(interaction_==InteractionState::Rest&&!content_.pinned)transition(IslandState::Compact);}
         if(w==9){if(content_.focus.tick(seconds())){content_.page=Page::Focus;events_.publish({ActivityKind::Timer,"timer",70,0,2,8},seconds());presentActivity();}if(IsWindowVisible(window_))refresh();clockTimer();}
-        if(w==5){
-            KillTimer(window_,5);
+        // 5: the QA matte goes up (unless --qa-matte-first already put it up at launch), then the capture 250 ms later.
+        if(w==5||w==73){
+            KillTimer(window_,w);if(qaMatte_){if(w==5)SetTimer(window_,6,250,nullptr);return 0;}
             WNDCLASSW matteClass{};matteClass.lpfnWndProc=[](HWND h,UINT m,WPARAM w,LPARAM l)->LRESULT{if(m==WM_PAINT&&GetPropW(h,L"pattern")){PAINTSTRUCT ps;HDC dc=BeginPaint(h,&ps);RECT r;GetClientRect(h,&r);const COLORREF colors[]={RGB(255,94,98),RGB(255,184,76),RGB(84,214,160),RGB(76,146,255),RGB(170,110,255),RGB(245,245,245),RGB(28,32,40)};int band=std::max<LONG>(1,r.right/14);for(int i=0;i*band<r.right;++i){RECT b{i*band,0,(i+1)*band,r.bottom};HBRUSH brush=CreateSolidBrush(colors[i%7]);FillRect(dc,&b,brush);DeleteObject(brush);}EndPaint(h,&ps);return 0;}return DefWindowProcW(h,m,w,l);};matteClass.hInstance=instance_;matteClass.hbrBackground=CreateSolidBrush(RGB(34,40,50));matteClass.lpszClassName=L"NexusIsland.QAMatte";RegisterClassW(&matteClass);
             RECT r{};GetWindowRect(window_,&r);HWND matte=CreateWindowExW(WS_EX_NOACTIVATE|WS_EX_TOOLWINDOW|WS_EX_TOPMOST,matteClass.lpszClassName,L"Nexus QA matte",WS_POPUP,r.left,r.top,r.right-r.left,r.bottom-r.top,nullptr,nullptr,instance_,nullptr);
             qaMatte_=matte;qaBrush_=matteClass.hbrBackground;if(showcasePattern_){SetPropW(matte,L"pattern",HANDLE(1));InvalidateRect(matte,nullptr,TRUE);}
-            ShowWindow(matte,SW_SHOWNOACTIVATE);SetWindowPos(window_,HWND_TOPMOST,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);syncShadow();UpdateWindow(matte);SetTimer(window_,6,250,nullptr);
+            ShowWindow(matte,SW_SHOWNOACTIVATE);SetWindowPos(window_,HWND_TOPMOST,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);syncShadow();UpdateWindow(matte);if(w==5)SetTimer(window_,6,250,nullptr);
         }
         if(w==6){
             KillTimer(window_,6);DwmFlush();captureWindow(window_,store_.directory/L"island-capture.png");
+            // What the glass could not do, if anything (effects Windows refused), beside the capture.
+            if(testing_&&renderer_){std::ofstream(store_.directory/L"glass-qa.txt")<<"failure="<<renderer_->glassFailure()<<"\nerror="<<renderer_->glassError()<<"\n";}
             if(motionStudy_){SetTimer(window_,16,80,nullptr);return 0;}
             DestroyWindow(qaMatte_);qaMatte_=nullptr;UnregisterClassW(L"NexusIsland.QAMatte",instance_);DeleteObject(qaBrush_);qaBrush_=nullptr;
         }
@@ -833,7 +843,7 @@ void IslandWindow::adaptBackdrop(){
     std::shared_ptr<LumaGrid> grid;
     if(wanted&&(qaBackdrop_||(wallLuma_&&!backdropCovered()))){
         grid=std::make_shared<LumaGrid>();grid->cols=int(Renderer::canvasWidth/grid->cell);grid->rows=20;grid->luma.resize(size_t(grid->cols)*size_t(grid->rows));
-        const bool light=content_.light;const double a=std::clamp((light?.32:.46)*(.6+settings_.glassTint/100.*1.1),.08,.62),scrim=light?246:12;
+        const bool light=content_.light;const double a=std::clamp((light?.32:.46)*(.6+settings_.clearTint/100.*1.1),.08,.62),scrim=light?246:12;
         RECT r{};GetWindowRect(window_,&r);const double s=dpi_/96;
         for(int y=0;y<grid->rows;++y)for(int x=0;x<grid->cols;++x){double L=0;const double cx=(x+.5)*grid->cell,cy=(y+.5)*grid->cell;
             // Captures use an illustrative backdrop (bright on the left, dark on the right), never the real wallpaper.
