@@ -103,12 +103,14 @@ bool SettingsUi::enabled(const SettingItem& i)const{
     if(i.key=="glassTint")return s_.material==1;
     if(i.key=="clearTint")return s_.material==2;
     if(i.key=="restFrost")return s_.material==1;
+    if(i.key=="weatherGlass")return s_.material!=0;
     if(i.key=="compactWidth")return s_.uiMode!=0;
     if(i.key=="hoverDelay")return s_.hoverOpen;
     if(i.key=="accent")return true;
     return true;
 }
 std::wstring SettingsUi::detail(const SettingItem& i)const{
+    if(i.action==SettingAction::CheckUpdates)return context_.updateStatus.empty()?std::wstring(L"The island checks GitHub for new versions"):context_.updateStatus;
     if(i.action==SettingAction::TransparencySettings)return context_.blur?L"On — Frosted glass blurs what is behind the island":L"Off — Frosted glass uses a translucent frost; turn on for real blur";
     if(i.key=="material"&&!context_.glassAvailable)return L"Glass needs Windows 11 composition support";
     if(i.key=="commandShortcut"&&context_.shortcutTaken)return L"Another app already uses this shortcut \u2014 choose another";
@@ -452,7 +454,10 @@ void SettingsUi::render(){
 }
 // ---- 0.17.0-preview.3: pictures of what settings do -----------------------------------------------------------
 bool SettingsUi::scene(const SettingItem& i)const{
-    static const char* keys[]={"theme","glassTint","clearTint","restFrost","corner","shadow","edgeSplash","notifyStyle","stackAlerts","edge","compactWidth","waveformStyle","artPulse","beatEdge"};
+    static const char* keys[]={"theme","glassTint","clearTint","restFrost","corner","shadow","edgeSplash","notifyStyle","stackAlerts","edge","compactWidth","waveformStyle","artPulse","beatEdge",
+        // 0.18: more rows show what they do.
+        "weatherGlass","uiMode","autoHide","hoverOpen","compactMedia","waveform","compactControls","swipeSkip","lyricsCompact","compactGlance","glanceRings","hud","weather","magnetic","animatedIcons",
+        "trackHandoff","reduceMotion","islandDj","deviceCards","powerCards","privacyDots","clipboardConfirm","albumAccents"};
     for(auto* k:keys)if(i.key==k)return true;return false;
 }
 void SettingsUi::openPreview(int item,bool instant){
@@ -564,6 +569,62 @@ void SettingsUi::drawScene(const SettingItem& item,const D2D1_RECT_F& a,float al
         fill({m.box.left+9,y-5,m.box.left+19,y+5},3,p.accent,.9f);fill({m.box.left+25,y-2,x-10,y+2},2,light?0x202329:0xf1f3f7,.45f);brush_->SetColor(D2D1::ColorF(p.accent));
         if(s_.waveformStyle==0){for(int b=0;b<5;++b){const float v=.3f+.7f*float(std::abs(std::sin(t*5.3+b*1.7)));const float bh=4+9*v;dc_->FillRoundedRectangle(D2D1::RoundedRect({x+b*4.5f,y-bh/2,x+b*4.5f+2.4f,y+bh/2},1.2f,1.2f),brush_.Get());}}
         else{const float r=7+1.4f*beat;for(int q=0;q<16;++q){const float ang=float(q)*6.2831853f/16;const float v=.4f+.6f*float(std::abs(std::sin(t*4+q)));dc_->DrawLine({x+10+std::cos(ang)*r,y+std::sin(ang)*r},{x+10+std::cos(ang)*(r+2.5f*v),y+std::sin(ang)*(r+2.5f*v)},brush_.Get(),1.4f);}}
+        dc_->PopLayer();return;}
+    // ---- 0.18 ----
+    else if(k=="weatherGlass"||k=="uiMode"||k=="autoHide"||k=="hoverOpen"||k=="compactMedia"||k=="waveform"||k=="compactControls"||k=="swipeSkip"||k=="lyricsCompact"||k=="compactGlance"||k=="glanceRings"||k=="hud"||k=="weather"||
+            k=="magnetic"||k=="animatedIcons"||k=="trackHandoff"||k=="reduceMotion"||k=="islandDj"||k=="deviceCards"||k=="powerCards"||k=="privacyDots"||k=="clipboardConfirm"||k=="albumAccents"){
+        const bool light=s_.theme==1||(s_.theme==2&&systemLight());const UINT32 tc=light?0x202329:0xf1f3f7;auto on=[&](const char* key){for(auto& i:items_)if(i.key==key&&i.get)return i.get(s_)!=0;return false;};
+        m.content=false;m.box=box(170,26);m.radius=13;
+        auto cy=[&]{return (m.box.top+m.box.bottom)/2;};auto line=[&](float x0,float x1,float alpha){fill({x0,cy()-2,x1,cy()+2},2,tc,alpha);};auto art=[&](float x,float size,UINT32 c){fill({x,cy()-size/2,x+size,cy()+size/2},size*.28f,c,.95f);};
+        auto cursor=[&](D2D1_POINT_2F at){brush_->SetColor(D2D1::ColorF(0xffffff,.95f));dc_->FillEllipse(D2D1::Ellipse(at,4,4),brush_.Get());brush_->SetColor(D2D1::ColorF(0x000000,.35f));dc_->DrawEllipse(D2D1::Ellipse(at,4,4),brush_.Get(),1);};
+        if(k=="weatherGlass"){m.material=s_.material?s_.material:1;m.box=expanded;m.radius=16;m.content=true;mini(a,m,now,1);
+            // Rain running down the pane, and drops on it, while the setting is on.
+            if(on("weatherGlass")){auto shape=islandPath(m.box,m.radius,true,true);ComPtr<ID2D1Layer> l;dc_->CreateLayer(nullptr,&l);dc_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),shape.Get()),l.Get());
+                brush_->SetColor(D2D1::ColorF(0xffffff,light?.35f:.3f));for(int q=0;q<26;++q){const float x=m.box.left+std::fmod(q*37.f,m.box.right-m.box.left+30),y=m.box.top+float(std::fmod(q*23.+t*95.,90.))-14;dc_->DrawLine({x,y},{x-2.4f,y+12},brush_.Get(),1);}
+                for(int q=0;q<9;++q){const float x=m.box.left+12+std::fmod(q*53.f,m.box.right-m.box.left-24),y=m.box.top+10+std::fmod(q*17.f,44.f),r=1.4f+float(q%3);brush_->SetColor(D2D1::ColorF(0xffffff,.55f));dc_->DrawEllipse(D2D1::Ellipse({x,y},r,r*1.1f),brush_.Get(),.7f);}
+                dc_->PopLayer();}}
+        else if(k=="uiMode"){const int mode=s_.uiMode;m.box=box(mode==0?72.f:mode==1?210.f:250.f,26);mini(a,m,now,1);
+            if(mode==0){fill({cx-10,cy()-3,cx+10,cy()+3},3,tc,.35f);}
+            else if(mode==1){art(m.box.left+10,16,p.accent);line(m.box.left+32,m.box.right-60,.55f);for(int b=0;b<4;++b){const float v=.35f+.65f*float(std::abs(std::sin(t*5+b)));fill({m.box.right-40+b*6.f,cy()-4*v-2,m.box.right-37.5f+b*6.f,cy()+4*v+2},1,p.accent,1);}}
+            else{const Icon g[]={Icon::Clock,Icon::Volume,Icon::Battery,Icon::Processor};for(int q=0;q<4;++q){const float x=m.box.left+14+q*58.f;drawIcon(dc_.Get(),factory_.Get(),g[q],x,cy()-6,12,tc,.75f);fill({x+16,cy()-2,x+40,cy()+2},2,tc,.5f);}}}
+        else if(k=="autoHide"){const double f=phase(4.);const float hide=on("autoHide")?ease(f<.2?f/.2:f<.6?1.:f<.75?(.75-f)/.15:0.):0.f;m.box=box(150,26,-23*hide);mini(a,m,now,1);art(m.box.left+10,14,p.accent);line(m.box.left+30,m.box.right-18,.5f);
+            if(on("autoHide")&&f>.55&&f<.8)cursor({cx+20,a.top+4});}
+        else if(k=="hoverOpen"){const double f=phase(3.6);const float o=on("hoverOpen")?ease(f<.35?0.:f<.55?(f-.35)/.2:f<.85?1.:(1-f)/.15):0.f;m.box=mix(box(150,26),box(236,70),o);m.radius=lerp(13,17,o);m.content=o>.5f;mini(a,m,now,1);
+            if(o<=.5f){art(m.box.left+10,14,p.accent);line(m.box.left+30,m.box.right-18,.5f);}cursor({lerp(a.right-40,cx+30,ease(f*3)),lerp(a.bottom-10,a.top+14,ease(f*3))});}
+        else if(k=="compactMedia"){mini(a,m,now,1);if(on("compactMedia")){art(m.box.left+8,16,p.accent);line(m.box.left+30,m.box.right-40,.6f);}else{drawIcon(dc_.Get(),factory_.Get(),Icon::Clock,m.box.left+10,cy()-6,12,tc,.75f);line(m.box.left+28,m.box.left+60,.55f);}}
+        else if(k=="waveform"){mini(a,m,now,1);art(m.box.left+8,16,p.accent);line(m.box.left+30,m.box.right-50,.5f);
+            for(int b=0;b<6;++b){const float v=on("waveform")?.3f+.7f*float(std::abs(std::sin(t*5.3+b*1.3))):.3f;fill({m.box.right-40+b*5.f,cy()-6*v,m.box.right-37.6f+b*5.f,cy()+6*v},1.2f,p.accent,1);}}
+        else if(k=="compactControls"){m.box=box(210,26);mini(a,m,now,1);art(m.box.left+8,16,p.accent);line(m.box.left+30,m.box.right-(on("compactControls")?80:20),.5f);
+            if(on("compactControls")){const Icon g[]={Icon::Previous,Icon::Play,Icon::Next};for(int q=0;q<3;++q)drawIcon(dc_.Get(),factory_.Get(),g[q],m.box.right-70+q*20.f,cy()-6,12,tc,.9f);}}
+        else if(k=="swipeSkip"){mini(a,m,now,1);const double f=phase(2.6);const float slide=on("swipeSkip")?ease(f<.4?f/.4:f<.5?1.:0.)*-40:0.f;dc_->PushAxisAlignedClip(m.box,D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);art(m.box.left+8+slide,16,p.accent);line(m.box.left+30+slide,m.box.right-20+slide,.5f);dc_->PopAxisAlignedClip();
+            if(on("swipeSkip")&&f<.5){cursor({cx+30-80*ease(f/.4),cy()});fill({m.box.right+8,cy()-10,m.box.right+30,cy()+10},10,p.accent,.9f*ease(f/.4));drawIcon(dc_.Get(),factory_.Get(),Icon::Next,m.box.right+12,cy()-6,12,0xffffff,ease(f/.4));}}
+        else if(k=="lyricsCompact"){m.box=box(230,26);mini(a,m,now,1);art(m.box.left+8,16,p.accent);
+            if(on("lyricsCompact")){const float x0=m.box.left+30,x1=m.box.right-16,sung=x0+(x1-x0)*float(phase(3.));line(x0,x1,.3f);fill({x0,cy()-2,sung,cy()+2},2,p.accent,1);}else line(m.box.left+30,m.box.right-60,.55f);}
+        else if(k=="compactGlance"){mini(a,m,now,1);if(on("compactGlance")){text(L"Sat 26",{m.box.left+10,m.box.top,m.box.left+70,m.box.bottom},10.5f,tc,.9f,DWRITE_FONT_WEIGHT_SEMI_BOLD);drawIcon(dc_.Get(),factory_.Get(),Icon::Processor,m.box.right-70,cy()-6,12,tc,.7f);line(m.box.right-54,m.box.right-40,.5f);drawIcon(dc_.Get(),factory_.Get(),Icon::Gauge,m.box.right-34,cy()-6,12,tc,.7f);line(m.box.right-18,m.box.right-8,.5f);}}
+        else if(k=="glanceRings"){mini(a,m,now,1);line(m.box.left+12,m.box.right-60,.5f);const int rings=s_.glanceRings;
+            for(int q=0;q<2;++q){if(!(rings==3||rings==q+1))continue;const float rx=m.box.right-(rings==3?40.f-q*18:24.f),v=q?float(phase(5.)):.64f;brush_->SetColor(D2D1::ColorF(tc,.2f));dc_->DrawEllipse(D2D1::Ellipse({rx,cy()},6.5f,6.5f),brush_.Get(),2);
+                ComPtr<ID2D1PathGeometry> g;factory_->CreatePathGeometry(&g);ComPtr<ID2D1GeometrySink> sk;g->Open(&sk);const float ang=v*6.2831853f;sk->BeginFigure({rx,cy()-6.5f},D2D1_FIGURE_BEGIN_HOLLOW);sk->AddArc({{rx+6.5f*std::sin(ang),cy()-6.5f*std::cos(ang)},{6.5f,6.5f},0,D2D1_SWEEP_DIRECTION_CLOCKWISE,v>.5f?D2D1_ARC_SIZE_LARGE:D2D1_ARC_SIZE_SMALL});sk->EndFigure(D2D1_FIGURE_END_OPEN);sk->Close();
+                brush_->SetColor(D2D1::ColorF(q?0xf0b44c:0x5fd98a));dc_->DrawGeometry(g.Get(),brush_.Get(),2);}}
+        else if(k=="hud"){const double f=phase(3.);const float o=on("hud")?ease(f<.15?f/.15:f<.7?1.:(.85-f)/.15):0.f;m.box=mix(box(150,26),box(236,30),o);mini(a,m,now,1);
+            if(o>.3f){drawIcon(dc_.Get(),factory_.Get(),Icon::Volume,m.box.left+10,cy()-6,12,tc,o);fill({m.box.left+30,cy()-2,m.box.right-16,cy()+2},2,tc,.2f*o);fill({m.box.left+30,cy()-2,m.box.left+30+(m.box.right-m.box.left-46)*float(.3+.4*std::min(1.,f/.5)),cy()+2},2,p.accent,o);}
+            else{art(m.box.left+10,14,p.accent);line(m.box.left+30,m.box.right-18,.5f);}}
+        else if(k=="weather"){mini(a,m,now,1);line(m.box.left+12,m.box.right-60,.5f);if(on("weather")){drawIcon(dc_.Get(),factory_.Get(),Icon::PartlyCloudy,m.box.right-48,cy()-6,12,tc,.85f);text(L"14\u00b0",{m.box.right-32,m.box.top,m.box.right-6,m.box.bottom},10.5f,tc,.9f,DWRITE_FONT_WEIGHT_SEMI_BOLD);}}
+        else if(k=="magnetic"||k=="animatedIcons"){m.box=expanded;m.radius=16;mini(a,m,now,1);const double f=phase(2.4);
+            for(int q=0;q<3;++q){const float bx=cx-60+q*60.f,by=m.box.top+36;const bool hot=q==int(f*3);float dx=0,lift=0;if(hot&&k=="magnetic"&&on("magnetic"))dx=float(std::sin(f*18.8))*4;if(hot&&k=="animatedIcons"&&on("animatedIcons"))lift=-3*float(std::abs(std::sin(f*18.8)));
+                if(hot)fill({bx-16+dx,by-14,bx+16+dx,by+14},10,tc,.12f);const Icon g[]={Icon::Home,Icon::Music,Icon::Settings};drawIcon(dc_.Get(),factory_.Get(),g[q],bx-8+dx,by-8+lift,16,tc,.85f);}}
+        else if(k=="trackHandoff"){m.box=expanded;m.radius=16;mini(a,m,now,1);const double f=phase(3.);const float mixv=on("trackHandoff")?ease((f-.4)/.3):(f<.55?0.f:1.f);const float s0=38,x=m.box.left+12,y=m.box.top+12;
+            fill({x,y,x+s0,y+s0},8,p.accent,.95f*(1-mixv));fill({x,y,x+s0,y+s0},8,0xf2a07b,.95f*mixv);line(x+50,m.box.right-40,.6f);}
+        else if(k=="reduceMotion"){const double f=phase(3.);const bool open=f>.5;const float o=on("reduceMotion")?(open?1.f:0.f):ease(open?(f-.5)*6:(1-(f*6)));m.box=mix(compact,expanded,std::clamp(o,0.f,1.f));m.radius=lerp(11,16,std::clamp(o,0.f,1.f));m.content=o>.6f;mini(a,m,now,1);}
+        else if(k=="islandDj"){m.box=box(170,30);m.radius=15;mini(a,m,now,1);const float glow=on("islandDj")?.5f+.5f*float(std::sin(t*3)):0.f;const float ax=m.box.left+8;
+            if(glow>0){brush_->SetColor(D2D1::ColorF(p.accent,.6f*glow));dc_->DrawRoundedRectangle(D2D1::RoundedRect({ax-3,cy()-11,ax+21,cy()+11},7,7),brush_.Get(),2);}art(ax,18,p.accent);line(ax+28,m.box.right-18,.5f);}
+        else if(k=="deviceCards"||k=="powerCards"||k=="clipboardConfirm"){const double f=phase(3.4);const bool show=on(k.c_str());const float o=show?ease(f<.2?f/.2:f<.75?1.:(.9-f)/.15):0.f;
+            m.box=mix(box(150,26),box(250,54),o);m.radius=lerp(13,18,o);mini(a,m,now,1);
+            if(o>.4f){const Icon g=k=="deviceCards"?Icon::Earbuds:k=="powerCards"?Icon::Bolt:Icon::Copy;const wchar_t* title=k=="deviceCards"?L"Earbuds connected":k=="powerCards"?L"Charging \u00b7 64%":L"Copied";
+                drawIcon(dc_.Get(),factory_.Get(),g,m.box.left+14,cy()-9,18,k=="powerCards"?0x5fd98a:tc,o);text(title,{m.box.left+42,cy()-9,m.box.right-12,cy()+9},11.5f,tc,o,DWRITE_FONT_WEIGHT_SEMI_BOLD);}
+            else{art(m.box.left+10,14,p.accent);line(m.box.left+30,m.box.right-18,.5f);}}
+        else if(k=="privacyDots"){mini(a,m,now,1);art(m.box.left+8,16,p.accent);line(m.box.left+30,m.box.right-40,.5f);if(on("privacyDots")){brush_->SetColor(D2D1::ColorF(0x4cd964,.6f+.4f*float(std::sin(t*2.4))));dc_->FillEllipse(D2D1::Ellipse({m.box.right-22,cy()},3.2f,3.2f),brush_.Get());brush_->SetColor(D2D1::ColorF(0xff9f0a));dc_->FillEllipse(D2D1::Ellipse({m.box.right-12,cy()},3.2f,3.2f),brush_.Get());}}
+        else if(k=="albumAccents"){m.box=expanded;m.radius=16;mini(a,m,now,1);const UINT32 c=on("albumAccents")?0xe0567a:p.accent;const float x=m.box.left+12,y=m.box.top+12;fill({x,y,x+38,y+38},8,0xe0567a,.95f);
+            fill({x+50,m.box.top+44,m.box.right-14,m.box.top+47},1.5f,tc,.2f);fill({x+50,m.box.top+44,x+50+(m.box.right-x-64)*float(phase(6.)),m.box.top+47},1.5f,c,1);line(x+50,m.box.right-40,.6f);}
         dc_->PopLayer();return;}
     else if(k=="artPulse"){m.box=expanded;m.radius=16;m.content=false;mini(a,m,now,1);const float s=(62-24)*(1+(s_.artPulse?.06f*(beat-.22f)/.7f:0.f)),x=m.box.left+12+19,y=m.box.top+12+19;
         fill({x-s/2,y-s/2,x+s/2,y+s/2},6,p.accent,.95f);const UINT32 text=(s_.theme==1||(s_.theme==2&&systemLight()))?0x202329:0xf1f3f7;fill({m.box.left+60,m.box.top+15,m.box.right-40,m.box.top+21},3,text,.7f);fill({m.box.left+60,m.box.top+27,m.box.right-70,m.box.top+32},2.5f,text,.35f);dc_->PopLayer();return;}

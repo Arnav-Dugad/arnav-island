@@ -95,12 +95,15 @@ struct ContentSnapshot {
     // Clipboard mode ("clip ..." or Alt+Shift+V) lists copies and shows more rows.
     // Phase 5F: the weather at the chosen place (Open-Meteo, opt-in), when known.
     // sunrise, sunset: today's at the place (Unix seconds; 0 unknown), for the dawn and dusk sky.
-    struct Weather{bool valid=false;double temperature=0;int code=-1;bool day=true;std::wstring place;int64_t sunrise=0,sunset=0;} weather;
+    // now (0.18): everything else the forecast brought, for the weather's own view (weatherView, opened from Home).
+    struct Weather{bool valid=false;double temperature=0;int code=-1;bool day=true;std::wstring place;int64_t sunrise=0,sunset=0;WeatherNow now;} weather;bool weatherView=false;
     // Phase 5F: the Controls page. Radios and dark mode: 1 on, 0 off, -1 unknown, -2 none. busy: switches
     // being changed (1 Wi-Fi, 2 Bluetooth, 4 airplane, 8 dark mode).
     struct Controls{int wifi=-1,bluetooth=-1,dark=-1,busy=0;} controls;
     // Phase 5F: the weekly battery card (notice kind 13): the week summarised, and health now and a week ago.
     BatteryWeek week;double healthNow=-1,healthBefore=-1;
+    // 0.18: the Battery tab's details (paged by rows of three), the week so far, and the first day of the health log.
+    bool batteryDetails=false;int batteryOffset=0;BatteryWeek batteryWeek;double healthFirst=-1;int64_t healthSince=0;
     struct Command{bool clips=false,paste=false;bool active=false,armed=false,error=false;std::wstring text,status;size_t caret=0;int selected=0;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;} command;
 };
 
@@ -241,6 +244,10 @@ public:bool queueGliding()const{return queueGliding_;}private:
     struct SkyPart{ComPtr<IDCompositionVisual> visual;ComPtr<IDCompositionEffectGroup> effect;};std::array<SkyPart,14> skyParts_;
     ComPtr<IDCompositionVisual> sky_;ComPtr<IDCompositionRectangleClip> skyClip_;ComPtr<IDCompositionEffectGroup> skyEffect_;ComPtr<IDCompositionRotateTransform> skyRays_;
     ComPtr<IDCompositionSurface> skySun_,skyStreak_,skyFlake_,skyCloud_,skyFog_,skyStar_,skyFlash_,skyGlow_;
+    // 0.18: the weather on the glass (inside the body, above the glass and beneath everything drawn on it): falling rain
+    // (or snow) as two stacked tiles scrolled down forever, drops beaded on the pane, and fog as two tiles drifting sideways.
+    ComPtr<IDCompositionVisual> weatherFx_,rainFx_,dropsFx_,fogFx_;std::array<ComPtr<IDCompositionVisual>,4> fxTiles_;ComPtr<IDCompositionEffectGroup> weatherFxEffect_;
+    ComPtr<IDCompositionSurface> rainTile_,dropsTile_,fogTile_;std::string weatherFxKey_;void updateWeatherGlass(const ContentSnapshot&);
     // The tile the sky plays in, drawn beneath it (the content's own box is left out), so the tile's text stays above the weather.
     ComPtr<IDCompositionVisual> skyBase_;ComPtr<IDCompositionSurface> skyBaseSurface_;UINT32 skyTile_=0x14171d;float skyTileAlpha_=1;std::wstring skyKey_;bool skyShown_=false,skyWanted_=false;float skyX_=0;
     void skyScene(const ContentSnapshot&,float x);void skyHide();
@@ -311,7 +318,9 @@ public:
     // Test runs only (--qa-glass-only): the DirectComposition layers hidden, so the glass alone can be measured.
     bool qaGlassOnly=false;
     // Test runs only (--qa-frost): the resting frost settles in about a second instead of half a minute.
-    double qaFrostPace=1;void qaFrost(double pace){qaFrostPace=pace;if(frostOn_){frostOn_=false;glass_.frost(false,seconds());}updateFrost();}std::string glassFailure()const{return glass_.failure()+" frostOn="+std::to_string(frostOn_)+" allowed="+std::to_string(frostAllowed_)+" expanded="+std::to_string(expanded_)+" inside="+std::to_string(pointerInside_);}
+    double qaFrostPace=1;void qaFrost(double pace){qaFrostPace=pace;if(frostOn_){frostOn_=false;glass_.frost(false,seconds());}updateFrost();}std::string glassFailure()const{return glass_.failure()+" frostOn="+std::to_string(frostOn_)+" allowed="+std::to_string(frostAllowed_)+" expanded="+std::to_string(expanded_)+" inside="+std::to_string(pointerInside_)+" wx="+weatherFxKey_+" mat="+std::to_string(material_);}
+    // 0.18: rows of three in the Battery tab's details (for paging them with the wheel).
+    int batteryRows_=0;
     bool glassAvailable()const{return glass_.available();}std::string glassError()const{return glass_.lastError_.empty()?shadow_.lastError_:glass_.lastError_;}GlassStyle glassStyle()const{return glass_.current();}UINT32 accentColor()const{return accentColor_;}
     void spectrum(const SpectrumFrame&);
     // Phase 5E: the artwork beat pulse (a scale about the cover's centre, before its size scale).

@@ -20,7 +20,9 @@ enum class Action { None,Overview,Media,System,Focus,Settings,Pin,Close,Play,Pre
     BudPromote=530,
     // Phase 5H (531-552): Up next (its rows dragged to reorder), another PC's Shelf seen from Nearby.
     UpNextOpen=531,UpNextBack=532,UpNextUp=533,UpNextDown=534,UpNextItemBase=535,UpNextItemEnd=540,
-    RemoteShelfBack=540,RemoteShelfRefresh=541,RemoteShelfUp=542,RemoteShelfDown=543,RemoteItemBase=544,RemoteItemEnd=548,NearbyBrowseBase=548,NearbyBrowseEnd=552,ActionEnd=552 };
+    RemoteShelfBack=540,RemoteShelfRefresh=541,RemoteShelfUp=542,RemoteShelfDown=543,RemoteItemBase=544,RemoteItemEnd=548,NearbyBrowseBase=548,NearbyBrowseEnd=552,
+    // 0.18 (552-556): every battery reading, the weather's own view, installing a downloaded update now.
+    BatteryDetails=552,WeatherOpen=553,WeatherBack=554,UpdateRestart=555,ActionEnd=556 };
 inline bool inRange(Action a,Action base,Action end){return int(a)>=int(base)&&int(a)<int(end);}
 // Command bar layout: input 42, then 40 per row, then the key hints.
 inline float commandFooterY(int rows){return 52+40.f*float(rows)+2;}

@@ -199,6 +199,8 @@ std::wstring IslandWindow::accessibleName(Action a)const{
     // Cards.
     case Action::SwitchBack:return L"Switch back";case Action::PrivacyShow:return L"Who is using the camera, microphone or location";case Action::PrivacySettings:return L"Privacy settings";case Action::NoticeDismiss:return L"Dismiss";
     case Action::BudPromote:return L"Show the waiting alert: "+content_.bud.title;
+    case Action::BatteryDetails:return content_.batteryDetails?L"Battery overview":L"All battery details";
+    case Action::WeatherOpen:return L"Weather details";case Action::WeatherBack:return L"Back to Home";case Action::UpdateRestart:return L"Restart to update";
     default:break;}
     // Rows.
     if(inRange(a,Action::ShelfItemBase,Action::MixerSliderBase)){const size_t i=row(Action::ShelfItemBase);return i<content_.shelf.size()?content_.shelf[i].label:L"Shelf item";}

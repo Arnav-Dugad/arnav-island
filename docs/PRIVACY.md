@@ -157,3 +157,9 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **The forecast** now also asks Open-Meteo for today's sunrise and sunset at the same rounded coordinates, in the same request. Nothing else is sent.
 - **The edge light to the beat** listens to what Windows is playing, the same way the waveform does: loudness in a few frequency bands, computed in memory, never recorded or kept. It runs only while music plays and the island is on screen.
 - **Settings previews** are drawn by the Settings window. They show a made-up wallpaper tinted with your wallpaper's colour, not your wallpaper.
+
+## v0.18 updates, air quality and battery details
+
+- **Automatic updates** (on by default, Settings › About › *Update automatically*). A minute and a half after it starts, and every six hours, the island asks GitHub (`api.github.com`) for the list of this app's releases. It downloads a newer one from GitHub, as a browser would. GitHub sees your IP address and the island's name in the request, nothing else. Turning it off stops the checks.
+- **Air quality** comes from Open-Meteo's air quality service, asked with the same rounded coordinates as the forecast, only while weather is on.
+- **Battery details**, including its serial number, are read from Windows on this PC, shown only in the island, and never sent anywhere. Public screenshots use an illustrative battery.

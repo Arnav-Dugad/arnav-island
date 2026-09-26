@@ -9,9 +9,12 @@ constexpr GUID batteryInterface{0x72631e54,0x78a4,0x11d0,{0xbc,0xf7,0x00,0xaa,0x
 std::wstring queryString(HANDLE h,ULONG tag,BATTERY_QUERY_INFORMATION_LEVEL level){BATTERY_QUERY_INFORMATION q{};q.BatteryTag=tag;q.InformationLevel=level;wchar_t text[128]{};DWORD bytes=0;if(!DeviceIoControl(h,IOCTL_BATTERY_QUERY_INFORMATION,&q,sizeof(q),text,sizeof(text)-sizeof(wchar_t),&bytes,nullptr))return {};return std::wstring(text,wcsnlen(text,127));}
 }
 BatteryReading BatteryProvider::query(){
-    BatteryReading r;SYSTEM_POWER_STATUS power{};if(GetSystemPowerStatus(&power)){r.online=power.ACLineStatus==1;if(power.BatteryLifePercent<=100&&!(power.BatteryFlag&128))r.percent=power.BatteryLifePercent;}
+    BatteryReading r;SYSTEM_POWER_STATUS power{};if(GetSystemPowerStatus(&power)){r.online=power.ACLineStatus==1;if(power.BatteryLifePercent<=100&&!(power.BatteryFlag&128))r.percent=power.BatteryLifePercent;
+        r.saver=power.SystemStatusFlag!=0;if(power.BatteryLifeTime!=DWORD(-1)&&power.BatteryLifeTime<48*3600)r.windowsSeconds=int(power.BatteryLifeTime);}
     HDEVINFO set=SetupDiGetClassDevsW(&batteryInterface,nullptr,nullptr,DIGCF_PRESENT|DIGCF_DEVICEINTERFACE);if(set==INVALID_HANDLE_VALUE)return r;
     SP_DEVICE_INTERFACE_DATA data{sizeof(data)};
+    // How many batteries the PC has (the first is read in full).
+    for(DWORD k=0;k<8;++k){SP_DEVICE_INTERFACE_DATA d{sizeof(d)};if(!SetupDiEnumDeviceInterfaces(set,nullptr,&batteryInterface,k,&d))break;++r.count;}
     if(SetupDiEnumDeviceInterfaces(set,nullptr,&batteryInterface,0,&data)){
         DWORD need=0;SetupDiGetDeviceInterfaceDetailW(set,&data,nullptr,0,&need,nullptr);std::vector<BYTE> buffer(std::max<DWORD>(need,sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W)));
         auto* detail=reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(buffer.data());detail->cbSize=sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
@@ -24,10 +27,15 @@ BatteryReading BatteryProvider::query(){
                     if(DeviceIoControl(h,IOCTL_BATTERY_QUERY_INFORMATION,&q,sizeof(q),&info,sizeof(info),&bytes,nullptr)&&(info.Capabilities&BATTERY_SYSTEM_BATTERY)){
                         r.present=true;r.relative=(info.Capabilities&BATTERY_CAPACITY_RELATIVE)!=0;r.designMwh=info.DesignedCapacity;r.fullMwh=info.FullChargedCapacity;r.cycles=info.CycleCount;
                         std::string chemistry(reinterpret_cast<const char*>(info.Chemistry),4);r.chemistry.assign(chemistry.begin(),std::find(chemistry.begin(),chemistry.end(),'\0'));
-                        r.manufacturer=queryString(h,tag,BatteryManufactureName);r.name=queryString(h,tag,BatteryDeviceName);
+                        r.manufacturer=queryString(h,tag,BatteryManufactureName);r.name=queryString(h,tag,BatteryDeviceName);r.serial=queryString(h,tag,BatterySerialNumber);
+                        r.warningMwh=info.DefaultAlert1;r.lowMwh=info.DefaultAlert2;r.criticalBiasMwh=info.CriticalBias;r.rechargeable=info.Technology!=0;
+                        // Optional readings: many batteries report no temperature or date; each simply stays unknown.
+                        {BATTERY_QUERY_INFORMATION t{};t.BatteryTag=tag;t.InformationLevel=BatteryTemperature;ULONG value=0;if(DeviceIoControl(h,IOCTL_BATTERY_QUERY_INFORMATION,&t,sizeof(t),&value,sizeof(value),&bytes,nullptr)&&value>0&&value<4000)r.temperatureDeciK=int(value);}
+                        {BATTERY_QUERY_INFORMATION t{};t.BatteryTag=tag;t.InformationLevel=BatteryManufactureDate;BATTERY_MANUFACTURE_DATE date{};if(DeviceIoControl(h,IOCTL_BATTERY_QUERY_INFORMATION,&t,sizeof(t),&date,sizeof(date),&bytes,nullptr)&&date.Year>=1990&&date.Year<2100&&date.Month>=1&&date.Month<=12&&date.Day>=1&&date.Day<=31){r.madeYear=date.Year;r.madeMonth=date.Month;r.madeDay=date.Day;}}
+                        {BATTERY_QUERY_INFORMATION t{};t.BatteryTag=tag;t.InformationLevel=BatteryEstimatedTime;ULONG value=0;if(DeviceIoControl(h,IOCTL_BATTERY_QUERY_INFORMATION,&t,sizeof(t),&value,sizeof(value),&bytes,nullptr)&&value!=BATTERY_UNKNOWN_TIME&&value<48*3600)r.estimateSeconds=int(value);}
                         BATTERY_WAIT_STATUS request{};request.BatteryTag=tag;BATTERY_STATUS status{};
                         if(DeviceIoControl(h,IOCTL_BATTERY_QUERY_STATUS,&request,sizeof(request),&status,sizeof(status),&bytes,nullptr)){
-                            r.online=(status.PowerState&BATTERY_POWER_ON_LINE)!=0;r.charging=(status.PowerState&BATTERY_CHARGING)!=0;
+                            r.online=(status.PowerState&BATTERY_POWER_ON_LINE)!=0;r.charging=(status.PowerState&BATTERY_CHARGING)!=0;r.critical=(status.PowerState&BATTERY_CRITICAL)!=0;
                             if(status.Capacity!=BATTERY_UNKNOWN_CAPACITY)r.remainingMwh=status.Capacity;if(status.Voltage!=BATTERY_UNKNOWN_VOLTAGE)r.voltageMv=status.Voltage;
                             if(ULONG(status.Rate)!=BATTERY_UNKNOWN_RATE)r.rateMw=status.Rate;
                             if(!r.relative&&r.fullMwh>0&&r.remainingMwh>0&&r.percent<0)r.percent=int(std::lround(100.*r.remainingMwh/r.fullMwh));}

@@ -30,6 +30,7 @@
 #include "Audio/Sounds.h"
 #include "Composition/GlassBackdrop.h"
 #include "Media/Timeline.h"
+#include "Productivity/Update.h"
 #include <fstream>
 #include <regex>
 #include <iostream>
@@ -599,6 +600,40 @@ int main(){try{
         for(auto it=std::sregex_iterator(src.begin(),src.end(),started);it!=std::sregex_iterator();++it)used.insert((*it)[1]);
         std::string missing;for(auto& u:used)if(!known.count(u))missing+=u+" ";
         test(used.size()>=15&&missing.empty(),("the glass's properties all exist before its expressions and springs start (missing: "+missing+")").c_str());}
+    // ---- 0.18: updates, every weather reading, every battery reading, settings v18 ----------------------------
+    {test(parseVersion("0.17.0-preview.3").valid&&parseVersion("v0.18.0").valid&&!parseVersion("0.18").valid&&!parseVersion("0.18.0-beta.1").valid&&!parseVersion("x0.1.0").valid&&!parseVersion("0.18.0-preview.").valid,"versions are read strictly");
+        test(parseVersion("0.17.0-preview.3")<parseVersion("0.17.0-preview.10")&&parseVersion("0.17.0-preview.10")<parseVersion("0.17.0")&&parseVersion("0.17.0")<parseVersion("0.18.0-preview.1")&&parseVersion("0.9.9")<parseVersion("0.10.0"),"a final release follows its previews, and numbers compare as numbers");
+        test(versionText(parseVersion("v0.18.0-preview.2"))==L"0.18.0-preview.2"&&versionText(parseVersion("1.0.0"))==L"1.0.0","versions print back as written");
+        const std::string list=R"([{"tag_name":"v0.19.0-preview.1","draft":true,"assets":[{"name":"Arnav-Island-0.19.0-preview.1-win-x64.zip","browser_download_url":"https://github.com/Arnav-Dugad/arnav-island/releases/download/v0.19.0-preview.1/a-win-x64.zip"},{"name":"a-win-x64.zip.sha256","browser_download_url":"https://github.com/Arnav-Dugad/arnav-island/releases/download/v0.19.0-preview.1/a-win-x64.zip.sha256"}]},
+            {"tag_name":"v0.18.0-preview.2","draft":false,"prerelease":true,"assets":[{"name":"Arnav-Island-0.18.0-preview.2-win-x64.zip","browser_download_url":"https://evil.example/x-win-x64.zip"},{"name":"Arnav-Island-0.18.0-preview.2-win-x64.zip.sha256","browser_download_url":"https://github.com/Arnav-Dugad/arnav-island/releases/download/v0.18.0-preview.2/x-win-x64.zip.sha256"}]},
+            {"tag_name":"v0.18.0-preview.1","draft":false,"prerelease":true,"assets":[{"name":"Arnav-Island-0.18.0-preview.1-win-x64.zip","browser_download_url":"https://github.com/Arnav-Dugad/arnav-island/releases/download/v0.18.0-preview.1/Arnav-Island-0.18.0-preview.1-win-x64.zip"},{"name":"Arnav-Island-0.18.0-preview.1-win-x64.zip.sha256","browser_download_url":"https://github.com/Arnav-Dugad/arnav-island/releases/download/v0.18.0-preview.1/Arnav-Island-0.18.0-preview.1-win-x64.zip.sha256"}]},
+            {"tag_name":"v0.17.0-preview.3","draft":false,"assets":[]}])";
+        auto chosen=newestRelease(list,parseVersion("0.17.0-preview.3"));
+        test(chosen&&versionText(chosen->version)==L"0.18.0-preview.1"&&chosen->zipUrl.ends_with("0.18.0-preview.1-win-x64.zip")&&chosen->shaUrl.ends_with(".sha256"),"the newest published release with both files from the repository itself is chosen (drafts and other addresses are skipped)");
+        test(!newestRelease(list,parseVersion("0.18.0-preview.1"))&&!newestRelease("{}",parseVersion("0.1.0"))&&!newestRelease("not json",parseVersion("0.1.0")),"nothing newer, or nothing readable: no update");
+        const std::string digest="03b44e71dadfbe4b041cafe53928399adc2bd1ada9d95d2d66457a6a127f5d21";
+        test(checksumMatches(digest+"  Arnav-Island.zip\r\n",digest)&&checksumMatches("03B44E71DADFBE4B041CAFE53928399ADC2BD1ADA9D95D2D66457A6A127F5D21",digest)&&!checksumMatches(digest.substr(0,63)+"0  a.zip",digest)&&!checksumMatches(digest+"0",digest)&&!checksumMatches("",digest),"checksums must match exactly, in either case");
+        auto [host,path]=splitUrl("https://github.com/Arnav-Dugad/arnav-island/releases/download/v1/a.zip");test(host==L"github.com"&&path==L"/Arnav-Dugad/arnav-island/releases/download/v1/a.zip"&&splitUrl("http://github.com/a").first.empty(),"only HTTPS addresses are followed");}
+    {const auto full=parseForecast(R"({"utc_offset_seconds":3600,"current":{"temperature_2m":14.7,"relative_humidity_2m":62,"apparent_temperature":12.5,"is_day":0,"precipitation":0.2,"weather_code":61,"cloud_cover":100,"pressure_msl":1021.3,"wind_speed_10m":10.4,"wind_direction_10m":337,"wind_gusts_10m":22.7,"visibility":25840.0,"uv_index":0.0,"dew_point_2m":7.5},
+            "hourly":{"time":["2026-09-26T04:00","2026-09-26T05:00","2026-09-26T06:00"],"temperature_2m":[15.0,14.4,999],"weather_code":[3,61,0],"precipitation_probability":[0,40,0],"is_day":[0,0,1]},
+            "daily":{"sunrise":["2026-09-26T06:52"],"sunset":["2026-09-26T18:49"],"temperature_2m_max":[19.8],"temperature_2m_min":[13.2],"precipitation_sum":[1.4],"precipitation_probability_max":[60],"uv_index_max":[3.0],"daylight_duration":[43034.39]}})");
+        test(full&&full->humidity==62&&full->feels==12.5&&full->windFrom==337&&full->gusts==22.7&&full->pressure==1021.3&&full->visibility==25840&&full->cloud==100&&full->dewPoint==7.5&&full->uv==0&&full->precipitation==.2,"the forecast brings every current reading");
+        test(full&&full->high==19.8&&full->low==13.2&&full->rainTotal==1.4&&full->rainChance==60&&full->uvMax==3&&std::abs(full->daylight-43034.39)<1e-6,"and today's high, low, rain, UV and daylight");
+        test(full&&full->hours.size()==2&&full->hours[1].code==61&&full->hours[1].rain==40&&full->hours[0].time==localToUnix("2026-09-26T04:00",3600),"and the next hours (an impossible one is left out)");
+        const auto bare=parseForecast(R"({"current":{"temperature_2m":10,"weather_code":0,"relative_humidity_2m":150,"wind_speed_10m":"fast"}})");
+        test(bare&&std::isnan(bare->humidity)&&std::isnan(bare->wind)&&std::isnan(bare->high)&&bare->hours.empty(),"missing or impossible readings stay unknown");
+        WeatherNow air;test(parseAirQuality(R"({"current":{"us_aqi":55,"pm2_5":6.1}})",air)&&air.aqi==55&&air.pm25==6.1&&!parseAirQuality("{}",air),"air quality is read when it's there");
+        test(std::wstring(compassPoint(0))==L"N"&&std::wstring(compassPoint(337))==L"NNW"&&std::wstring(compassPoint(359))==L"N"&&std::wstring(compassPoint(225))==L"SW"&&std::wstring(compassPoint(NAN)).empty(),"wind directions are compass points");
+        test(std::wstring(uvWord(2))==L"Low"&&std::wstring(uvWord(7))==L"High"&&std::wstring(uvWord(12))==L"Extreme"&&std::wstring(aqiWord(40))==L"Good"&&std::wstring(aqiWord(120))==L"Sensitive"&&std::wstring(aqiWord(350))==L"Hazardous","UV and air quality in words");
+        test(windText(16.09,1)==L"10 mph"&&windText(10.4,0)==L"10 km/h"&&distanceText(25840,0)==L"26 km"&&distanceText(9200,0)==L"9.2 km"&&distanceText(1609.344,1)==L"1.0 mi"&&pressureText(1013.25,0)==L"1013 hPa"&&pressureText(1013.25,1)==L"29.92 inHg"&&rainText(3.4,0)==L"3.4 mm"&&rainText(25.4,1)==L"1.00 in","readings in either unit");
+        test(forecastPath(WeatherPlace{L"x",51.51,-0.13}).find(L"apparent_temperature")!=std::wstring::npos&&forecastPath(WeatherPlace{L"x",51.51,-0.13}).find(L"forecast_hours=13")!=std::wstring::npos&&airQualityPath(WeatherPlace{L"x",51.51,-0.13}).find(L"us_aqi")!=std::wstring::npos,"the forecast asks for all of it, at the rounded coordinates");}
+    {BatteryReading r;r.voltageMv=12500;r.rateMw=-10000;r.fullMwh=50000;r.lowMwh=2500;r.temperatureDeciK=3041;
+        test(r.currentMa()==-800&&r.percentOf(r.lowMwh)==5&&std::abs(r.celsius()-30.95)<1e-9,"current, levels and temperature come from the battery's readings");
+        r.relative=true;BatteryReading hot;hot.temperatureDeciK=9000;test(r.currentMa()==0&&r.percentOf(2500)==-1&&std::isnan(hot.celsius())&&std::isnan(BatteryReading{}.celsius()),"relative units and impossible temperatures stay unknown");
+        test(chemistryName(L"LION")==L"Lithium-ion"&&chemistryName(L"LiP")==L"Lithium polymer"&&chemistryName(L"NiMH")==L"Nickel-metal hydride"&&chemistryName(L"OOI0").empty(),"chemistry codes in words; unknown codes are left out");}
+    {std::stringstream v17("version 17\nclearTint 30\n");auto s=Settings::parse(v17);test(s.version==Settings::currentVersion&&s.clearTint==30&&s.weatherGlass&&s.autoUpdate,"v17 settings gain the v18 features (weather on the glass, updates)");
+        Settings off;off.weatherGlass=false;off.autoUpdate=false;std::stringstream io;off.write(io);auto back=Settings::parse(io);test(!back.weatherGlass&&!back.autoUpdate&&back.version==Settings::currentVersion,"v18 settings round-trip");
+        int found=0;for(auto& i:settingItems()){if(i.key=="weatherGlass"&&i.section==2)++found;if(i.key=="autoUpdate"&&i.section==9)++found;if(i.action==SettingAction::CheckUpdates&&i.section==9)++found;}test(found==3,"Settings has weather on the glass, automatic updates and Check now");}
     // ---- 0.17.0-preview.3: settings v17, the sky at sunrise and sunset ---------------------------------------
     {std::stringstream v16("version 16\nglassTint 70\n");auto s=Settings::parse(v16);test(s.version==Settings::currentVersion&&s.glassTint==70&&s.clearTint==50&&s.beatEdge&&s.restFrost,"v16 settings gain the v17 features (Clear's own tint, the beat light, the settling frost)");
         Settings off;off.clearTint=20;off.beatEdge=false;off.restFrost=false;std::stringstream io;off.write(io);auto back=Settings::parse(io);test(back.clearTint==20&&!back.beatEdge&&!back.restFrost&&back.version==Settings::currentVersion,"v17 settings round-trip");

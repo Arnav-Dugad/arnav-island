@@ -30,7 +30,8 @@ void WeatherService::run(){
             else{problem=L"Open-Meteo could not be reached. The island will try again";offline=true;std::lock_guard lock(mutex_);if(pending_.empty())pending_=town;}}
         std::optional<WeatherPlace> place;{std::lock_guard lock(mutex_);place=place_;}
         if(place&&problem.empty()){auto body=httpsGet(L"api.open-meteo.com",forecastPath(*place));auto parsed=body?parseForecast(*body):std::nullopt;
-            if(parsed){std::lock_guard lock(mutex_);now_=parsed;}else{problem=L"The weather could not be fetched. The island will try again";offline=true;}}
+            // The air quality comes from a second service; without it the weather still shows.
+            if(parsed){if(auto air=httpsGet(L"air-quality-api.open-meteo.com",airQualityPath(*place)))parseAirQuality(*air,*parsed);std::lock_guard lock(mutex_);now_=parsed;}else{problem=L"The weather could not be fetched. The island will try again";offline=true;}}
         wait=offline?2*60*1000:30*60*1000;
         {std::lock_guard lock(mutex_);status_=problem;}
         if(place||!problem.empty())PostMessageW(window_,WeatherMessage,problem.empty()?0:1,0);

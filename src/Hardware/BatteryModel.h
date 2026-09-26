@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <cmath>
+#include <cwctype>
 #include <cstdint>
 #include <deque>
 #include <istream>
@@ -15,9 +16,28 @@ namespace nexus {
 struct BatteryReading {
     bool present=false,online=false,charging=false,relative=false;int percent=-1;
     long long designMwh=0,fullMwh=0,remainingMwh=0,rateMw=0,voltageMv=0;unsigned cycles=0;std::wstring chemistry,manufacturer,name;
+    // 0.18: everything else the battery and Windows report. warning and low: the levels (mWh) at which Windows warns;
+    // criticalBias: capacity the firmware holds back; temperature in tenths of a kelvin (0 unknown); the driver's own
+    // estimate and Windows' (seconds, -1 unknown); saver: Windows' battery saver; count: batteries in the PC.
+    long long warningMwh=0,lowMwh=0,criticalBiasMwh=0;int temperatureDeciK=0,estimateSeconds=-1,windowsSeconds=-1,count=0,madeYear=0,madeMonth=0,madeDay=0;
+    bool saver=false,critical=false,rechargeable=true;std::wstring serial;
     // Full-charge capacity as a share of design capacity; -1 when unknown.
     double health()const{return !relative&&designMwh>0&&fullMwh>0?std::min(1.,double(fullMwh)/double(designMwh)):-1;}
+    // Current in milliamps (positive while charging), from the rate and the voltage; 0 when unknown.
+    long long currentMa()const{return !relative&&voltageMv>0&&rateMw!=0?rateMw*1000/voltageMv:0;}
+    // Degrees Celsius, or NaN when the battery doesn't say (or says something impossible).
+    double celsius()const{const double c=temperatureDeciK/10.-273.15;return temperatureDeciK>0&&c>-40&&c<100?c:std::nan("");}
+    // A level (mWh) as a share of the full charge, in percent; -1 when unknown.
+    int percentOf(long long mwh)const{return !relative&&fullMwh>0&&mwh>0?int(std::lround(100.*double(mwh)/double(fullMwh))):-1;}
 };
+// The battery's chemistry code (four letters, as the firmware reports it) in words; empty when it isn't a standard code.
+inline std::wstring chemistryName(const std::wstring& code){
+    std::wstring c;for(wchar_t ch:code)if(ch!=L' ')c+=wchar_t(std::towupper(ch));
+    if(c==L"LION"||c==L"LI-I"||c==L"LIION"||c==L"LI"||c==L"LI-ION")return L"Lithium-ion";if(c==L"LIP"||c==L"LIPO"||c==L"LI-P")return L"Lithium polymer";
+    if(c==L"PBAC")return L"Lead acid";if(c==L"NICD")return L"Nickel-cadmium";if(c==L"NIMH")return L"Nickel-metal hydride";if(c==L"NIZN")return L"Nickel-zinc";if(c==L"RAM")return L"Rechargeable alkaline";
+    // Anything else (some firmware reports a vendor code such as "OOI0") is left unsaid rather than shown as it is.
+    return {};
+}
 // Smoothed rate and derived estimates. Charging slows near full, so the
 // time-to-full estimate is always labelled approximate by the UI.
 struct BatteryEstimate {

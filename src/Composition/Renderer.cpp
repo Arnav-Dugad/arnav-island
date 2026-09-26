@@ -77,6 +77,10 @@ void Renderer::initialize(HWND hwnd,float dpi,HWND shadow) {
         b.clip->SetTop(std::round(float(k)*48*scale_));b.clip->SetBottom(k+1==bands_.size()?std::ceil(340*scale_):std::round(float(k+1)*48*scale_));b.visual->SetClip(b.clip.Get());check(content_->AddVisual(b.visual.Get(),FALSE,nullptr));}
     check(content_->AddVisual(cardRing_.Get(),FALSE,nullptr));
     check(device_->CreateVisual(&sheen_));check(device_->CreateEffectGroup(&sheenEffect_));sheen_->SetEffect(sheenEffect_.Get());sheenEffect_->SetOpacity(0.f);check(body_->AddVisual(sheen_.Get(),TRUE,inner_.Get()));
+    // The weather on the glass, just above the fill (beneath the beat light, the pointer's light and all content).
+    check(device_->CreateVisual(&weatherFx_));check(device_->CreateEffectGroup(&weatherFxEffect_));weatherFx_->SetEffect(weatherFxEffect_.Get());weatherFxEffect_->SetOpacity(0.f);check(body_->AddVisual(weatherFx_.Get(),TRUE,inner_.Get()));
+    for(auto* v:{std::addressof(rainFx_),std::addressof(dropsFx_),std::addressof(fogFx_)}){check(device_->CreateVisual(v->GetAddressOf()));check(weatherFx_->AddVisual(v->Get(),FALSE,nullptr));}
+    for(size_t k=0;k<fxTiles_.size();++k){check(device_->CreateVisual(&fxTiles_[k]));check((k<2?rainFx_:fogFx_)->AddVisual(fxTiles_[k].Get(),FALSE,nullptr));}
     // The solid island's beat light, just above its fill (beneath the pointer's light and all content).
     check(device_->CreateVisual(&beatLight_));check(device_->CreateEffectGroup(&beatLightEffect_));beatLight_->SetEffect(beatLightEffect_.Get());beatLightEffect_->SetOpacity(0.f);check(body_->AddVisual(beatLight_.Get(),TRUE,inner_.Get()));
     for(auto& v:beatStrips_){check(device_->CreateVisual(&v));check(beatLight_->AddVisual(v.Get(),FALSE,nullptr));}
@@ -226,7 +230,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         surface(navMiddleSurface_,2,44,[&](auto* rt){rt->Clear(D2D1::ColorF(ink,.055f));});
         navCapLeft_->SetContent(navSurface_.Get());navCapRight_->SetContent(navSurface_.Get());navMiddle_->SetContent(navMiddleSurface_.Get());
     }
-    wingLeft_->SetContent(attached&&!glass?leftSurface_.Get():nullptr);wingRight_->SetContent(attached&&!glass?rightSurface_.Get():nullptr);barEffect_->SetOpacity(s.page==Page::Overview&&s.expanded&&!s.live?1.f:0.f);
+    wingLeft_->SetContent(attached&&!glass?leftSurface_.Get():nullptr);wingRight_->SetContent(attached&&!glass?rightSurface_.Get():nullptr);barEffect_->SetOpacity(s.page==Page::Overview&&!s.weatherView&&s.expanded&&!s.live?1.f:0.f);
     {const bool pulse=s.settings.artPulse&&!s.reducedMotion&&s.playback.playing&&bool(s.playback.artwork);
         setArtPulse(pulse);}
     setBeatEdge(s.settings.beatEdge&&!s.reducedMotion&&s.playback.playing,accent,glass,s.reducedMotion);
@@ -296,7 +300,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         // A new label eases in, except a line of lyrics after another or a tick of the timer, which move on their own.
         const std::wstring labelKey=sung?L"\x1fsung":rolling?L"\x1ftimer":label;
         if(labelKey!=headerLabel_){if(restCompact_&&!s.expanded&&!s.reducedMotion&&!headerLabel_.empty()){headerEntrance_=seconds();auto a=entrance(headerEntrance_,.35f);headerEffect_->SetOpacity(a.Get());}headerLabel_=labelKey;}
-    });header_->SetContent(headerSurface_.Get());placeOdometers(headerSpots_,{1,6,7,8,9,10,11,12},header_.Get(),s.reducedMotion);lineLyric(compactLyric_,header_.Get(),s,lyricOn,sungX,0,sungW,34,11.5f,ink,s.reducedMotion);adapt_=nullptr;if(headerOnly){commit();return;}
+    });header_->SetContent(headerSurface_.Get());placeOdometers(headerSpots_,{1,6,7,8,9,10,11,12},header_.Get(),s.reducedMotion);lineLyric(compactLyric_,header_.Get(),s,lyricOn,sungX,0,sungW,34,11.5f,ink,s.reducedMotion);adapt_=nullptr;if(headerOnly){updateWeatherGlass(s);commit();return;}
     drawingContent_=true;iconRequests_.clear();caretTarget_=42;answerY_=-1;answerText_.clear();contentSpots_.clear();bool liveLyricOn=false;
     // Four DIPs wider and taller than the bands show: a band sampled at its edge (a sub-pixel offset while a
     // spring settles) then reads this surface's own clear pixels, not whatever the compositor packed beside it.
@@ -372,6 +376,9 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             button(Action::PrivacySettings,L"Settings",198,26,82,24);
             return;
         }
+        // 0.18: the island has just updated itself.
+        if(s.card&&s.notice.kind==18){box(12,10,44,44,raised,22);drawIcon(rt,d2d_.Get(),Icon::Spark,22,20,24,accent);
+            text(rt,s.notice.app,72,8,300,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.notice.detail,72,32,300,10.5f,muted);return;}
         if(s.card&&s.notice.kind>=14&&s.notice.kind<=17){
             // Sharing: the pairing code both PCs show, a file to accept, or how a transfer or a pairing went.
             // A detail too long for its room keeps what follows its first dot (a size, where it's from) and shortens the name.
@@ -461,8 +468,36 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             targets.push_back({Action(int(Action::SessionBase)+i),x,-2,24,24});}
         // The weather statistic's sky plays while Home shows it.
         {int slot=-1;for(int i=0;i<3;++i)if(s.settings.homeMetrics[i]==8)slot=i;
-            skyWanted_=s.page==Page::Overview&&s.expanded&&!s.live&&!s.card&&slot>=0&&s.settings.weather&&s.weather.valid&&!s.reducedMotion;skyX_=slot*130.f;}
-        if(s.page==Page::Overview){
+            skyWanted_=s.page==Page::Overview&&!s.weatherView&&s.expanded&&!s.live&&!s.card&&slot>=0&&s.settings.weather&&s.weather.valid&&!s.reducedMotion;skyX_=slot*130.f;}
+        if(s.page==Page::Overview&&s.weatherView&&s.weather.valid){
+            // 0.18: the weather's own view: now, the next hours, and every reading.
+            const auto& n=s.weather.now;const int unit=s.settings.weatherUnit;const UINT32 rain=s.light?0x2f6fb8:0x7fb6ff;
+            auto sky=[](int code,bool day){switch(skyOf(code)){case Sky::Clear:return day?Icon::Sun:Icon::Moon;case Sky::PartlyCloudy:return day?Icon::PartlyCloudy:Icon::Cloud;case Sky::Cloudy:return Icon::Cloud;case Sky::Fog:return Icon::Fog;case Sky::Drizzle:case Sky::Rain:return Icon::Rain;case Sky::Snow:return Icon::Snow;default:return Icon::Storm;}};
+            auto clock=[](int64_t unix,bool hourOnly){if(unix<=0)return std::wstring(L"\u2014");std::time_t t=std::time_t(unix);std::tm tm{};localtime_s(&tm,&t);SYSTEMTIME st{};st.wYear=WORD(tm.tm_year+1900);st.wMonth=WORD(tm.tm_mon+1);st.wDay=WORD(tm.tm_mday);st.wHour=WORD(tm.tm_hour);st.wMinute=WORD(tm.tm_min);
+                wchar_t b[32]{};GetTimeFormatEx(LOCALE_NAME_USER_DEFAULT,hourOnly?TIME_NOMINUTESORSECONDS:TIME_NOSECONDS,&st,nullptr,b,32);return std::wstring(b);};
+            iconButton(Action::WeatherBack,Icon::ArrowLeft,0,38,28,28);
+            drawIcon(rt,d2d_.Get(),sky(s.weather.code,s.weather.day),36,42,22,ink);text(rt,temperatureText(s.weather.temperature,unit),64,30,110,30,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,40);
+            const std::wstring place=s.weather.place.substr(0,s.weather.place.find(L','));text(rt,std::wstring(skyName(skyOf(s.weather.code)))+L"  \u00b7  "+place,36,70,200,10,muted);
+            {std::wstring hl;if(std::isfinite(n.high)&&std::isfinite(n.low))hl=L"H "+temperatureText(n.high,unit)+L"   L "+temperatureText(n.low,unit);text(rt,hl,200,36,180,12,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_TRAILING);
+                if(std::isfinite(n.feels))text(rt,L"Feels like "+temperatureText(n.feels,unit),200,54,180,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);
+                if(s.weather.sunrise>0)text(rt,L"Sunrise "+clock(s.weather.sunrise,false)+L"  \u00b7  Sunset "+clock(s.weather.sunset,false),160,70,220,9.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
+            // The next hours: the time, the sky, the temperature and (from 20%) the chance of rain.
+            hairline(0,88,380);{const int64_t now=int64_t(std::time(nullptr));int column=0;
+                for(const auto& h:n.hours){if(h.time+3600<=now)continue;if(column>=8)break;const float x=float(column)*47.5f;
+                    text(rt,column==0?std::wstring(L"Now"):clock(h.time,true),x,91,47,8.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER);drawIcon(rt,d2d_.Get(),sky(h.code,h.day),x+16,104,15,ink);
+                    text(rt,temperatureText(h.temperature,unit),x,119,47,11,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_CENTER);if(h.rain>=20)text(rt,std::to_wstring(h.rain)+L"%",x,132,47,8,rain,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_CENTER);++column;}
+                if(!column)text(rt,L"The next hours appear with the next forecast",0,116,380,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER);}
+            hairline(0,145,380);
+            // Every reading, four to a row.
+            {std::vector<std::pair<const wchar_t*,std::wstring>> cells;auto add=[&](const wchar_t* name,std::wstring v){if(!v.empty())cells.push_back({name,std::move(v)});};
+                auto whole=[](double v,const wchar_t* suffix){return std::isfinite(v)?std::to_wstring(long(std::lround(v)))+suffix:std::wstring();};
+                add(L"HUMIDITY",whole(n.humidity,L"%"));if(std::isfinite(n.wind))add(L"WIND",std::wstring(compassPoint(n.windFrom))+(std::isfinite(n.windFrom)?L" ":L"")+windText(n.wind,unit));add(L"GUSTS",windText(n.gusts,unit));
+                if(std::isfinite(n.uv))add(L"UV INDEX",whole(n.uv,L"")+L"  "+uvWord(n.uv));if(std::isfinite(n.aqi))add(L"AIR QUALITY",whole(n.aqi,L"")+L"  "+aqiWord(n.aqi));else if(std::isfinite(n.pm25)){wchar_t b[24];swprintf(b,24,L"%.0f \u00b5g/m\u00b3",n.pm25);add(L"PM2.5",b);}
+                add(L"PRESSURE",pressureText(n.pressure,unit));add(L"VISIBILITY",distanceText(n.visibility,unit));if(std::isfinite(n.dewPoint))add(L"DEW POINT",temperatureText(n.dewPoint,unit));
+                add(L"CLOUD COVER",whole(n.cloud,L"%"));add(L"RAIN CHANCE",whole(n.rainChance,L"%"));add(L"RAIN TODAY",rainText(n.rainTotal,unit));
+                if(std::isfinite(n.daylight)){const int m=int(n.daylight/60);add(L"DAYLIGHT",std::to_wstring(m/60)+L" h "+std::to_wstring(m%60)+L" min");}
+                for(size_t k=0;k<cells.size()&&k<12;++k){const float x=float(k%4)*96,y=150+float(k/4)*26;text(rt,cells[k].first,x,y,92,8,muted);text(rt,cells[k].second,x,y+11,94,11,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}}
+        }else if(s.page==Page::Overview){
             if(!s.playback.artwork){box(0,43,64,64,raised,15);if(logoArt)identity(rt,s.playback,12,55,40,solidRaised);else drawIcon(rt,d2d_.Get(),Icon::Music,19,62,26,muted);}
             // Title and artist sit as one block centred on the artwork (43..107), as does the play button.
             text(rt,s.playback.available?s.playback.title:L"A quieter place for everything",80,52,252,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.playback.available?s.playback.artist:L"Play something. Find your rhythm.",80,77,252,11,muted);iconButton(Action::Play,s.playback.playing?Icon::Pause:Icon::Play,340,55,40,40,true,s.playback.canToggle);targets.push_back({Action::Media,0,38,328,74});
@@ -471,7 +506,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             const Icon glyphs[]={Icon::Processor,Icon::Memory,Icon::Battery,Icon::Download,Icon::Upload,Icon::Disk,Icon::Clock,Icon::Gauge,s.weather.valid?skyIcon(s.weather.code,s.weather.day):Icon::Cloud};
             const std::wstring place=s.weather.valid?s.weather.place.substr(0,s.weather.place.find(L',')):std::wstring(L"Weather");const wchar_t* names[]={L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime",L"GPU",place.c_str()};
             skyTile_=raised;skyTileAlpha_=raised==0xffffff?raisedAlpha:1.f;
-            for(int i=0;i<3;++i){int metric=s.settings.homeMetrics[i];float x=i*130.f;if(!(metric==8&&skyWanted_))box(x,126,120,68,raised,13);drawIcon(rt,d2d_.Get(),glyphs[metric],x+12,137,14,muted);text(rt,names[metric],x+33,136,77,10,muted);std::wstring number;switch(metric){case 0:number=value(s.system.cpu)+ (s.system.cpu>=0?L"%":L"");break;case 1:number=s.system.ramTotalGiB?value(s.system.ramPercent)+L"%":L"—";break;case 2:number=s.battery>=0?std::to_wstring(s.battery)+L"%":L"—";break;case 3:number=s.system.networkAvailable?rateText(s.system.download):L"—";break;case 4:number=s.system.networkAvailable?rateText(s.system.upload):L"—";break;case 5:number=s.system.diskTotalGiB?value(s.system.diskFreeGiB)+L" GB":L"—";break;case 7:number=s.system.gpu<0?L"—":value(s.system.gpu)+L"%";break;case 8:number=s.settings.weather&&s.weather.valid?temperatureText(s.weather.temperature,s.settings.weatherUnit):L"—";break;default:number=clockText(double(s.system.uptime));break;}contentSpots_.push_back({3+i,number,x+12,156,metric>=3&&metric!=7&&metric!=8?18.f:23.f,DWRITE_FONT_WEIGHT_SEMI_BOLD,ink});
+            for(int i=0;i<3;++i){int metric=s.settings.homeMetrics[i];float x=i*130.f;if(!(metric==8&&skyWanted_))box(x,126,120,68,raised,13);if(metric==8&&s.weather.valid)targets.push_back({Action::WeatherOpen,x,126,120,68});drawIcon(rt,d2d_.Get(),glyphs[metric],x+12,137,14,muted);text(rt,names[metric],x+33,136,77,10,muted);std::wstring number;switch(metric){case 0:number=value(s.system.cpu)+ (s.system.cpu>=0?L"%":L"");break;case 1:number=s.system.ramTotalGiB?value(s.system.ramPercent)+L"%":L"—";break;case 2:number=s.battery>=0?std::to_wstring(s.battery)+L"%":L"—";break;case 3:number=s.system.networkAvailable?rateText(s.system.download):L"—";break;case 4:number=s.system.networkAvailable?rateText(s.system.upload):L"—";break;case 5:number=s.system.diskTotalGiB?value(s.system.diskFreeGiB)+L" GB":L"—";break;case 7:number=s.system.gpu<0?L"—":value(s.system.gpu)+L"%";break;case 8:number=s.settings.weather&&s.weather.valid?temperatureText(s.weather.temperature,s.settings.weatherUnit):L"—";break;default:number=clockText(double(s.system.uptime));break;}contentSpots_.push_back({3+i,number,x+12,156,metric>=3&&metric!=7&&metric!=8?18.f:23.f,DWRITE_FONT_WEIGHT_SEMI_BOLD,ink});
                 if(metric==8&&s.weather.valid){const auto phase=sunPhase(int64_t(std::time(nullptr)),s.weather.sunrise,s.weather.sunset,s.weather.day);
                     // At sunrise and sunset the low sun sits in the tile's corner, so the word moves left of it.
                     const bool low=phase==SunPhase::Dawn||phase==SunPhase::Dusk;
@@ -544,6 +579,34 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 button(Action::LibraryOpen,L"Library",tx+158,178,96,26);}text(rt,s.playback.duration>0?clockText(s.playback.duration):L"",300,204,80,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING,22);
         }else if(s.page==Page::System&&s.statsTab==1){
             const auto& p=s.power;const int percent=s.battery;const bool charging=p.charging||(s.charging&&!p.present);
+            if(s.batteryDetails){
+                // 0.18: every reading the battery and Windows report, three to a row; the wheel pages through them.
+                std::vector<std::pair<std::wstring,std::wstring>> rows;auto wh=[](long long mwh){wchar_t b[32];swprintf(b,32,L"%.1f Wh",double(mwh)/1000.);return std::wstring(b);};
+                auto add=[&](const wchar_t* name,std::wstring v){if(!v.empty())rows.push_back({name,std::move(v)});};
+                const bool absolute=p.present&&!p.relative;const double health=p.health();
+                if(health>=0){add(L"HEALTH",std::to_wstring(int(std::lround(health*100)))+L"%");add(L"WEAR",std::to_wstring(int(std::lround((1-health)*100)))+L"%");}
+                if(absolute&&p.designMwh>0)add(L"DESIGN CAPACITY",wh(p.designMwh));if(absolute&&p.fullMwh>0)add(L"FULL CHARGE",wh(p.fullMwh));if(absolute&&p.remainingMwh>0)add(L"REMAINING",wh(p.remainingMwh));
+                if(absolute&&p.rateMw!=0){wchar_t b[32];swprintf(b,32,L"%.1f W",std::abs(double(p.rateMw))/1000.);add(p.rateMw>0?L"CHARGING AT":L"DRAWING",b);}
+                if(p.voltageMv>0){wchar_t b[32];swprintf(b,32,L"%.2f V",double(p.voltageMv)/1000.);add(L"VOLTAGE",b);}
+                if(p.currentMa()!=0){wchar_t b[32];swprintf(b,32,L"%.2f A",std::abs(double(p.currentMa()))/1000.);add(L"CURRENT",b);}
+                if(p.cycles)add(L"CYCLES",std::to_wstring(p.cycles));
+                if(!std::isnan(p.celsius())){const double c=p.celsius();wchar_t b[32];if(s.settings.weatherUnit)swprintf(b,32,L"%.0f\u00b0F",c*9/5+32);else swprintf(b,32,L"%.1f\u00b0C",c);add(L"TEMPERATURE",b);}
+                if(!p.chemistry.empty())add(L"CHEMISTRY",chemistryName(p.chemistry));
+                add(L"MANUFACTURER",p.manufacturer);add(L"MODEL",p.name);add(L"SERIAL NUMBER",p.serial);
+                if(p.madeYear){wchar_t b[32];swprintf(b,32,L"%04d-%02d-%02d",p.madeYear,p.madeMonth,p.madeDay);add(L"MADE",b);}
+                if(p.percentOf(p.warningMwh)>0)add(L"WINDOWS WARNS AT",std::to_wstring(p.percentOf(p.warningMwh))+L"%");if(p.percentOf(p.lowMwh)>0)add(L"LOW LEVEL",std::to_wstring(p.percentOf(p.lowMwh))+L"%");
+                if(absolute&&p.criticalBiasMwh>0)add(L"HELD IN RESERVE",wh(p.criticalBiasMwh));
+                {const int w=p.windowsSeconds>=0?p.windowsSeconds:p.estimateSeconds;if(w>=0&&!p.online)add(L"WINDOWS ESTIMATE",durationText(w/60));}
+                if(s.powerMode>=0)add(L"POWER MODE",powerModeName(s.powerMode));add(L"BATTERY SAVER",p.saver?L"On":L"Off");
+                if(s.batteryWeek.days>0){wchar_t b[32];swprintf(b,32,L"%.1f h",s.batteryWeek.hoursOnBattery);add(L"ON BATTERY, 7 DAYS",b);if(s.batteryWeek.usedPerDay>=0)add(L"USED PER DAY",std::to_wstring(int(std::lround(s.batteryWeek.usedPerDay)))+L"%");add(L"CHARGES, 7 DAYS",std::to_wstring(s.batteryWeek.charges));}
+                if(s.healthFirst>=0&&health>=0&&s.healthSince>0){std::time_t t=std::time_t(s.healthSince);std::tm tm{};gmtime_s(&tm,&t);wchar_t month[16]{};wcsftime(month,16,L"%b %Y",&tm);wchar_t b[48];swprintf(b,48,L"%+.1f since %ls",(health-s.healthFirst)*100,month);add(L"HEALTH CHANGE",b);}
+                if(p.count>1)add(L"BATTERIES",std::to_wstring(p.count));if(p.critical)add(L"STATE",L"Critical");
+                if(rows.empty())label(L"This PC doesn\u2019t report battery details",0,90,380,40,12,muted,DWRITE_FONT_WEIGHT_NORMAL);
+                batteryRows_=int((rows.size()+2)/3);const int first=std::clamp(s.batteryOffset,0,std::max(0,batteryRows_-6));
+                for(size_t k=size_t(first)*3;k<rows.size()&&k<size_t(first+6)*3;++k){const float x=float(k%3)*128,y=34+float(int(k/3)-first)*27;text(rt,rows[k].first,x,y,120,8,muted);text(rt,rows[k].second,x,y+11,120,11.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}
+                // Where in the list this page is, when there is more than one.
+                if(batteryRows_>6){const float top=34,span=158,h=span*6/float(batteryRows_),y=top+(span-h)*float(first)/float(batteryRows_-6);box(378,top,2,span,track,1);box(378,y,2,h,muted,1);}
+            }else{
             drawRing(rt,d2d_.Get(),58,100,40,4,percent>=0?percent/100.:0,charging?0x5fd98a:accent,track);
             if(charging)drawIcon(rt,d2d_.Get(),Icon::Bolt,51,68,14,0x5fd98a);text(rt,percent>=0?std::to_wstring(percent)+L"%":L"—",18,86,80,20,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_CENTER,28);
             wchar_t rate[32]{};if(p.present&&!p.relative&&p.rateMw!=0)swprintf(rate,32,L"  ·  %.1f W",std::abs(p.rateMw)/1000.);
@@ -557,9 +620,9 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             if(s.history.size()>=8){ComPtr<ID2D1PathGeometry> path;d2d_->CreatePathGeometry(&path);ComPtr<ID2D1GeometrySink> sink;path->Open(&sink);auto point=[&](size_t i){return D2D1::Point2F(s.history[i]*380,196-s.history[i+1]*32);};
                 sink->BeginFigure({s.history[0]*380,196},D2D1_FIGURE_BEGIN_FILLED);for(size_t i=0;i+1<s.history.size();i+=2)sink->AddLine(point(i));sink->AddLine({s.history[s.history.size()-2]*380,196});sink->EndFigure(D2D1_FIGURE_END_CLOSED);sink->Close();
                 b->SetColor(D2D1::ColorF(accent,.14f));rt->FillGeometry(path.Get(),b.Get());b->SetColor(D2D1::ColorF(accent));for(size_t i=2;i+1<s.history.size();i+=2)rt->DrawLine(point(i-2),point(i),b.Get(),1.6f);}
-            else text(rt,L"History fills in as the day goes on",0,166,380,10,muted);
+            else text(rt,L"History fills in as the day goes on",0,166,380,10,muted);}
             hairline(0,197,380);button(Action::PowerSettings,L"Power & battery",0,203,150,25);
-            {wchar_t about[64]{};if(p.designMwh>0&&!p.relative)swprintf(about,64,p.voltageMv>0?L"Design %.1f Wh  ·  %.1f V":L"Design %.1f Wh",p.designMwh/1000.,p.voltageMv/1000.);text(rt,about,160,210,220,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
+            button(Action::BatteryDetails,s.batteryDetails?L"Overview":L"All details",270,203,110,25);
         }else if(s.page==Page::System&&s.statsTab==2){
             if(s.devices.empty())label(L"No Bluetooth devices are paired",0,90,380,40,12,muted,DWRITE_FONT_WEIGHT_NORMAL);
             for(int i=s.deviceOffset;i<std::min(s.deviceOffset+4,int(s.devices.size()));++i){float y=32+float(i-s.deviceOffset)*42;auto& d=s.devices[i];box(0,y,380,38,raised,11);
@@ -757,6 +820,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     });drawingContent_=false;
     // (Its surfaces are drawn once the content surface is closed: one surface draws at a time.)
     if(skyWanted_)skyScene(s,skyX_);else skyHide();
+    updateWeatherGlass(s);
     updateCaret(s,caretTarget_,accent);lineLyric(liveLyric_,content_.Get(),s,liveLyricOn&&s.live&&!s.card,68,21,250,20,11.5f,ink,s.reducedMotion);
     if(answerY_>=0&&!answerText_.empty()&&s.command.active)contentSpots_.push_back({0,answerText_,46,answerY_,17,DWRITE_FONT_WEIGHT_SEMI_BOLD,ink,0,false,true});
     placeOdometers(contentSpots_,{0,2,3,4,5},content_.Get(),s.reducedMotion);for(auto request:iconRequests_)icon(request.action,request.glyph,request.x,request.y,request.size,request.color,request.slot,request.celebrate);for(auto& b:bands_)b.visual->SetContent(contentSurface_.Get());for(auto& item:icons_)if(!item.used)item.effect->SetOpacity(0.f);placeNav(seconds(),navY);commit();

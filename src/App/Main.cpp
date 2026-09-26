@@ -19,6 +19,8 @@ static LONG WINAPI crashReport(EXCEPTION_POINTERS* info){
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR command,int){
     SetUnhandledExceptionFilter(crashReport);
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    // 0.18: started by an update (--after=<pid>): wait (up to 15 s) for the version it replaces to close first.
+    if(command){const wchar_t* at=wcsstr(command,L"--after=");if(at){const DWORD pid=DWORD(_wtoi(at+8));if(HANDLE old=pid?OpenProcess(SYNCHRONIZE,FALSE,pid):nullptr){WaitForSingleObject(old,15000);CloseHandle(old);}}}
     HANDLE single=CreateMutexW(nullptr,TRUE,L"Local\\ArnavIsland.App");
     if(GetLastError()==ERROR_ALREADY_EXISTS){
         std::wstring args=command?command:L"";HWND existing=FindWindowW(L"ArnavIsland.Surface",nullptr);
@@ -34,5 +36,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR command,int){
         // Keep the reason next to the logs, so a failed start can be diagnosed without the dialog.
         wchar_t base[MAX_PATH]{};if(GetEnvironmentVariableW(L"LOCALAPPDATA",base,MAX_PATH)){std::wstring path=std::wstring(base)+L"\\ArnavIsland\\last-error.txt";if(FILE* f=_wfopen(path.c_str(),L"w")){fputs(e.what(),f);fclose(f);}}
         MessageBoxA(nullptr,e.what(),"Arnav Island could not start",MB_ICONERROR);}
-    if(SUCCEEDED(hr))OleUninitialize();if(single)CloseHandle(single);return result;
+    if(SUCCEEDED(hr))OleUninitialize();if(single)CloseHandle(single);
+    // 0.18: an update installed while running starts now that this copy has let go of the single-instance lock.
+    nexus::UpdateService::launchPending();return result;
 }

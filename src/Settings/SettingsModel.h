@@ -13,7 +13,7 @@ namespace nexus {
 // Town (Phase 5G): a search field whose matches are listed under it; it sets the weather's place, not a Settings value.
 // Glass (0.17.0-preview.3): a live picture of the island in the chosen theme, material and tint; it sets nothing.
 enum class SettingControl { Toggle,Slider,Choice,Stepper,Swatch,Button,Order,Note,Preview,Actions,Chips,Town,Glass };
-enum class SettingAction { None,OpenLab,ResetAll,OpenLogs,ClearLogs,TransparencySettings,ResetLayout,DisplaySettings,SoundSettings,BluetoothSettings,PowerSettings,OpenArmoury,ClearClipboard,PrivacySettings,ClearWorkspaces,OpenCommand,LabPlay,ClearLyrics };
+enum class SettingAction { None,OpenLab,ResetAll,OpenLogs,ClearLogs,TransparencySettings,ResetLayout,DisplaySettings,SoundSettings,BluetoothSettings,PowerSettings,OpenArmoury,ClearClipboard,PrivacySettings,ClearWorkspaces,OpenCommand,LabPlay,ClearLyrics,CheckUpdates };
 struct SettingItem {
     int section=0;std::wstring title,detail;SettingControl control=SettingControl::Toggle;std::string key;
     int lo=0,hi=1,step=1;std::vector<std::wstring> options;std::wstring unit;SettingAction action=SettingAction::None;
@@ -59,6 +59,7 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     {SettingItem i;i.section=2;i.control=SettingControl::Glass;i.title=L"Preview";i.detail=L"Your island with these settings. Point at it";v.push_back(std::move(i));}
     number(2,C::Slider,L"Frosted tint",L"How dense Frosted glass is. More tint, more contrast","glassTint",&Settings::glassTint,0,100,1,{},L"%");
     number(2,C::Slider,L"Clear tint",L"How much Clear glass dims what is behind it","clearTint",&Settings::clearTint,0,100,1,{},L"%");
+    toggle(2,L"Weather on the glass",L"Rain, drops, fog and snow on Frosted and Clear glass when your town has them","weatherGlass",&Settings::weatherGlass);
     toggle(2,L"Frost that settles",L"Frosted glass slowly thickens while the island rests, and clears as you reach for it","restFrost",&Settings::restFrost);
     button(2,L"Windows transparency effects",L"Lets Frosted glass blur what is behind it",L"Open Windows settings",SettingAction::TransparencySettings);
     number(2,C::Swatch,L"Accent",L"Used when artwork colors are off \u00b7 the last one follows your wallpaper","accent",&Settings::accent,0,4,1,{L"Mint",L"Sky",L"Lilac",L"Peach",L"Wallpaper"});
@@ -152,6 +153,8 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(8,L"My PCs can take from the Shelf",L"Your paired PCs can see this Shelf in Shelf › Nearby and take a copy of what is on it","shelfOpen",&Settings::shelfOpen);
     toggle(8,L"Keep the Shelf after restarts",L"Remembers links to your Shelf files and dropped text on this PC, never copies of the files","pinnedShelf",&Settings::pinnedShelf);
     button(8,L"Saved workspaces",L"Remove every saved app set; open apps are not affected",L"Remove",SettingAction::ClearWorkspaces);
+    toggle(9,L"Update automatically",L"New versions download from the island\u2019s GitHub releases, are checked, and install while the island rests","autoUpdate",&Settings::autoUpdate);
+    button(9,L"Updates",L"",L"Check now",SettingAction::CheckUpdates);
     button(9,L"Local logs",L"Diagnostics stay on this device",L"Open folder",SettingAction::OpenLogs);
     button(9,L"Clear logs",L"Remove local diagnostic events",L"Clear",SettingAction::ClearLogs);
     button(9,L"Reset all preferences",L"Sign-in startup is kept",L"Reset",SettingAction::ResetAll);

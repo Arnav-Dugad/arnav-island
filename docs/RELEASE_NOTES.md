@@ -1,3 +1,66 @@
+# Arnav Island 0.18.0-preview.1 — updates itself, weather on the glass, every battery reading
+
+## Updates itself
+- **Automatic updates.** The island checks its GitHub releases a minute and a half after it starts, and then every six hours. When there's a newer version, it:
+  1. downloads it
+  2. checks its SHA-256 against the release's checksum file
+  3. unpacks it and checks the program is that version
+  4. installs it the next time the island is resting: compact, nobody using it, nothing announcing, none of its own music playing, nothing being shared, and no input for 20 seconds
+  5. starts the new version, which shows *Updated to …*
+
+  If the new version can't start, the old one goes back in its place and starts again.
+- **Settings › About:** *Update automatically* (on by default) and **Check now**, which shows what the updater last did.
+- **This version is the one to install by hand.** Laptops still on 0.17 need this release once; after that, each release arrives on its own.
+
+## Weather
+- **Weather on the glass.** On Frosted and Clear glass, when it's raining in your town:
+  - rain runs down the island
+  - drops bead on it
+  - fog drifts across it
+  - snow falls slowly
+
+  Storms are heavier and drizzle lighter. It steps back while the island is open, so text stays clear. Settings › Appearance › *Weather on the glass*.
+- **The weather's own view.** Click the weather tile on Home. It shows:
+  - the temperature, what it feels like, and today's high and low
+  - sunrise and sunset
+  - the next eight hours: the sky, the temperature and the chance of rain
+  - twelve readings: humidity, wind (direction and speed), gusts, UV index, air quality, pressure, visibility, dew point, cloud cover, the chance of rain, rain today, and daylight
+
+  Readings follow your unit: Fahrenheit brings mph, miles, inches and inHg.
+
+## Battery
+- **All details.** Stats › Battery › **All details** shows everything the battery and Windows report, three to a row. The wheel pages through them.
+  - health and wear
+  - design capacity, full charge and what's left
+  - charge or drain rate, voltage and current
+  - cycles and temperature
+  - chemistry, manufacturer, model, serial number and date made
+  - the levels at which Windows warns, and any capacity held in reserve
+  - Windows' own estimate, power mode and battery saver
+  - the last seven days: hours on battery, charge used per day and charges
+  - how health has changed since the island started keeping track
+
+  Anything your battery doesn't report is left out, not shown as a dash.
+- **How health is measured:** the battery's full-charge capacity divided by its design capacity, as its own firmware reports them to Windows. It's the same figure as Windows' battery report.
+
+## Fixed
+- **Alerts no longer vanish while the island is open.** A device, charging, headphone, camera, microphone or location alert that arrived while the island was open, in Live or in the command bar was thrown away. It now waits and shows as the island settles. One that waited over a minute is dropped as old news.
+- **Low battery** warned again at every percent below 10. It now warns once each at 20%, 10% and 5%, and plugging in resets it. At 5% it says *Almost out of charge*.
+
+## Settings
+- **23 more rows show what they do** when you rest on them, 37 in all. New: everyday mode, auto-hide, hover to open, compact media, live waveform, media controls, swipe to skip, compact lyrics, the glance, glance rings, the level indicator, weather, magnetic buttons, animated icons, track handoff, reduce motion, Island DJ, device, charging and copy cards, privacy dots, artwork colours and weather on the glass.
+
+## Checks
+- **Unit suites:** core 11,682; model 2,061; phase 5,684 (28 new); share 165; provider lifecycle passing.
+- **Native UI test:** 53 of 53 stages. New: an alert waits while the island is open and shows as it settles; battery details and the weather view open and close.
+- **Settings end to end:** 202 of 202, with weather on the glass and automatic updates each switched both ways.
+- **Updates, end to end, against the live GitHub release.** A copy of this build pretending to be 0.17.0-preview.2:
+  - found 0.17.0-preview.3
+  - downloaded and verified it
+  - installed it in its folder, closed itself, and the new version started
+  - pretending to be 0.17.0-preview.3 instead, it reported it was up to date
+- **Visual audit:** the weather view in dark and light, battery details, weather on the glass (rain, fog, snow; resting and open), every Settings section and all 37 row previews.
+
 # Arnav Island 0.17.0-preview.3 — glass that listens, frost that settles, Settings that show you
 
 ## Fixed

@@ -1,5 +1,6 @@
 #include "Renderer.h"
 #include <ctime>
+#include <random>
 namespace nexus {
 // Phase 5F: the weather tile's sky. A small layer over the Home weather statistic plays the
 // current conditions: sun rays turning, stars twinkling, clouds drifting, rain streaks, snow,
@@ -13,6 +14,52 @@ constexpr double skyRun=60;
 void Renderer::skyHide(){
     if(!sky_||!skyShown_)return;
     skyEffect_->SetOpacity(0.f);for(auto& p:skyParts_){p.visual->SetContent(nullptr);}skyShown_=false;skyKey_.clear();
+}
+// 0.18: the town's weather on the glass. Rain (heavier in a storm, lighter as drizzle) falls as streaks and beads as
+// drops; fog drifts; snow falls slowly. Only on glass, only with the setting, and dimmer while the island is open so the
+// text stays clear. With reduced motion nothing falls or drifts: the drops and fog stay still.
+void Renderer::updateWeatherGlass(const ContentSnapshot& s){
+    if(!weatherFx_)return;
+    const Sky sky=s.weather.valid?skyOf(s.weather.code):Sky::Clear;const bool glass=material_!=0,wet=sky==Sky::Rain||sky==Sky::Drizzle||sky==Sky::Storm,cold=sky==Sky::Snow,foggy=sky==Sky::Fog;
+    const bool on=glass&&s.settings.weatherGlass&&s.settings.weather&&(wet||cold||foggy);
+    const std::string key=on?std::to_string(int(sky))+'|'+std::to_string(int(s.light))+'|'+std::to_string(int(s.reducedMotion)):std::string();
+    // Open, the weather steps back behind the text.
+    weatherFxEffect_->SetOpacity(on?(s.expanded?.55f:1.f):0.f);
+    if(key==weatherFxKey_)return;weatherFxKey_=key;
+    for(auto& t:fxTiles_)t->SetContent(nullptr);dropsFx_->SetContent(nullptr);rainFx_->SetOffsetY(0.f);rainFx_->SetOffsetX(0.f);fogFx_->SetOffsetX(0.f);
+    if(!on)return;
+    const float W=canvasWidth,H=canvasHeight,px=scale_;const UINT32 ink=s.light?0x3a4658:0xffffff;const float strength=sky==Sky::Storm?1.4f:sky==Sky::Drizzle?.55f:1.f;
+    std::mt19937 random(0xa11ce5u);std::uniform_real_distribution<float> u(0.f,1.f);
+    if(wet||cold){
+        // One tile of streaks (or flakes), drawn twice, one above the other, and scrolled down by its own height forever.
+        surface(rainTile_,int(W),int(H),[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(ink,.2f),&b));
+            const int n=cold?170:int(300*strength);
+            for(int k=0;k<n;++k){const float x=u(random)*W,y=u(random)*H;
+                if(cold){const float r=1.1f+u(random)*1.7f;b->SetOpacity((s.light?.55f:.7f)*(.55f+u(random)*.45f));rt->FillEllipse(D2D1::Ellipse({x,y},r,r),b.Get());}
+                else{const float len=8+u(random)*14*strength;b->SetOpacity((s.light?.30f:.26f)*(.55f+u(random)*.6f)*std::min(1.f,strength));rt->DrawLine({x,y},{x-len*.18f,y+len},b.Get(),.9f+u(random)*.5f);
+                    // The tile wraps: a streak running off its bottom continues at its top.
+                    if(y+len>H)rt->DrawLine({x,y-H},{x-len*.18f,y-H+len},b.Get(),.9f);}}});
+        for(int k=0;k<2;++k){fxTiles_[size_t(k)]->SetContent(rainTile_.Get());fxTiles_[size_t(k)]->SetOffsetY(std::round(float(k-1)*H*px));}
+        if(!s.reducedMotion){const double period=cold?7.:sky==Sky::Drizzle?1.1:sky==Sky::Storm?.5:.75;const double t0=seconds();
+            auto loop=[&](float from,float to){ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(t0)));check(a->AddCubic(0,from,float((to-from)/period),0,0));check(a->AddRepeat(period,period));return a;};
+            auto down=loop(0,H*px);rainFx_->SetOffsetY(down.Get());if(!cold){auto side=loop(0,-H*.18f*px);rainFx_->SetOffsetX(side.Get());}}}
+    if(wet){
+        // Drops beaded on the pane (three in five within the resting island's height): a soft body with a bright crescent where the light catches it.
+        surface(dropsTile_,int(W),int(canvasHeight),[&](auto* rt){ComPtr<ID2D1SolidColorBrush> b;check(rt->CreateSolidColorBrush(D2D1::ColorF(ink,.1f),&b));const int n=int(46*strength);
+            for(int k=0;k<n;++k){const float x=u(random)*W,y=k%5<3?6+u(random)*26:u(random)*canvasHeight,r=.9f+u(random)*u(random)*3.2f;
+                b->SetColor(D2D1::ColorF(s.light?0x1c2433:0x000000,s.light?.10f:.22f));rt->FillEllipse(D2D1::Ellipse({x+.4f,y+.6f},r,r*1.1f),b.Get());
+                b->SetColor(D2D1::ColorF(0xffffff,s.light?.45f:.28f));rt->DrawEllipse(D2D1::Ellipse({x,y},r,r*1.1f),b.Get(),.6f);
+                b->SetColor(D2D1::ColorF(0xffffff,s.light?.75f:.55f));rt->FillEllipse(D2D1::Ellipse({x-r*.35f,y-r*.4f},r*.28f,r*.28f),b.Get());}});
+        dropsFx_->SetContent(dropsTile_.Get());}
+    if(foggy||(sky==Sky::Drizzle)){
+        // Fog: soft banks of mist, two tiles side by side drifting slowly across.
+        surface(fogTile_,int(W),int(canvasHeight),[&](auto* rt){const int n=foggy?16:7;
+            for(int k=0;k<n;++k){const float x=u(random)*W,y=u(random)*canvasHeight*.5f,r=40+u(random)*90;D2D1_GRADIENT_STOP stops[]={{0,D2D1::ColorF(s.light?0xffffff:0xc9d2de,(foggy?(s.light?.34f:.16f):(s.light?.18f:.08f)))},{1,D2D1::ColorF(s.light?0xffffff:0xc9d2de,0.f)}};
+                ComPtr<ID2D1GradientStopCollection> c;check(rt->CreateGradientStopCollection(stops,2,&c));ComPtr<ID2D1RadialGradientBrush> g;check(rt->CreateRadialGradientBrush(D2D1::RadialGradientBrushProperties({x,y},{0,0},r*1.6f,r),c.Get(),&g));
+                // Drawn again one tile to the left and right, so the tiles meet without a seam.
+                for(float shift:{-W,0.f,W}){g->SetCenter({x+shift,y});rt->FillRectangle({x+shift-r*1.7f,y-r,x+shift+r*1.7f,y+r},g.Get());}}});
+        for(int k=2;k<4;++k){fxTiles_[size_t(k)]->SetContent(fogTile_.Get());fxTiles_[size_t(k)]->SetOffsetX(std::round(float(k-2)*W*px));}
+        if(!s.reducedMotion){const double period=foggy?60.:90.;ComPtr<IDCompositionAnimation> a;check(device_->CreateAnimation(&a));check(a->SetAbsoluteBeginTime(ticks(seconds())));check(a->AddCubic(0,0,float(-W*px/period),0,0));check(a->AddRepeat(period,period));fogFx_->SetOffsetX(a.Get());}}
 }
 void Renderer::skyScene(const ContentSnapshot& s,float x){
     // 0.17.0-preview.3: around sunrise and sunset at the chosen town the sky warms, and the sun sits low.

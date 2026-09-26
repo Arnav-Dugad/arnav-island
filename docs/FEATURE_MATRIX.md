@@ -180,3 +180,13 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Dynamic type | Text of 9 pt or more that is wider than its space shrinks, by up to 14%, before it is cut | — |
 | Sunrise and sunset sky | Open-Meteo daily sunrise and sunset (local time and offset); dawn 45 min before to 35 after sunrise, dusk 40 before to 35 after sunset; warm gradient, a low sun, *Sunrise*/*Sunset* label | Home weather tile |
 | Refraction | Not shipped: Windows refuses geometric effects on the host backdrop | — |
+
+| v0.18.0-preview.1 feature | Implemented | Limits |
+|---|---|---|
+| Automatic updates | GitHub releases every 6 h; SHA-256 and program version checked; installed at a quiet moment; restart with rollback; *Updated to* card; Settings › About toggle and Check now | Unsigned; the first 0.18 install is by hand |
+| Weather on the glass | Rain streaks, drops, fog and snow in the island on glass; storm heavier, drizzle lighter; dimmed while open; still with reduced motion | Glass materials |
+| Weather view | From the Home tile: temperature, feels like, high and low, sunrise and sunset, eight hours (sky, temperature, rain chance), twelve readings incl. air quality | Open-Meteo data, every 30 minutes |
+| Battery details | Up to 27 readings from the battery driver and Windows, paged by the wheel; unknown readings left out | What each battery reports varies |
+| Deferred alerts | Alerts while the island is open wait (up to four) and show as it settles; dropped after 60 s | — |
+| Low battery | Once each at 20%, 10% and 5% on battery | — |
+| Row previews | 37 rows | Pointer only |

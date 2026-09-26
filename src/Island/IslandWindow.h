@@ -27,6 +27,7 @@
 #include "Capture/CaptureOverlay.h"
 #include "Capture/Ocr.h"
 #include "FileShelf/ShelfStore.h"
+#include "Productivity/UpdateService.h"
 #include "Productivity/WeatherService.h"
 #include "Productivity/SiteIcons.h"
 #include "Media/MusicLibrary.h"
@@ -83,6 +84,8 @@ class IslandWindow {
     void controlJob(int which,int target,int busy=0);void toggleControl(Action);void setBrightnessAt(LPARAM);std::shared_ptr<std::atomic<bool>> controlQuery_=std::make_shared<std::atomic<bool>>(false);double brightnessRequestAt_=-10;
     // Weather (opt-in): the service runs only while weather is on; a command may be waiting on its answer.
     std::unique_ptr<WeatherService> weather_;bool weatherAsked_=false;void syncWeather();
+    // 0.18: updates from the island's releases. launchArgs_: this run's arguments, passed on to the new version.
+    std::unique_ptr<UpdateService> update_;std::wstring launchArgs_,updatedFrom_,qaVersion_;bool qaUpdate_=false,updateShown_=false;static constexpr UINT_PTR UpdateTimer=77,UpdatedTimer=78;void syncUpdates(bool checkNow=false);bool quietForUpdate();void installUpdate();void showUpdated();
     // Phase 5G: Settings' Town field (a search under way, what to say about it).
     bool townBusy_=false,qaWeatherLive_=false;std::wstring townStatus_;void townMessage(WPARAM,LPARAM);void pushSettingsContext();
     // Site icons for copied links (opt-in), kept in memory while the setting is on.
@@ -121,7 +124,11 @@ class IslandWindow {
     // Phase 5G: a sideways drag over the music skips tracks everywhere it shows (1 while one is under way).
     int swipeAxis_=0,lastSkip_=0;unsigned skips_=0;bool mediaSwipe()const;void endSwipe(int direction);
     // Phase 5G: alerts that arrive while one shows wait below it as a bud (stackAlerts), then take its place in turn.
-    struct HeldCard{ContentSnapshot::Notice notice;Activity activity;};std::deque<HeldCard> heldCards_;ContentSnapshot::Notice shownNotice_;
+    // deferred: it arrived while the island was open (or busy) and waits for it to settle; such an alert is dropped once a
+    // minute old (at: when it arrived).
+    struct HeldCard{ContentSnapshot::Notice notice;Activity activity;bool deferred=false;double at=0;};std::deque<HeldCard> heldCards_;ContentSnapshot::Notice shownNotice_;
+    // 0.18: an alert that arrives while the island is open, pinned, in Live or the command bar waits instead of being lost.
+    bool deferCard(const Activity&);int lowBatteryAlerted_=101;bool qaBatterySample_=false;
     bool holdCard(const Activity&);bool budAt(double x,double y)const;bool promoteCard(bool swap=false);void syncBud();static std::wstring budTitle(const ContentSnapshot::Notice&);
     void skipTrack(int direction);bool qaFullscreen_=false,fullscreenHidden_=false,peeking_=false,peekTimer_=false;double peekIdle_=0;void syncPeek();void peekTick();bool mediaReachable_=false;
     void updateSessions();void switchSession(int delta,bool absolute=false);void updateProviders();void levelIndicator();void setMixerAt(LPARAM);long glanceShown_=-2;bool systemRequested_=false,contentDirty_=true,barsWanted_=false;Action pressedAction_=Action::None;

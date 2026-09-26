@@ -14,7 +14,9 @@ constexpr UINT SettingsChangedMessage=WM_APP+60,SettingsActionMessage=WM_APP+61,
 // labStats: the Animation Lab's live readout (display rate, frames in the last transition, process figures).
 // Town: the weather's place now (with its temperature), the last search and its matches, and whether one is under way.
 struct SettingsContext {int monitors=1;bool blur=true,glassAvailable=true,armoury=false,shortcutTaken=false;uint32_t wallpaper=0;std::wstring version,labStats,captureTaken;
-    std::wstring weatherPlace,townQuery,townStatus;std::vector<std::wstring> townResults;bool townBusy=false;};
+    std::wstring weatherPlace,townQuery,townStatus;std::vector<std::wstring> townResults;bool townBusy=false;
+    // 0.18: what the updater last said.
+    std::wstring updateStatus;};
 // A standalone preferences window on its own UI thread. Every edit is posted to
 // the island immediately, so the island restyles while you drag or toggle.
 class SettingsUi;

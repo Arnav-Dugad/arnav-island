@@ -17,7 +17,8 @@ SettingsContext IslandWindow::settingsContext(){
     // The weather's place and the Town field's search.
     if(weather_){if(auto p=weather_->place()){c.weatherPlace=p->name;if(auto n=weather_->now())c.weatherPlace+=L"  \u00b7  "+temperatureText(n->temperature,settings_.weatherUnit)+L", "+skyName(skyOf(n->code));}
         c.townQuery=weather_->searched();for(auto& m:weather_->matches())c.townResults.push_back(m.name);}
-    c.townBusy=townBusy_;c.townStatus=townStatus_;return c;
+    c.townBusy=townBusy_;c.townStatus=townStatus_;
+    c.updateStatus=update_?update_->status():settings_.autoUpdate?std::wstring():std::wstring(L"Automatic updates are off");return c;
 }
 // Settings has something new about the weather's town to show.
 void IslandWindow::pushSettingsContext(){if(settingsWindow_&&settingsWindow_->open())settingsWindow_->update(settings_,settingsContext(),settingsSequence_);}
@@ -107,6 +108,7 @@ void IslandWindow::settingsAction(SettingAction action,int argument){
     case SettingAction::ClearWorkspaces:{workspaces_=WorkspaceStore{};saveWorkspaces();store_.log("Info","workspaces_cleared");break;}
     case SettingAction::OpenCommand:openCommand();break;
     case SettingAction::ClearLyrics:clearLyrics();break;
+    case SettingAction::CheckUpdates:syncUpdates(true);pushSettingsContext();break;
     case SettingAction::TransparencySettings:ShellExecuteW(nullptr,L"open",L"ms-settings:personalization-colors",nullptr,nullptr,SW_SHOWNORMAL);break;
     default:break;
     }

@@ -259,3 +259,21 @@ Shipped, as asked:
 Not shipped:
 - **Refraction that bends the wallpaper.** Windows' composition accepts colour and blur effects on the host backdrop, but refused every geometric effect (2D affine transform with each interpolation and border mode, identity included, and scale) with `E_INVALIDARG`. Clear glass has no backdrop to resample. The alternative, copying the screen behind the island continuously, isn't something the island does.
 
+## Status after v0.18.0-preview.1 — updates, weather on the glass, battery details — 2026-09-26
+
+Shipped, as asked:
+- **Weather in the glass:** rain streaks, beaded drops, fog and snow inside the island's outline, above the glass and under the text; dimmed while open; still with reduced motion.
+- **Battery health explained, and every reading:** Stats › Battery › All details (up to 27 readings, paged by the wheel).
+- **Many weather stats:** the weather view from the Home tile: now, eight hours and twelve readings, plus air quality.
+- **More Settings previews:** 23 more, 37 in all.
+- **The alerts:** alerts that arrived while the island was open were lost; they now wait. Low battery no longer repeats every percent.
+- **Automatic updates** from the GitHub releases on every PC running 0.18 or later.
+
+Verified:
+- The update path end to end against the live 0.17.0-preview.3 release, from a scratch folder.
+- The UI test (53 stages) and the Settings test.
+- Unit tests for versions, release choice, checksums, weather parsing and units, and battery helpers.
+
+Limits:
+- **Unsigned.** Updates are checked by SHA-256 and by the program's own version, both from this repository's releases over HTTPS. A signed build would add a publisher check.
+- **First install.** Laptops on 0.17 or earlier need 0.18 installed once.

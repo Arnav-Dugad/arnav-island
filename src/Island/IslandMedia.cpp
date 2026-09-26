@@ -70,9 +70,9 @@ void IslandWindow::autoHideTick(){
 }
 // Connection and charging cards: a short Notification-state island.
 void IslandWindow::showNotice(int kind,const BluetoothDevice& device){
-    if(!renderer_||(state_!=IslandState::Compact&&state_!=IslandState::Notification))return;
+    if(!renderer_)return;
     if(settings_.autoHide&&autoHide_.hidden&&!settings_.alertsReveal)return;
-    content_.notice={kind,device};{const Activity a{kind>=3?ActivityKind::Power:ActivityKind::Device,"notice",60,double(kind),2.4,3.2};if(holdCard(a))return;events_.publish(a,seconds());}
+    content_.notice={kind,device};{const Activity a{kind>=3?ActivityKind::Power:ActivityKind::Device,"notice",60,double(kind),2.4,3.2};if(deferCard(a)||holdCard(a))return;events_.publish(a,seconds());}
     transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info",kind>=3?"power_card_shown":"device_card_shown");
 }
 // The glint along the edge, and (Phase 5G, with sounds on and nothing full screen) its faint chime.
@@ -92,8 +92,19 @@ bool IslandWindow::holdCard(const Activity& a){
     if(settings_.sounds&&!fullscreenHidden_)playSound(Sound::Chime);
     syncBud();refresh();store_.log("Info","alert_held");return true;
 }
+// An alert while the island is open (or pinned open, in Live, or the command bar): it waits, and shows as the island
+// settles back. The island shows what it showed before.
+bool IslandWindow::deferCard(const Activity& a){
+    if(state_==IslandState::Compact||state_==IslandState::Notification)return false;
+    // The same alert again (a device reconnecting) replaces the one waiting.
+    std::erase_if(heldCards_,[&](const HeldCard& h){return h.deferred&&h.notice.kind==content_.notice.kind&&h.notice.app==content_.notice.app&&h.notice.device.name==content_.notice.device.name;});
+    if(heldCards_.size()>=4)heldCards_.pop_front();
+    heldCards_.push_back({content_.notice,a,true,seconds()});content_.notice=shownNotice_;store_.log("Info","alert_deferred");return true;
+}
 // The next waiting alert takes the pill's place (swap: the one showing waits again if it still needs an answer).
 bool IslandWindow::promoteCard(bool swap){
+    // Alerts that waited through a long visit to the open island are old news by now.
+    {const double t=seconds();std::erase_if(heldCards_,[&](const HeldCard& h){return h.deferred&&t-h.at>60;});}
     if(heldCards_.empty())return false;const double now=seconds();
     if(swap&&events_.active()){const int k=content_.notice.kind;if(k==14||k==15||k==17)heldCards_.push_back({content_.notice,*events_.active()});}
     auto next=std::move(heldCards_.front());heldCards_.pop_front();
@@ -133,11 +144,18 @@ std::wstring IslandWindow::budTitle(const ContentSnapshot::Notice& n){
     case 13:return L"Your battery this week";case 14:return L"Pair with "+n.app+L"?";case 15:return n.app+L" is sending";case 17:return L"Continue "+n.app;default:return n.app;}
 }
 void IslandWindow::updateBattery(){
-    auto reading=battery_->reading();auto estimate=battery_->estimate();content_.power=reading;content_.toFull=estimate.minutesToFull(reading);content_.remaining=estimate.minutesRemaining(reading);
+    auto reading=battery_->reading();auto estimate=battery_->estimate();
+    // Test runs with --qa-sample: an illustrative battery, so no real serial number is ever drawn.
+    if(qaBatterySample_){reading=BatteryReading{};reading.present=true;reading.online=true;reading.charging=true;reading.percent=64;reading.designMwh=57000;reading.fullMwh=51300;reading.remainingMwh=32830;reading.rateMw=21400;reading.voltageMv=12540;
+        reading.cycles=148;reading.chemistry=L"LiP";reading.manufacturer=L"Sample Cells";reading.name=L"QA-Battery 57Wh";reading.serial=L"0000-QA";reading.warningMwh=5130;reading.lowMwh=2565;reading.criticalBiasMwh=0;reading.temperatureDeciK=3041;
+        reading.estimateSeconds=-1;reading.windowsSeconds=-1;reading.count=1;reading.madeYear=2024;reading.madeMonth=3;reading.madeDay=18;content_.powerMode=2;}
+    content_.power=reading;content_.toFull=estimate.minutesToFull(reading);content_.remaining=estimate.minutesRemaining(reading);
     auto history=battery_->history();content_.history.clear();const auto now=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     for(auto& sample:history.samples)if(now-sample.time<=86400){content_.history.push_back(float(1-double(now-sample.time)/86400.));content_.history.push_back(sample.percent/100.f);}
     // The health trend, and once a week (from 9 o'clock, with at least three days of history) its card.
+    content_.batteryWeek=summarizeWeek(history,now);
     if(!testing_){auto log=battery_->health();if(auto w=log.week()){content_.healthBefore=w->first;content_.healthNow=w->second;}else{content_.healthBefore=-1;content_.healthNow=log.days.empty()?-1:BatteryHealthLog::health(log.days.back());}
+        content_.healthFirst=log.days.empty()?-1:BatteryHealthLog::health(log.days.front());content_.healthSince=log.days.empty()?0:log.days.front().day*86400;
         if(settings_.batteryWeekly&&settings_.batteryHistory){if(log.lastCard==0)battery_->markWeeklyCard(now);
             else if(now-log.lastCard>=7*86400){SYSTEMTIME t{};GetLocalTime(&t);auto week=summarizeWeek(history,now);if(t.wHour>=9&&week.days>=3&&state_==IslandState::Compact&&!(settings_.autoHide&&autoHide_.hidden)){content_.week=week;battery_->markWeeklyCard(now);showNotice(13);}}}}
     if((state_==IslandState::Expanded&&content_.page==Page::System&&content_.statsTab==1)||(content_.card&&(content_.notice.kind==3||content_.notice.kind==4||content_.notice.kind==13)))refresh();
@@ -205,7 +223,7 @@ void IslandWindow::appVolumeWheel(int delta){
 }
 // A short card when the sound moves to headphones on its own; false when it cannot show now.
 bool IslandWindow::showHeadphoneCard(const AudioDevice& output,const std::wstring& fromId,const std::wstring& fromName){
-    if(!renderer_||(state_!=IslandState::Compact&&state_!=IslandState::Notification))return false;
+    if(!renderer_)return false;
     if(settings_.autoHide&&autoHide_.hidden&&!settings_.alertsReveal)return false;
     BluetoothDevice device;device.name=outputDisplayName(output.name);
     // The paired Bluetooth device behind this output, for its logo and battery.
@@ -213,6 +231,6 @@ bool IslandWindow::showHeadphoneCard(const AudioDevice& output,const std::wstrin
     if(device.brand.empty())device.brand=std::string(deviceBrand(device.name));if(device.kind==DeviceKind::Other)device.kind=deviceKind(0,device.name);if(device.kind==DeviceKind::Other)device.kind=DeviceKind::Headphones;
     const bool back=settings_.directAudio&&std::any_of(content_.outputs.begin(),content_.outputs.end(),[&](auto& d){return d.id==fromId;});switchBackId_=back?fromId:std::wstring{};
     content_.notice={8,device,outputDisplayName(fromName),nullptr,back};
-    {const Activity a{ActivityKind::Device,"headphones",60,8,2.4,6};if(holdCard(a))return true;events_.publish(a,seconds());}transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info","headphone_card_shown");return true;
+    {const Activity a{ActivityKind::Device,"headphones",60,8,2.4,6};if(deferCard(a)||holdCard(a))return true;events_.publish(a,seconds());}transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info","headphone_card_shown");return true;
 }
 }

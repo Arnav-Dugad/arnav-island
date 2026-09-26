@@ -1,4 +1,5 @@
 #include "Island/IslandWindow.h"
+#include "App/Version.h"
 #include <shlobj.h>
 #include <powrprof.h>
 #include <ctime>
@@ -44,9 +45,41 @@ void IslandWindow::syncProductivity(){
     // toggling the setting must not touch the file of the person running it).
     if(settings_.commandHistory){if(!commandMemoryLoaded_)loadCommandMemory();}
     else if(commandMemoryLoaded_||!commandMemory_.items().empty()){commandMemory_.forget();commandMemoryLoaded_=false;if(!testing_){std::error_code ignored;std::filesystem::remove(store_.directory/L"commands.nexus",ignored);}}
-    syncHotkey();syncWeather();
+    syncHotkey();syncWeather();syncUpdates();
     // Site icons run only while that setting (and rich rows) is on; turning it off forgets them.
     const bool icons=settings_.siteIcons&&settings_.richClips&&!testing_;if(icons&&!siteIcons_)siteIcons_=std::make_unique<SiteIcons>(window_);else if(!icons&&siteIcons_){siteIcons_.reset();clipViews();}
+}
+// 0.18: updates run while Update automatically is on (never in a test run, unless --qa-update asks, with --qa-version=
+// the version to pretend to be). A manual check starts it once even when the setting is off.
+void IslandWindow::syncUpdates(bool checkNow){
+    qaUpdate_=testing_&&launchArgs_.find(L"--qa-update")!=std::wstring::npos;const bool want=checkNow||(!testing_&&settings_.autoUpdate)||qaUpdate_;
+    if(want&&!update_){AppVersion v=parseVersion(toUtf8(qaVersion_.empty()?std::wstring(appVersion):qaVersion_));if(!v.valid)return;
+        if(!testing_||qaUpdate_)UpdateService::cleanUp();update_=std::make_unique<UpdateService>(window_,store_.directory/L"update",v,checkNow?0.:qaUpdate_?3.:90.);}
+    else if(!want&&update_&&!checkNow){update_.reset();KillTimer(window_,UpdateTimer);pushSettingsContext();}
+    else if(checkNow&&update_)update_->checkNow();
+    // Started by an update: say so, once the island has settled.
+    if(!updatedFrom_.empty()&&!updateShown_){updateShown_=true;SetTimer(window_,UpdatedTimer,2500,nullptr);}
+}
+// Quiet: resting compact, nobody at the island, nothing announcing, no music of the island's own, nothing being
+// shared, Settings closed, and no input for 20 seconds.
+bool IslandWindow::quietForUpdate(){
+    if(state_!=IslandState::Compact||content_.pinned||interaction_!=InteractionState::Rest||events_.active()||!heldCards_.empty()||content_.command.active)return false;
+    if(player_&&player_->playing())return false;if(settingsWindow_&&settingsWindow_->open())return false;
+    if(!content_.transfers.empty())return false;
+    LASTINPUTINFO last{sizeof(last)};if(!qaUpdate_&&GetLastInputInfo(&last)&&GetTickCount()-last.dwTime<20000)return false;
+    return true;
+}
+void IslandWindow::installUpdate(){
+    if(!update_||update_->state()!=UpdateService::State::Ready){KillTimer(window_,UpdateTimer);return;}if(!quietForUpdate())return;
+    KillTimer(window_,UpdateTimer);store_.log("Info","update_installing");
+    // Everything is saved first; the new version waits for this one to close.
+    if(!testing_)store_.save(settings_,settingsFile_);
+    if(update_->install(launchArgs_)){store_.log("Info","update_started");PostMessageW(window_,WM_CLOSE,0,0);}else pushSettingsContext();
+}
+void IslandWindow::showUpdated(){
+    if(!renderer_)return;content_.notice={};content_.notice.kind=18;content_.notice.app=std::wstring(L"Updated to ")+appVersion;content_.notice.detail=L"From "+updatedFrom_+L". What\u2019s new is on GitHub";
+    {const Activity a{ActivityKind::Notification,"update",55,18,2.4,6};if(deferCard(a)||holdCard(a))return;events_.publish(a,seconds());}
+    transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info","update_card_shown");
 }
 // Weather runs only while it is on; turning it off forgets the place too.
 // A test run uses it only with --qa-weather-live, and then keeps its place in a file of its own in the temp folder.
@@ -114,10 +147,10 @@ void IslandWindow::updatePrivacy(){
     refresh();animate();
 }
 void IslandWindow::showPrivacyNotice(const PrivacyUse& u){
-    if(!renderer_||(state_!=IslandState::Compact&&state_!=IslandState::Notification))return;
+    if(!renderer_)return;
     if(settings_.autoHide&&autoHide_.hidden&&!settings_.alertsReveal)return;
     content_.notice={u.capability==Capability::Camera?5:u.capability==Capability::Microphone?6:u.capability==Capability::ScreenCapture?12:7,{},u.app,u.icon};
-    {const Activity a{ActivityKind::Notification,"privacy",70,double(content_.notice.kind),2.4,3.4};if(holdCard(a))return;events_.publish(a,seconds());}
+    {const Activity a{ActivityKind::Notification,"privacy",70,double(content_.notice.kind),2.4,3.4};if(deferCard(a)||holdCard(a))return;events_.publish(a,seconds());}
     transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info","privacy_card_shown");
 }
 // ---- Command bar -----------------------------------------------------------

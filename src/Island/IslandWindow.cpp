@@ -26,6 +26,9 @@ static std::string monitorIdentity(HMONITOR monitor){
 static BOOL CALLBACK collectMonitor(HMONITOR m,HDC,LPRECT,LPARAM p){reinterpret_cast<std::vector<HMONITOR>*>(p)->push_back(m);return TRUE;}
 
 int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
+    // What this run was started with (minus an update's own two), to start the next version the same way.
+    {std::wistringstream words(cmd);std::wstring w;while(words>>w){if(w.rfind(L"--after=",0)==0)continue;if(w.rfind(L"--updated=",0)==0){updatedFrom_=w.substr(10);continue;}launchArgs_+=(launchArgs_.empty()?L"":L" ")+w;}}
+    if(auto at=cmd.find(L"--qa-version=");at!=std::wstring::npos){qaVersion_=cmd.substr(at+13,cmd.find(L' ',at)==std::wstring::npos?std::wstring::npos:cmd.find(L' ',at)-at-13);}
     instance_=instance;visibilityAudit_=cmd.find(L"--visibility-audit")!=std::wstring::npos;motionStudy_=cmd.find(L"--motion-study")!=std::wstring::npos;settingsTest_=cmd.find(L"--settings-test")!=std::wstring::npos;testing_=settingsTest_||cmd.find(L"--capture")!=std::wstring::npos||cmd.find(L"--benchmark")!=std::wstring::npos||cmd.find(L"--ui-test")!=std::wstring::npos;if(testing_)settingsFile_=L"settings-qa.nexus";soundsMuted()=testing_;qaWeatherLive_=testing_&&cmd.find(L"--qa-weather-live")!=std::wstring::npos;settings_=settingsTest_?Settings{}:store_.load();if(!testing_){std::ifstream profiles(store_.directory/L"displays.nexus");if(profiles)displays_=DisplayProfiles::read(profiles);}if(cmd.find(L"--ui-test")!=std::wstring::npos){settings_=Settings{};settings_.uiMode=2;}settings_.startAtLogin=startup::enabled();if(cmd.find(L"--enable-startup")!=std::wstring::npos&&!testing_){settings_.startAtLogin=startup::apply(true);store_.save(settings_,settingsFile_);}motion_.body=preset(MotionPreset(settings_.preset));
     BOOL animations=TRUE;SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animations,0);motion_.reduced=settings_.reduceMotion||!animations;
     WNDCLASSW wc{};wc.hInstance=instance;wc.lpfnWndProc=procedure;wc.lpszClassName=L"ArnavIsland.Surface";wc.hCursor=LoadCursor(nullptr,IDC_ARROW);wc.hIcon=LoadIconW(instance_,MAKEINTRESOURCEW(101));check(RegisterClassW(&wc)?S_OK:HRESULT_FROM_WIN32(GetLastError()));
@@ -35,7 +38,7 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     {WNDCLASSW sc{};sc.hInstance=instance;sc.lpfnWndProc=DefWindowProcW;sc.lpszClassName=L"ArnavIsland.Shadow";RegisterClassW(&sc);
         shadow_=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_TOPMOST|WS_EX_NOREDIRECTIONBITMAP|WS_EX_NOACTIVATE|WS_EX_TRANSPARENT|WS_EX_LAYERED,sc.lpszClassName,L"",WS_POPUP,0,0,760,480,nullptr,nullptr,instance,nullptr);}
     position();renderer_=std::make_unique<Renderer>();renderer_->initialize(window_,dpi_,shadow_);clipboard_.attach(window_);power(false);applySettings();if(!testing_){displays_.remember(currentDisplay_,settings_);saveDisplays();}
-    audio_=std::make_unique<AudioProvider>(window_);if(cmd.find(L"--capture-safe")==std::wstring::npos)media_=std::make_unique<MediaProvider>(window_);system_=std::make_unique<SystemProvider>(window_);if(cmd.find(L"--capture-safe")==std::wstring::npos){analyzer_=std::make_unique<LoopbackAnalyzer>(window_);mixer_=std::make_unique<SessionMixer>(window_);brightness_=std::make_unique<BrightnessProvider>(window_);if(!(testing_&&cmd.find(L"--qa-sample")!=std::wstring::npos))bluetooth_=std::make_unique<BluetoothProvider>(window_);powerMode_=std::make_unique<PowerModeWatcher>(window_);}battery_=std::make_unique<BatteryProvider>(window_,testing_?std::filesystem::path{}:store_.directory/L"battery-history.nexus",settings_.batteryHistory);if(!testing_){std::ifstream saved(store_.directory/L"workspaces.nexus",std::ios::binary);if(saved)workspaces_=WorkspaceStore::read(saved);}if(cmd.find(L"--capture-safe")==std::wstring::npos)syncProductivity();platformThread_=std::thread([w=window_]{CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);auto info=new PlatformInfo(platformInfo());info->wallpaper=wallpaperAccent();if(!PostMessageW(w,PlatformMessage,0,reinterpret_cast<LPARAM>(info)))delete info;CoUninitialize();});content_.settings=settings_;
+    audio_=std::make_unique<AudioProvider>(window_);if(cmd.find(L"--capture-safe")==std::wstring::npos)media_=std::make_unique<MediaProvider>(window_);system_=std::make_unique<SystemProvider>(window_);if(cmd.find(L"--capture-safe")==std::wstring::npos){analyzer_=std::make_unique<LoopbackAnalyzer>(window_);mixer_=std::make_unique<SessionMixer>(window_);brightness_=std::make_unique<BrightnessProvider>(window_);if(!(testing_&&cmd.find(L"--qa-sample")!=std::wstring::npos))bluetooth_=std::make_unique<BluetoothProvider>(window_);powerMode_=std::make_unique<PowerModeWatcher>(window_);}battery_=std::make_unique<BatteryProvider>(window_,testing_?std::filesystem::path{}:store_.directory/L"battery-history.nexus",settings_.batteryHistory);if(!testing_){std::ifstream saved(store_.directory/L"workspaces.nexus",std::ios::binary);if(saved)workspaces_=WorkspaceStore::read(saved);}if(cmd.find(L"--capture-safe")==std::wstring::npos)syncProductivity();if(cmd.find(L"--qa-update")!=std::wstring::npos)syncUpdates();platformThread_=std::thread([w=window_]{CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);auto info=new PlatformInfo(platformInfo());info->wallpaper=wallpaperAccent();if(!PostMessageW(w,PlatformMessage,0,reinterpret_cast<LPARAM>(info)))delete info;CoUninitialize();});content_.settings=settings_;
     for(auto id:{&GUID_ACDC_POWER_SOURCE,&GUID_BATTERY_PERCENTAGE_REMAINING}){
         auto registration=RegisterPowerSettingNotification(window_,id,DEVICE_NOTIFY_WINDOW_HANDLE);if(registration)powerNotifications_.push_back(registration);
     }
@@ -57,7 +60,13 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     // QA: illustrative weather (no network): --qa-weather=<WMO code>.
     if(auto at=cmd.find(L"--qa-weather");testing_&&at!=std::wstring::npos){int code=3;auto eq=cmd.find(L'=',at);if(eq!=std::wstring::npos&&eq<cmd.find(L' ',at))code=_wtoi(cmd.c_str()+eq+1);settings_.weather=true;settings_.homeMetrics={0,7,8};content_.weather={true,14.4,code,cmd.find(L"--qa-night")==std::wstring::npos,L"Sample town"};
         // --qa-dawn / --qa-dusk: today's sunrise or sunset is now, for the sky's warm light.
-        {const int64_t unix=int64_t(std::time(nullptr));if(cmd.find(L"--qa-dawn")!=std::wstring::npos){content_.weather.sunrise=unix+600;content_.weather.sunset=unix+12*3600;}else if(cmd.find(L"--qa-dusk")!=std::wstring::npos){content_.weather.sunrise=unix-11*3600;content_.weather.sunset=unix-300;}}
+        {const int64_t unix=int64_t(std::time(nullptr));if(cmd.find(L"--qa-dawn")!=std::wstring::npos){content_.weather.sunrise=unix+600;content_.weather.sunset=unix+12*3600;}else if(cmd.find(L"--qa-dusk")!=std::wstring::npos){content_.weather.sunrise=unix-11*3600;content_.weather.sunset=unix-300;}
+            else{content_.weather.sunrise=unix-5*3600;content_.weather.sunset=unix+6*3600;}}
+        // Illustrative readings for the weather's view, and twelve hours ahead.
+        {auto& n=content_.weather.now;n.temperature=14.4;n.code=code;n.feels=13.1;n.humidity=72;n.dewPoint=9.4;n.wind=14;n.windFrom=228;n.gusts=29;n.pressure=1012.6;n.visibility=9200;n.cloud=64;n.precipitation=.4;n.uv=4.2;
+            n.high=17.8;n.low=9.6;n.rainTotal=3.4;n.rainChance=70;n.uvMax=5.1;n.daylight=43020;n.aqi=38;n.pm25=7.4;const int64_t hour=int64_t(std::time(nullptr))/3600*3600;
+            for(int k=0;k<13;++k)n.hours.push_back({hour+k*3600,14.4+2.6*std::sin(k*.45),k<4?code:k<8?2:0,k<5?70-k*10:k<9?20:0,true});}
+        if(cmd.find(L"--qa-weather-view")!=std::wstring::npos){content_.page=Page::Overview;content_.weatherView=true;content_.pinned=true;transition(IslandState::Expanded);}
         refresh();}
     if(cmd.find(L"--video-layout")!=std::wstring::npos){settings_.mediaLayout=2;refresh();}
     if(cmd.find(L"--music-layout")!=std::wstring::npos){settings_.mediaLayout=1;refresh();}
@@ -208,6 +217,7 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
         if(!commands_)commands_=std::make_unique<CommandService>(window_,[]{wchar_t pub[MAX_PATH]{};GetEnvironmentVariableW(L"PUBLIC",pub,MAX_PATH);return *pub?std::wstring(pub):std::wstring(L"C:\\Users\\Public");}(),store_.directory);openCommand();content_.command.text=text;content_.command.caret=text.size();commandQuery();refresh();}
     if(testing_&&cmd.find(L"--qa-device-card")!=std::wstring::npos){auto devices=qaDevices();auto it=std::find_if(devices.begin(),devices.end(),[](auto& d){return d.battery>=0&&!d.brand.empty();});if(it==devices.end()&&!devices.empty())it=devices.begin();if(it!=devices.end())showNotice(1,*it);}
     if(testing_&&cmd.find(L"--qa-power-card")!=std::wstring::npos){if(battery_)updateBattery();showNotice(content_.charging?3:4);}
+    qaBatterySample_=testing_&&sample;if(testing_&&cmd.find(L"--qa-battery-details")!=std::wstring::npos)content_.batteryDetails=true;
     for(auto pair:{std::pair{L"--qa-battery",1},std::pair{L"--qa-devices",2}})if(testing_&&cmd.find(pair.first)!=std::wstring::npos){content_.page=Page::System;content_.statsTab=pair.second;content_.pinned=true;if(bluetooth_||sample)content_.devices=qaDevices();if(battery_){battery_->setFast(true);updateBattery();}transition(IslandState::Expanded);refresh();}
     if(testing_&&cmd.find(L"--qa-hud")!=std::wstring::npos){content_.volume=audio_?audio_->value.load():40;events_.publish({ActivityKind::Volume,"volume",40,double(content_.volume),.5,30},seconds());presentActivity();}
     if(testing_&&cmd.find(L"--qa-brightness")!=std::wstring::npos){content_.brightness=64;events_.publish({ActivityKind::Brightness,"brightness",40,64,.5,30},seconds());presentActivity();}
@@ -280,7 +290,7 @@ void IslandWindow::transition(IslandState s){
     bool changed=state_!=s;state_=s;
     // Leaving the pill, the bud goes back in (its alert still waits).
     if(changed&&s!=IslandState::Notification)spreadAlerts(false);
-    if(changed&&s!=IslandState::Notification&&motion_.bud.target()!=0){content_.bud={};const double t=seconds();if(motion_.reduced)motion_.bud.reset(0,t);else motion_.bud.retarget(0,t,SpringSpec{1,320,36});}if(s!=IslandState::Compact&&content_.hud){content_.hud=0;motion_.compactWidth=settings_.uiMode==0?72:settings_.compactWidth;}content_.expanded=s!=IslandState::Compact;content_.live=s==IslandState::LiveActivity||s==IslandState::Notification||s==IslandState::Command;content_.card=s==IslandState::Notification||s==IslandState::Command;
+    if(changed&&s!=IslandState::Notification&&motion_.bud.target()!=0){content_.bud={};const double t=seconds();if(motion_.reduced)motion_.bud.reset(0,t);else motion_.bud.retarget(0,t,SpringSpec{1,320,36});}if(s!=IslandState::Compact&&content_.hud){content_.hud=0;motion_.compactWidth=settings_.uiMode==0?72:settings_.compactWidth;}content_.expanded=s!=IslandState::Compact;if(!content_.expanded)content_.weatherView=false;content_.live=s==IslandState::LiveActivity||s==IslandState::Notification||s==IslandState::Command;content_.card=s==IslandState::Notification||s==IslandState::Command;
     // A notification drops out of the docked island as its own pill (a little bounce as it settles), and rises back into it after.
     {const bool drop=s==IslandState::Notification&&settings_.notifyStyle==1&&settings_.edge==0&&!settings_.floating();const double now=seconds(),target=drop?1:0;
         if(drop&&motion_.drop.target()<=0&&std::abs(motion_.drop.sample(now).position)<1e-3)motion_.stubWidth=std::min(motion_.compactWidth,196.);
@@ -294,9 +304,12 @@ void IslandWindow::power(bool notify){
         content_.charging=p.ACLineStatus==1;if(notify&&!previouslyCharging&&content_.charging){motion_.pulse.reset(motion_.reduced?.15:.8,seconds());motion_.pulse.retarget(0,seconds(),{1,50,18});}
         if(notify&&(previousBattery!=content_.battery||previouslyCharging!=content_.charging)){
             if(previouslyCharging!=content_.charging&&settings_.powerCards){if(battery_)battery_->refresh();showNotice(content_.charging?3:4);}
-            else if(previouslyCharging!=content_.charging||(content_.battery>=0&&content_.battery<10)){
-                events_.publish({ActivityKind::Power,"power",content_.battery>=0&&content_.battery<10?100:30,double(content_.battery),.8,3},seconds());presentActivity();
-            }else refresh();
+            else if(previouslyCharging!=content_.charging){events_.publish({ActivityKind::Power,"power",30,double(content_.battery),.8,3},seconds());presentActivity();}
+            // Low battery: once as the charge falls past 20%, 10% and 5% on battery (plugging in resets it).
+            else if(!content_.charging&&content_.battery>=0&&[&]{for(int level:{5,10,20})if(content_.battery<=level&&lowBatteryAlerted_>level){lowBatteryAlerted_=level;return true;}return false;}()){
+                events_.publish({ActivityKind::Power,"power",100,double(content_.battery),.8,4},seconds());presentActivity();}
+            else refresh();
+            if(content_.charging)lowBatteryAlerted_=101;
         }
     }
 }
@@ -305,7 +318,7 @@ void IslandWindow::presentActivity(){
     switch(events_.active()->kind){
     case ActivityKind::Volume:content_.headline=content_.muted?L"A moment of quiet.":L"Sound, just where you want it.";content_.detail=L"System output volume";break;
     case ActivityKind::Brightness:content_.headline=L"Light, just right.";content_.detail=L"Display brightness";break;
-    case ActivityKind::Power:content_.headline=content_.battery>=0&&content_.battery<10?L"Time to connect your charger.":content_.charging?L"A little energy. A fresh start.":L"Ready to go with you.";content_.detail=content_.charging?L"Power connected. Settle in.":L"Running on battery power.";break;
+    case ActivityKind::Power:content_.headline=!content_.charging&&content_.battery>=0&&content_.battery<=20?(content_.battery<=5?L"Almost out of charge. Plug in now.":L"Time to connect your charger."):content_.charging?L"A little energy. A fresh start.":L"Ready to go with you.";content_.detail=content_.charging?L"Power connected. Settle in.":L"Running on battery power.";break;
     case ActivityKind::Media:content_.headline=L"A new rhythm.";content_.detail=L"Now in your Windows media session";break;
     default:break;
     }
@@ -434,6 +447,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
             double now=seconds();auto origin=bodyAt(motion_.width.sample(now).position,motion_.height.sample(now).position,motion_.drop.sample(now).position);POINT p{GET_X_LPARAM(l),GET_Y_LPARAM(l)};ScreenToClient(window_,&p);
             const double x=p.x*96/dpi_-origin.x-motion_.dragX.sample(now).position,logo=content_.hud==3?std::max(236.,double(settings_.compactWidth))/2-109:14;
             if(x>=logo-10&&x<=logo+26){appVolumeWheel(GET_WHEEL_DELTA_WPARAM(w));return 0;}}
+        if(state_==IslandState::Expanded&&content_.page==Page::System&&content_.statsTab==1&&content_.batteryDetails){content_.batteryOffset=std::clamp(content_.batteryOffset+(GET_WHEEL_DELTA_WPARAM(w)>0?-1:1),0,std::max(0,renderer_->batteryRows_-6));refresh();return 0;}
         if(state_==IslandState::Expanded&&content_.page==Page::System&&content_.statsTab==2){content_.deviceOffset=std::clamp(content_.deviceOffset+(GET_WHEEL_DELTA_WPARAM(w)>0?-1:1),0,std::max(0,int(content_.devices.size())-4));refresh();return 0;}if(state_==IslandState::Expanded&&content_.page==Page::Shelf&&content_.shelfTab==1){content_.clipOffset=std::clamp(content_.clipOffset+(GET_WHEEL_DELTA_WPARAM(w)>0?-1:1),0,std::max(0,int(content_.clips.size())-4));refresh();return 0;}if(state_!=IslandState::Compact&&(content_.page==Page::Shelf||content_.page==Page::Audio)){bool mixer=content_.page==Page::Audio&&content_.audioTab==0;auto& offset=content_.page==Page::Shelf?content_.shelfOffset:mixer?content_.mixerOffset:content_.audioOffset;int count=int(content_.page==Page::Shelf?content_.shelf.size():mixer?content_.mixer.size():content_.outputs.size());offset=std::clamp(offset+(GET_WHEEL_DELTA_WPARAM(w)>0?-1:1),0,std::max(0,count-4));refresh();return 0;}if(audio_&&audio_->available){POINT p{GET_X_LPARAM(l),GET_Y_LPARAM(l)};ScreenToClient(window_,&p);if(settings_.wheelVolume||hit(MAKELPARAM(p.x,p.y))==Action::VolumeSlider)audio_->setVolume(audio_->value+(GET_WHEEL_DELTA_WPARAM(w)>0?2:-2));}return 0;
     case MediaMessage:if(media_)updateSessions();return 0;
     case LyricsMessage:syncLyrics();refresh();return 0;
@@ -465,6 +479,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
     case WM_POWERBROADCAST:if(w==PBT_POWERSETTINGCHANGE)power(true);return TRUE;
     case SettingsChangedMessage:{std::unique_ptr<Settings> incoming(reinterpret_cast<Settings*>(l));settingsSequence_=unsigned(w);if(incoming)receiveSettings(*incoming);return 0;}
     case SettingsActionMessage:settingsAction(SettingAction(w),int(l));return 0;
+    case UpdateMessage:pushSettingsContext();if(update_&&update_->state()==UpdateService::State::Ready)SetTimer(window_,UpdateTimer,qaUpdate_?1500:30000,nullptr);return 0;
     case SettingsTownMessage:townMessage(w,l);return 0;
     case ShareMessage:shareEvents();return 0;
     case WallpaperLumaMessage:{std::unique_ptr<std::shared_ptr<WallpaperLuma>> map(reinterpret_cast<std::shared_ptr<WallpaperLuma>*>(l));wallLoading_=false;if(map&&*map)wallLuma_=*map;adaptBackdrop();return 0;}
@@ -481,7 +496,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
         // 2: the Town field's matches are in; otherwise the weather (or why it failed), which Settings shows too.
         if(w==2){townBusy_=false;townStatus_=weather_&&weather_->searchFailed()?L"Open-Meteo couldn\u2019t be reached \u2014 check the connection":L"";pushSettingsContext();return 0;}
         if(weather_&&w==1&&!townStatus_.empty())townStatus_=weather_->status();else if(w==0)townStatus_.clear();pushSettingsContext();
-        if(weather_){auto now=weather_->now();auto place=weather_->place();if(now&&place)content_.weather={true,now->temperature,now->code,now->day,place->name,now->sunrise,now->sunset};
+        if(weather_){auto now=weather_->now();auto place=weather_->place();if(now&&place){content_.weather={true,now->temperature,now->code,now->day,place->name,now->sunrise,now->sunset};content_.weather.now=*now;}
         if(weatherAsked_&&content_.command.active){weatherAsked_=false;if(w)commandStatus(weather_->status(),true);else if(now&&place)commandStatus(place->name+L"  \u00b7  "+temperatureText(now->temperature,settings_.weatherUnit)+L"  "+skyName(skyOf(now->code)));}
         refresh();}return 0;
     case ControlStateMessage:{auto& c=content_.controls;auto part=[&](int shift){return int((w>>shift)&15)-2;};c.wifi=part(0);c.bluetooth=part(4);c.dark=part(8);c.busy&=~int(l);
@@ -685,10 +700,19 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                 shareCard(16,L"UI test frosted",L"One",{},30);shareCard(16,L"UI test frosted two",L"Two",{},30);spreadAlerts(true);SetTimer(window_,13,1400,nullptr);break;}
             case 49:{spreadAlerts(false);heldCards_.clear();content_.bud={};syncBud();events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);
                 pass=renderer_->glassAvailable()&&renderer_->glassError().empty();settings_.material=0;applySettings(false,true);SetTimer(window_,13,600,nullptr);break;}
+            // 0.18: an alert while the island is open waits (the island stays as it is), then shows once it settles.
+            case 50:{heldCards_.clear();content_.page=Page::Overview;content_.pinned=true;transition(IslandState::Expanded);showNotice(3);
+                pass=state_==IslandState::Expanded&&heldCards_.size()==1&&heldCards_.front().deferred&&heldCards_.front().notice.kind==3&&content_.notice.kind!=3;SetTimer(window_,13,500,nullptr);break;}
+            case 51:{content_.pinned=false;transition(IslandState::Compact);pass=state_==IslandState::Notification&&content_.notice.kind==3&&heldCards_.empty();SetTimer(window_,13,900,nullptr);break;}
+            // 0.18: the Battery tab's details and the weather's view open and close, and the view closes with the island.
+            case 52:{events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);content_.page=Page::System;content_.statsTab=1;content_.pinned=true;transition(IslandState::Expanded);
+                perform(Action::BatteryDetails);const bool details=content_.batteryDetails;perform(Action::BatteryDetails);
+                const auto keep=content_.weather;content_.page=Page::Overview;content_.weather={true,14.4,3,true,L"UI test town"};perform(Action::WeatherOpen);const bool view=content_.weatherView;perform(Action::WeatherBack);
+                pass=details&&!content_.batteryDetails&&view&&!content_.weatherView;perform(Action::WeatherOpen);content_.pinned=false;transition(IslandState::Compact);pass=pass&&!content_.weatherView;content_.weather=keep;SetTimer(window_,13,600,nullptr);break;}
             }
             // The glass must never have failed to follow the island (every stage above animates it).
             if(pass&&!renderer_->glassError().empty())pass=false;
-            if(!pass||scenarioStep_==50){SetCursorPos(qaCursor_.x,qaCursor_.y);auto result=pass?"PASS native hover open, leave close, disabled hover, navigation, timer actions, hit targets, edge/scale/theme, OLE drop and shelf clear, navigation reorder, metric choices, detail toggles, app-switch collapse, pin and drag protection, precision seeking and cancel, hover-only surface, mini/live modes, wide compact settings, auto-hide tucks away (click-through region) and reveals only at its edge (visible region), double-click and arrow-key skips and seek detents, Shelf item view and clipboard search with pins, attached glass with shoulders, lyric tap-to-seek, ghost completion with Tab, live system rows, a second Enter before locking and Space between words, compact media controls, Controls page, drop pill region, Nearby tab, fullscreen peek, Live Island drag skips, drop zones for paired PCs, two alerts at once, Library and Continue on, the two alerts side by side, Up next, another PC's Shelf and spoken names, Clear and Frosted glass through every shape":"FAIL native interaction regression";// A failure in the command bar says what it held (typed text and the first result).
+            if(!pass||scenarioStep_==53){SetCursorPos(qaCursor_.x,qaCursor_.y);auto result=pass?"PASS native hover open, leave close, disabled hover, navigation, timer actions, hit targets, edge/scale/theme, OLE drop and shelf clear, navigation reorder, metric choices, detail toggles, app-switch collapse, pin and drag protection, precision seeking and cancel, hover-only surface, mini/live modes, wide compact settings, auto-hide tucks away (click-through region) and reveals only at its edge (visible region), double-click and arrow-key skips and seek detents, Shelf item view and clipboard search with pins, attached glass with shoulders, lyric tap-to-seek, ghost completion with Tab, live system rows, a second Enter before locking and Space between words, compact media controls, Controls page, drop pill region, Nearby tab, fullscreen peek, Live Island drag skips, drop zones for paired PCs, two alerts at once, Library and Continue on, the two alerts side by side, Up next, another PC's Shelf and spoken names, Clear and Frosted glass through every shape, alerts that wait while the island is open, battery details and the weather view":"FAIL native interaction regression";// A failure in the command bar says what it held (typed text and the first result).
                 std::string why;if(!pass&&!renderer_->glassError().empty())why=" (glass: "+renderer_->glassError()+")";else if(!pass&&content_.command.active){const auto& c=content_.command;why=" (command \""+toUtf8(c.text)+"\""+(c.results.empty()?std::string(", no results"):", first \""+toUtf8(c.results[0].title)+"\" kind "+std::to_string(int(c.results[0].kind))+" completion \""+toUtf8(c.results[0].completion)+"\"")+")";}
                 store_.submit([dir=store_.directory,result,why,step=scenarioStep_,state=int(state_),interaction=int(interaction_),width=motion_.width.sample(seconds()).position]{std::ofstream(dir/L"ui-test.txt")<<"stage "<<step<<" state "<<state<<" interaction "<<interaction<<" width "<<width<<": "<<result<<why<<'\n';});PostMessageW(window_,WM_CLOSE,0,0);}return 0;
         }
@@ -697,6 +721,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
         // Over the compact controls the island stays compact, so they can be clicked.
         if(w==7){KillTimer(window_,7);if(state_==IslandState::Compact&&content_.hovered!=Action::None)return 0;if(settings_.autoHide&&!pointerOffEdge()){edgeHold_=true;return 0;}if(settings_.hoverOpen&&interaction_==InteractionState::Hover&&state_==IslandState::Compact)transition(settings_.uiMode==2?IslandState::Expanded:IslandState::LiveActivity);}
         if(w==8){KillTimer(window_,8);if(interaction_==InteractionState::Rest&&!content_.pinned)transition(IslandState::Compact);}
+        if(w==UpdateTimer){installUpdate();return 0;}if(w==UpdatedTimer){KillTimer(window_,UpdatedTimer);showUpdated();return 0;}
         if(w==9){if(content_.focus.tick(seconds())){content_.page=Page::Focus;events_.publish({ActivityKind::Timer,"timer",70,0,2,8},seconds());presentActivity();}if(IsWindowVisible(window_))refresh();clockTimer();}
         // 5: the QA matte goes up (unless --qa-matte-first already put it up at launch), then the capture 250 ms later.
         if(w==5||w==73){
@@ -709,7 +734,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
         if(w==6){
             KillTimer(window_,6);DwmFlush();captureWindow(window_,store_.directory/L"island-capture.png");
             // What the glass could not do, if anything (effects Windows refused), beside the capture.
-            if(testing_&&renderer_){std::ofstream(store_.directory/L"glass-qa.txt")<<"failure="<<renderer_->glassFailure()<<"\nerror="<<renderer_->glassError()<<"\n";}
+            if(testing_&&renderer_){std::ofstream(store_.directory/L"glass-qa.txt")<<"failure="<<renderer_->glassFailure()<<"\nerror="<<renderer_->glassError()<<"\nupdate="<<(update_?toUtf8(update_->status()):std::string("none"))<<" quiet="<<quietForUpdate()<<"\n";}
             if(motionStudy_){SetTimer(window_,16,80,nullptr);return 0;}
             DestroyWindow(qaMatte_);qaMatte_=nullptr;UnregisterClassW(L"NexusIsland.QAMatte",instance_);DeleteObject(qaBrush_);qaBrush_=nullptr;
         }
@@ -973,6 +998,8 @@ void IslandWindow::perform(Action a){
     case Action::Previous:if(content_.playback.canPrevious)mediaCommand(2);break;
     case Action::Next:if(content_.playback.canNext)mediaCommand(3);break;
     case Action::AudioApps:case Action::AudioOutputs:{int tab=a==Action::AudioApps?0:1;if(tab!=content_.audioTab&&!motion_.reduced){motion_.swipe.reset(tab>content_.audioTab?14.:-14.,now);motion_.swipe.retarget(0,now,MotionTokens::content);}content_.audioTab=tab;break;}
+    case Action::WeatherOpen:case Action::WeatherBack:content_.weatherView=a==Action::WeatherOpen;if(!motion_.reduced){motion_.swipe.reset(content_.weatherView?14.:-14.,now);motion_.swipe.retarget(0,now,MotionTokens::content);}break;
+    case Action::BatteryDetails:content_.batteryDetails=!content_.batteryDetails;content_.batteryOffset=0;if(!motion_.reduced){motion_.swipe.reset(content_.batteryDetails?14.:-14.,now);motion_.swipe.retarget(0,now,MotionTokens::content);}if(battery_)battery_->refresh();break;
     case Action::StatsSystem:case Action::StatsBattery:case Action::StatsDevices:if(int tab=int(a)-int(Action::StatsSystem);tab!=content_.statsTab&&!motion_.reduced){motion_.swipe.reset(tab>content_.statsTab?14.:-14.,now);motion_.swipe.retarget(0,now,MotionTokens::content);}content_.statsTab=int(a)-int(Action::StatsSystem);if(a==Action::StatsBattery&&battery_){battery_->refresh();if(content_.charging)renderer_->energize(motion_.reduced,true);}break;
     case Action::Armoury:if(!content_.platform.armoury.empty())ShellExecuteW(nullptr,L"open",(L"shell:AppsFolder\\"+content_.platform.armoury).c_str(),nullptr,nullptr,SW_SHOWNORMAL);break;
     case Action::PowerSettings:ShellExecuteW(nullptr,L"open",L"ms-settings:powersleep",nullptr,nullptr,SW_SHOWNORMAL);break;

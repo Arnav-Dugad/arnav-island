@@ -133,3 +133,38 @@ A first test looked like the frost did nothing. The sped-up pace was set after t
 - **The low sun on the label.** At dawn and dusk, the low sun sat on *Sunrise* or *Sunset*. The word now moves left of it.
 - **Live audio style preview.** The ring sat over the preview's title line. The line now stops short of it.
 - **The Settings test** left Material on Clear, so it clicked Frosted's tint and frost while they were disabled (4 failures). It now picks the glass each of those rows belongs to first.
+
+## 0.18.0-preview.1
+
+**Updates.** `UpdateService` asks `api.github.com/repos/Arnav-Dugad/arnav-island/releases` (90 s after start, then every six hours; after a failure, in 30 minutes).
+
+It picks the newest non-draft release newer than the running version, and only if both assets exist and come from `https://github.com/Arnav-Dugad/arnav-island/releases/download/` (`newestRelease`). Then it:
+1. downloads the checksum and the ZIP
+2. checks the SHA-256 (BCrypt)
+3. unpacks with `%SystemRoot%\System32\tar.exe`
+4. requires the unpacked `ArnavIsland.exe`'s ProductVersion to equal the release's version
+
+Installing, at a quiet moment:
+- The running program is renamed `ArnavIsland.old.exe` (a running image can be renamed, not overwritten) and the new one is copied in.
+- The new program starts only after this process has closed its single-instance mutex (`UpdateService::launchPending` from `wWinMain`), so any version, even one that doesn't know `--after`, starts cleanly.
+- If it can't start, the old program is moved back and restarted.
+- The next start deletes `ArnavIsland.old.exe`.
+
+The first end-to-end run showed why the relaunch moved. Starting the new version from inside the old one, the older build found the mutex still held and quit.
+
+**Alerts.** `showNotice`, `showHeadphoneCard` and `showPrivacyNotice` returned early unless the island was compact or already showing an alert. So anything arriving while it was open, in Live or in the command bar was lost, including camera and microphone cards. They now go to `deferCard`: the held-card queue, marked deferred and time-stamped. `promoteCard` shows them when the island returns to compact, and drops deferred ones over 60 s old.
+
+**Battery.** `BatteryProvider::query` now reads:
+- `DefaultAlert1` and `DefaultAlert2`, `CriticalBias` and `Technology`
+- the serial number, and the optional temperature, manufacture date and estimated time
+- battery saver and Windows' lifetime (`GetSystemPowerStatus`)
+- the number of batteries
+
+This PC's battery reports capacities, voltage, chemistry, manufacturer, model and serial, but no temperature, date, cycles or alert levels. Its chemistry code is a vendor code (`OOI0`), which is now left out rather than shown.
+
+**Weather on the glass.** DirectComposition visuals in the body, above the glass, below the content:
+- Rain or snow is one tile drawn twice and scrolled forever (`IDCompositionAnimation::AddRepeat`).
+- Drops are drawn once, three in five within the resting island's height.
+- Fog is two tiles drifting sideways.
+
+It first showed only while the island was open: the resting island redraws its header only, and the effect was updated on full redraws. It now updates on both.
