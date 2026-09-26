@@ -1,3 +1,12 @@
+# Arnav Island 0.18.0-preview.2 — the first update that installs itself
+
+## Fixed
+- **A test run could update itself again and again.** When the update test started the new version, it passed on the flag that says to pretend to be an older version, so that version updated again. The new version now always starts as what it is. Normal installs were never affected: without the test flags, the new version is already the newest.
+
+## Checks
+- **The field test.** This laptop ran 0.18.0-preview.1, installed by hand. When this release was published, the installed island found it, downloaded and checked it, installed it at a quiet moment and started it.
+- **Native UI test:** 53 of 53 stages. The unit suites are unchanged from 0.18.0-preview.1 and pass.
+
 # Arnav Island 0.18.0-preview.1 — updates itself, weather on the glass, every battery reading
 
 ## Updates itself

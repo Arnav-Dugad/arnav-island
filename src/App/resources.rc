@@ -2,8 +2,8 @@
 1 RT_MANIFEST "app.manifest"
 101 ICON "ArnavIsland.ico"
 1 VERSIONINFO
-FILEVERSION 0,18,0,1
-PRODUCTVERSION 0,18,0,1
+FILEVERSION 0,18,0,2
+PRODUCTVERSION 0,18,0,2
 FILEFLAGSMASK 0x3fL
 FILEFLAGS VS_FF_PRERELEASE
 FILEOS VOS_NT_WINDOWS32
@@ -14,11 +14,11 @@ BEGIN
   BLOCK "040904b0"
   BEGIN
    VALUE "FileDescription", "Arnav Island"
-   VALUE "FileVersion", "0.18.0-preview.1"
+   VALUE "FileVersion", "0.18.0-preview.2"
    VALUE "InternalName", "ArnavIsland"
    VALUE "OriginalFilename", "ArnavIsland.exe"
    VALUE "ProductName", "Arnav Island"
-   VALUE "ProductVersion", "0.18.0-preview.1"
+   VALUE "ProductVersion", "0.18.0-preview.2"
    VALUE "LegalCopyright", "2026 Arnav Island contributors"
   END
  END

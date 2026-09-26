@@ -52,7 +52,7 @@ void IslandWindow::syncProductivity(){
 // 0.18: updates run while Update automatically is on (never in a test run, unless --qa-update asks, with --qa-version=
 // the version to pretend to be). A manual check starts it once even when the setting is off.
 void IslandWindow::syncUpdates(bool checkNow){
-    qaUpdate_=testing_&&launchArgs_.find(L"--qa-update")!=std::wstring::npos;const bool want=checkNow||(!testing_&&settings_.autoUpdate)||qaUpdate_;
+    qaUpdate_=testing_&&launchArgsQa_;const bool want=checkNow||(!testing_&&settings_.autoUpdate)||qaUpdate_;
     if(want&&!update_){AppVersion v=parseVersion(toUtf8(qaVersion_.empty()?std::wstring(appVersion):qaVersion_));if(!v.valid)return;
         if(!testing_||qaUpdate_)UpdateService::cleanUp();update_=std::make_unique<UpdateService>(window_,store_.directory/L"update",v,checkNow?0.:qaUpdate_?3.:90.);}
     else if(!want&&update_&&!checkNow){update_.reset();KillTimer(window_,UpdateTimer);pushSettingsContext();}
