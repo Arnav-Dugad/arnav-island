@@ -387,6 +387,10 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         // 0.18: the island has just updated itself.
         if(s.card&&s.notice.kind==18){const bool notes=!s.whatsNew.empty();
             text(rt,s.notice.app,72,8,notes?176.f:300.f,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.notice.detail,72,32,notes?176.f:300.f,10.5f,muted);if(notes)button(Action::WhatsNewOpen,L"What\u2019s new",256,16,76,26,true);return;}
+        // 0.19: a phone's card: what it says, and under it where it came from (the app and the phone) beside a small phone.
+        if(s.card&&s.notice.kind==19){const auto& n=s.notice;const bool from=!n.source.empty();
+            text(rt,n.app,72,from?2.f:8.f,262,13.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,from?21.f:31.f,262,11,muted);
+            if(from){drawIcon(rt,d2d_.Get(),Icon::Phone,71,40,12,accent,.9f);text(rt,n.source,87,40,247,9,muted);}return;}
         if(s.card&&s.notice.kind>=14&&s.notice.kind<=17){
             // Sharing: the pairing code both PCs show, a file to accept, or how a transfer or a pairing went.
             // A detail too long for its room keeps what follows its first dot (a size, where it's from) and shortens the name.
@@ -394,7 +398,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 std::wstring head=d.substr(0,cut);const std::wstring tail=d.substr(cut);while(head.size()>1&&measure(head+L"\u2026"+tail,size)>w)head.pop_back();return head+L"\u2026"+tail;};
             auto n=s.notice;n.detail=fitted(n.detail,n.kind==16&&!n.path.empty()?176.f:n.kind==16?256.f:176.f,11);
             if(n.kind==14){text(rt,L"Pair with "+n.app+L"?",72,2,176,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,20,176,19,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,30);
-                text(rt,L"The same code shows on both PCs",72,46,176,9,muted);button(Action::SharePair,L"Pair",256,4,76,26,true);button(Action::ShareDecline,L"Not now",256,34,76,22);}
+                text(rt,n.phone?L"The same code shows on your phone":L"The same code shows on both PCs",72,46,176,9,muted);button(Action::SharePair,L"Pair",256,4,76,26,true);button(Action::ShareDecline,L"Not now",256,34,76,22);}
             else if(n.kind==15){text(rt,n.app+L" is sending",72,6,176,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,176,11,muted);
                 button(Action::ShareAccept,L"Accept",256,4,76,26,true);button(Action::ShareDecline,L"Decline",256,34,76,22);}
             // Music from another PC: the song, its artist and where it comes from.
@@ -794,25 +798,29 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             }else if(s.shelfTab==2){
                 // Nearby: your PCs on this network with sharing on. Clicking a paired one makes it where Send goes; an unpaired one offers Pair.
                 const size_t shown=std::min<size_t>(s.nearby.size(),4);
-                if(!shown){box(0,62,380,130,raised,18);drawIcon(rt,d2d_.Get(),Icon::Laptop,172,74,36,accent);label(L"Looking for your PCs",20,114,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
-                    label(L"Turn on Share with my PCs on another PC on this network",20,140,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);}
+                if(!shown){box(0,62,380,130,raised,18);drawIcon(rt,d2d_.Get(),Icon::Laptop,172,74,36,accent);label(L"Looking for your PCs and phones",20,114,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+                    label(L"Turn on Share with my PCs on another PC, or open Arnav Island on your phone",20,140,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);}
                 const bool shelfFiles=std::any_of(s.shelf.begin(),s.shelf.end(),[](auto& i){return i.kind==ShelfItem::Kind::File;});
                 for(size_t i=0;i<shown;++i){const auto& p=s.nearby[i];const float y=60+float(i)*35;const bool target=p.paired&&p.id==s.nearbyTarget,ready=p.online&&p.version>=shareProtocol;
                     const Action row=Action(int(Action::NearbyBase)+int(i)),forget=Action(int(Action::NearbyForgetBase)+int(i)),send=Action(int(Action::NearbySendBase)+int(i)),stop=Action(int(Action::NearbyCancelBase)+int(i));
                     const auto moving=std::find_if(s.transfers.begin(),s.transfers.end(),[&](auto& t){return t.peer==p.id;});
                     box(0,y,380,32,raised,9);if(target){b->SetColor(D2D1::ColorF(accent,.9f));rt->DrawRoundedRectangle(D2D1::RoundedRect({.75f,y+.75f,379.25f,y+31.25f},8.5f,8.5f),b.Get(),1.5f);}
                     // Room for the name and status, left of the row's buttons.
-                    const float room=p.paired&&ready&&p.revision>=1&&s.settings.sharing?(shelfFiles?120.f:208.f):182.f;
-                    drawIcon(rt,d2d_.Get(),Icon::Laptop,11,y+8,16,p.online?ink:muted);text(rt,p.name,36,y+1,room,11.5f,p.online?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,17);
+                    // 0.19: a phone's second button rings it; a PC's looks into its Shelf.
+                    const bool ring=p.paired&&ready&&p.phone&&p.revision>=2,browse=p.paired&&ready&&!p.phone&&p.revision>=1&&s.settings.sharing;
+                    const float room=ring||browse?(shelfFiles?120.f:208.f):182.f;
+                    drawIcon(rt,d2d_.Get(),p.phone?Icon::Phone:Icon::Laptop,11,y+8,16,p.online?ink:muted);text(rt,p.name,36,y+1,room,11.5f,p.online?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,17);
                     std::wstring status=p.paired?(p.online?(!ready?L"Needs the latest Arnav Island":target?L"Sends go here":L"Paired"):L"Paired \u00b7 away"):L"Not paired";
+                    if(p.phone&&p.paired&&p.online&&p.battery>=0)status+=L"  \u00b7  "+std::to_wstring(p.battery)+(p.charging?L"%, charging":L"%");
                     if(moving!=s.transfers.end()){const double f=moving->total?double(moving->done)/double(moving->total):0;wchar_t pc[16];swprintf(pc,16,L"  \u00b7  %d%%",int(f*100));status=(moving->outgoing?L"Sending ":L"Receiving ")+moving->title+pc;
                         if(moving->rate>0){status+=L"  \u00b7  "+rateText(moving->rate);const auto left=leftText(double(moving->total-std::min(moving->done,moving->total))/moving->rate);if(!left.empty())status+=L"  \u00b7  "+left;}
                         b->SetColor(D2D1::ColorF(track));rt->FillRoundedRectangle(D2D1::RoundedRect({36,y+28,306,y+30},1,1),b.Get());b->SetColor(D2D1::ColorF(accent));rt->FillRoundedRectangle(D2D1::RoundedRect({36,y+28,36+float(270*std::clamp(f,0.,1.)),y+30},1,1),b.Get());}
                     text(rt,status,36,moving!=s.transfers.end()?y+13:y+15,moving!=s.transfers.end()?270.f:room,9.5f,target||moving!=s.transfers.end()?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,12);
                     if(moving!=s.transfers.end()){targets.push_back({row,0,y,224,32});button(stop,L"Stop",316,y+4,58,24);}
                     // Phase 5H: a PC that shares its Shelf can be looked into (Shelf), left of Send Shelf.
-                    else if(p.paired){const bool browse=ready&&p.revision>=1&&s.settings.sharing;const float sendX=228,browseX=shelfFiles&&ready?sendX-66:sendX+22;
-                        targets.push_back({row,0,y,browse?browseX-4:224,32});if(shelfFiles&&ready)button(send,L"Send Shelf",sendX,y+4,82,24,true);if(browse)button(Action(int(Action::NearbyBrowseBase)+int(i)),L"Shelf",browseX,y+4,60,24);button(forget,L"Forget",316,y+4,58,24);}
+                    else if(p.paired){const float sendX=228,browseX=shelfFiles&&ready?sendX-66:sendX+22;
+                        targets.push_back({row,0,y,browse||ring?browseX-4:224,32});if(shelfFiles&&ready)button(send,L"Send Shelf",sendX,y+4,82,24,true);if(browse)button(Action(int(Action::NearbyBrowseBase)+int(i)),L"Shelf",browseX,y+4,60,24);
+                        if(ring)button(Action(int(Action::NearbyRingBase)+int(i)),L"Ring",browseX,y+4,60,24);button(forget,L"Forget",316,y+4,58,24);}
                     else button(row,L"Pair",316,y+4,58,24,true,p.online&&ready);}
                 text(rt,shelfNote?s.shelfStatus:(s.shareName.empty()?std::wstring(L"Visible to your PCs on this network"):L"This PC: "+s.shareName),0,203,380,10,shelfNote?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
             }else if(!s.settings.clipboardHistory){

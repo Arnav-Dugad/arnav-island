@@ -44,6 +44,8 @@
 
 namespace nexus {
 constexpr UINT ControlStateMessage=WM_APP+40,WallpaperLumaMessage=WM_APP+44;
+// 0.19: a phone's remote command, answered on the island's thread (lParam: the call, owned from then on).
+constexpr UINT RemoteMessage=WM_APP+46;
 enum class InteractionState { Rest,Hover,Pressed,Dragging };
 class IslandWindow {
     HWND window_=nullptr,qaMatte_=nullptr;HBRUSH qaBrush_=nullptr;HINSTANCE instance_{};HWINEVENTHOOK foregroundHook_=nullptr,locationHook_=nullptr;
@@ -106,6 +108,11 @@ class IslandWindow {
     struct HandoffWait{std::wstring app,title;double position=0,accepted=0,until=0;bool nudged=false;} handoffWait_;
     void handoffTo(size_t index);void handoffEvent(const ShareEvent&);bool launchApp(const std::wstring&);void handoffAccept();void handoffWait();
     void syncSharing();void shareEvents();bool shareAction(Action);void shareCard(int kind,const std::wstring& title,const std::wstring& detail,const std::wstring& path,double duration);
+    // 0.19 (IslandShare.cpp): phones. Their remote (answered here: what plays and its cover, encoded once per cover; CPU from
+    // the system's times between two asks), their cards, and each phone's last battery level for its low-battery card.
+    void remoteCall(LPARAM);std::vector<uint8_t> remoteAnswer(const std::string& peer,RemoteCommand,const std::vector<uint8_t>& payload);
+    void phoneCard(const std::wstring& title,const std::wstring& detail,const std::wstring& source,std::shared_ptr<const Artwork> icon,double duration);std::wstring peerName(const std::string& peer)const;
+    const Artwork* remoteCoverOf_=nullptr;std::vector<uint8_t> remoteCover_;ULONGLONG cpuIdle_=0,cpuTotal_=0;int cpuLast_=-1;std::map<std::string,int> phoneBattery_;
     std::shared_ptr<const WallpaperLuma> wallLuma_;bool wallLoading_=false,qaBackdrop_=false;void loadWallpaperLuma();void adaptBackdrop();bool backdropCovered()const;
     // The body's top-left in the canvas (DIPs), including how far a notification pill has dropped (drop: 0..1).
     // Phase 5H: spread side by side with a waiting alert, the pill sits further left.

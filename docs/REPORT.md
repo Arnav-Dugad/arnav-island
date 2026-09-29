@@ -200,3 +200,35 @@ Each drop is a DirectComposition visual gliding linearly between steps. A merged
 - Home's volume bar showed through the What's new sheet, as it had through the weather view.
 - The health chart's 80% label collided with the "Below 80%" marker.
 - The first haze was stronger than "faint".
+
+## 0.19.0-preview.1
+
+**Revision 2.** PCs announce `2.2`; phones announce `2.2;phone`. Three modes are added, each open only to paired devices:
+
+| Mode | Frames |
+|---|---|
+| **R**, the remote | Request `[0x20, command, payload]` gets reply `[0x21, status, payload]`. Status is ok, not allowed, unsupported or failed. |
+| **N**, notices | `[0x30, 1, battery, charging]`, or `[0x30, 2, urgent, text, icon]`. The text is `app\ntitle\ntext\nphone`; the icon is a PNG of at most 24 KB. Answered `[0x31]`. |
+| **F**, find my phone | `[0x40]`, answered `[0x41]`. |
+
+The status payload holds, in order:
+1. flags: available, playing, previous, next, toggle, muted, charging, seek, battery present
+2. position and duration (f64)
+3. volume, battery and CPU (CPU 255 means unknown)
+4. the cover, which is one of: none; its SHA-256, length and JPEG; or *unchanged*, when it matches the hash the phone sent
+5. five lines: title, artist, app, PC name, weather
+
+**On the island's thread.** `ShareService` calls the island's remote handler on a network thread. The handler posts `RemoteMessage` with a heap-held call carrying a promise. The UI thread answers from what the island shows, and the network thread waits up to 4 s. The island encodes a cover once per picture: 320 px, or 200 px when that would be over 96 KB. CPU is busy time over all time between two asks (`GetSystemTimes`).
+
+**Phones remembered.** Paired phones are listed in `share-phones.nexus`, apart from the peers file, so older versions still read that file as before.
+
+**The phone app's engine** is plain Kotlin, and `tests/SharePeer.cpp` (`share_peer`) exposes this island's `ShareService` to it over loopback. The app's `InteropTest` drives it through every mode:
+- pairing (the codes match)
+- files and folders both ways
+- the Shelf
+- the remote: status, cover once, then *unchanged*
+- notices
+- ring
+- music both ways, with the song's file
+
+The ECDH secret derivation (CNG's `KDF_HASH` over Z) and Java's `ECDH` with SHA-256 of Z agree.

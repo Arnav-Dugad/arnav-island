@@ -292,3 +292,25 @@ Shipped, as asked:
 Limits:
 - **The certificate is self-issued.** Windows shows the signer but doesn't vouch for it, so SmartScreen still treats downloads as unrecognised. A certificate from a public authority would change that.
 - **The signing key lives on the publishing PC.** Back it up: without it, future releases can't be signed, and 0.18.1 and later wouldn't accept them.
+
+## Status after v0.19.0-preview.1 — your phone, on the island — 2026-09-29
+
+Shipped, as asked: a companion app for Android, [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.0.0, and the island's side of it.
+- **The remote.** The phone shows what plays here, with its cover, and can play, pause, skip, seek, set the volume and mute, share the clipboard both ways, open a link, and lock this PC.
+- **Files, the Shelf and music** with the phone as with your PCs.
+- **The phone on the island:**
+  - its notifications, with app icons
+  - its battery on its Nearby row, and a low-battery card
+  - **Ring** (find my phone)
+- **Settings v19:** *My phone can control this PC* and *My phone's notifications*.
+- **The app:**
+  - liquid glass: refraction, blur, and a rim lit by the phone's tilt
+  - a glass tab bar that follows your swipes
+  - an in-app island
+  - updates itself from its GitHub releases, checked by SHA-256 and by its signing certificate
+  - a release history
+
+Limits:
+- **The same Wi-Fi.** Phones and PCs find each other by broadcast on the local network. Networks that isolate devices (many guest and campus networks) keep them apart.
+- **Continuing music without a file.** When this PC plays a song in an app, the phone looks for it in its own music app. Where that app starts is up to the app.
+- **Notification access** is Android's to give. The app asks, and the person turns it on in Android's settings.

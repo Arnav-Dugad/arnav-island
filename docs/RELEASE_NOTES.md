@@ -1,3 +1,47 @@
+# Arnav Island 0.19.0-preview.1 — your phone, on the island
+
+## Arnav Island for Android
+- **A companion app for your phone.** [Download it](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) (Android 9 or later).
+- **Pairing.** A phone pairs like a PC: with *Share with my PCs* on here, tap **Pair with your PC** in the app, and confirm the same six digits on both.
+- **The remote.** The phone shows what plays here, with its cover. From the phone you can:
+  - play and pause, skip, and seek
+  - change the volume and mute
+  - paste the phone’s clipboard here, or take this PC’s
+  - open a link in your browser
+  - lock this PC
+- **Files, the Shelf and music.** Files go both ways, the phone can take from this PC’s Shelf, and music hands over as it does between your PCs.
+
+## On the island
+- **Your phone’s notifications** arrive as cards, with the app’s own icon, and the app and phone they came from under them. Calls stay up longer.
+- **Your phone in Nearby** shows:
+  - a phone instead of a laptop
+  - its battery, and whether it is charging
+  - **Ring**, which rings the phone loudly (even on silent) until it is found
+- **Low battery.** A card when your phone falls to 20% and isn’t charging.
+- **What your phone did here.** A card when it copies the clipboard, or opens a link. Password-like text stays hidden.
+
+## Settings
+- Settings › Sharing has two new switches, both on:
+  - **My phone can control this PC**
+  - **My phone’s notifications**
+
+  Only phones you paired can do either.
+
+## Checks
+- **Unit suites:** core 11,682; model 2,061; phase 5,706 (3 new: settings v19); share 172 (7 new: the remote’s status, and the cover sent once, then *unchanged*); provider lifecycle passing.
+- **Phone against this PC’s engine:** the Android app’s protocol engine was tested against this island’s own sharing engine on every feature:
+  - pairing codes match
+  - files both ways, including a folder
+  - Shelf list and take
+  - the remote: status and cover, media, volume, clipboard both ways, lock refused when not allowed
+  - battery and notification notices
+  - ring
+  - music both ways, with the song’s file
+- **Native UI test:** 53 of 53. The Nearby stage now includes a phone’s row with **Ring**, and a phone card.
+- **Settings end to end:** 206 of 206, including the two new switches. Two checks were themselves wrong, and are fixed:
+  - The accent check forgot that a song without a cover takes its app’s colour. It failed whenever such a song was playing.
+  - The position check used a smaller on-screen margin than the island, which keeps its widest shape on the display.
+
 # Arnav Island 0.18.1-preview.1 — rain that runs, lightning, signed updates
 
 ## Weather

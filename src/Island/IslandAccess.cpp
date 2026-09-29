@@ -214,11 +214,12 @@ std::wstring IslandWindow::accessibleName(Action a)const{
     if(inRange(a,Action::CommandResultBase,Action::CommandResultEnd)){const size_t i=row(Action::CommandResultBase);return i<content_.command.results.size()?content_.command.results[i].title:L"Result";}
     if(inRange(a,Action::ClipPinBase,Action::ClipPinEnd))return L"Pin this copy";
     if(inRange(a,Action::LyricLineBase,Action::LyricLineEnd))return L"Jump to this line";
-    if(inRange(a,Action::NearbyBase,Action::NearbyEnd)){const size_t i=row(Action::NearbyBase);if(i<content_.nearby.size()){const auto& n=content_.nearby[i];return n.name+(n.paired?(n.online?L", paired":L", paired, away"):L", pair");}return L"PC";}
+    if(inRange(a,Action::NearbyBase,Action::NearbyEnd)){const size_t i=row(Action::NearbyBase);if(i<content_.nearby.size()){const auto& n=content_.nearby[i];return n.name+(n.phone?L", phone":L"")+(n.paired?(n.online?L", paired":L", paired, away"):L", pair");}return L"PC";}
     if(inRange(a,Action::NearbyForgetBase,Action::NearbyForgetEnd))return L"Forget "+peer(Action::NearbyForgetBase);
     if(inRange(a,Action::NearbySendBase,Action::NearbySendEnd))return L"Send the Shelf to "+peer(Action::NearbySendBase);
     if(inRange(a,Action::NearbyCancelBase,Action::NearbyCancelEnd))return L"Stop the transfer with "+peer(Action::NearbyCancelBase);
     if(inRange(a,Action::NearbyBrowseBase,Action::NearbyBrowseEnd))return peer(Action::NearbyBrowseBase)+L"’s Shelf";
+    if(inRange(a,Action::NearbyRingBase,Action::NearbyRingEnd))return L"Ring "+peer(Action::NearbyRingBase);
     if(inRange(a,Action::HandoffPeerBase,Action::HandoffPeerEnd))return L"Continue on "+peer(Action::HandoffPeerBase);
     if(inRange(a,Action::LibraryItemBase,Action::LibraryItemEnd)){const size_t i=size_t(content_.libraryOffset)+row(Action::LibraryItemBase);if(content_.libraryTracks&&i<content_.libraryTracks->size()){const auto& t=(*content_.libraryTracks)[i];return L"Play "+t.title+(t.artist.empty()?L"":L" by "+t.artist);}return L"Song";}
     if(inRange(a,Action::UpNextItemBase,Action::UpNextItemEnd)){const size_t i=size_t(content_.upNextOffset)+row(Action::UpNextItemBase);if(i<content_.upNextTracks.size()){const auto& t=content_.upNextTracks[i];return L"Play now: "+t.title+(t.artist.empty()?L"":L" by "+t.artist)+L", number "+std::to_wstring(i+1)+L" up next";}return L"Song";}
@@ -236,6 +237,7 @@ std::wstring IslandWindow::accessAlert(const ContentSnapshot::Notice& n)const{
     case 15:return spoken(n.app+L" is sending "+n.detail+L". Accept, or decline");
     case 16:return spoken(n.app+(n.detail.empty()?L"":L". "+n.detail));
     case 17:return spoken(L"Music from another PC: "+n.app+L", "+n.detail+L". Play here, or not now");
+    case 19:return spoken(n.app+(n.detail.empty()?L"":L". "+n.detail)+(n.source.empty()?L"":L". From "+n.source));
     default:return spoken(budTitle(n)+(n.detail.empty()?L"":L". "+n.detail));}
 }
 // The island in a sentence, for the pane's status.

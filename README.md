@@ -1,8 +1,16 @@
-# Arnav Island 0.17 — Up next, your other PC's Shelf, and an island you can hear
+# Arnav Island 0.19 — your phone, on the island
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.18.1-preview.1)
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.19.0-preview.1) · **New:** [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest)
+
+**Arnav Island for Android** is a liquid-glass companion app. From your phone you can:
+- control what plays on your PC
+- send files both ways and take from the Shelf
+- share the clipboard both ways
+- lock the PC
+
+On the island, you see your phone’s notifications and battery, and **Ring** finds your phone.
 
 ![Two alerts side by side](docs/evidence/v0.17/alerts-side-by-side.png)
 

@@ -491,6 +491,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
     case UpdateMessage:pushSettingsContext();if(update_&&update_->state()==UpdateService::State::Ready)SetTimer(window_,UpdateTimer,qaUpdate_?1500:30000,nullptr);return 0;
     case SettingsTownMessage:townMessage(w,l);return 0;
     case ShareMessage:shareEvents();return 0;
+    case RemoteMessage:remoteCall(l);return 0;
     case WallpaperLumaMessage:{std::unique_ptr<std::shared_ptr<WallpaperLuma>> map(reinterpret_cast<std::shared_ptr<WallpaperLuma>*>(l));wallLoading_=false;if(map&&*map)wallLuma_=*map;adaptBackdrop();return 0;}
     case FullscreenMessage:adaptBackdrop();if(w){SetTimer(window_,17,120,nullptr);}else{DWORD pid=0;auto fg=GetForegroundWindow();if(fg)GetWindowThreadProcessId(fg,&pid);if(!testing_&&pid&&pid!=GetCurrentProcessId())yieldToApp();fullscreen();}return 0;
     case WM_DISPLAYCHANGE:if(renderer_)applySettings(true);return 0;
@@ -622,11 +623,17 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                 pass=in(cx,motion_.stubHeight/2)&&in(cx,dropDistance+motion_.height.target()/2)&&!in(cx-beside,gapY)&&!in(cx+beside,gapY)&&!in(cx-beside,4);DeleteObject(shape);
                 events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);pass=pass&&motion_.drop.target()==0;SetTimer(window_,13,500,nullptr);break;}
             // The Shelf's Nearby tab (sharing on, illustrative PCs, no network in a test run): Pair and Forget targets, choosing where Send goes.
-            case 32:{const bool was=settings_.sharing;settings_.sharing=true;content_.settings=settings_;content_.nearby={{"a1",L"Test PC one",true,true},{"b2",L"Test PC two",false,true}};shareTarget_.clear();content_.nearbyTarget.clear();
+            // 0.19: a paired phone's row rings it (a PC's doesn't), and a phone's card shows where it came from.
+            case 32:{const bool was=settings_.sharing;settings_.sharing=true;content_.settings=settings_;
+                content_.nearby={{"a1",L"Test PC one",true,true},{"b2",L"Test PC two",false,true},{"c3",L"Test phone",true,true,shareProtocol,shareRevision,true,64,true}};shareTarget_.clear();content_.nearbyTarget.clear();
                 perform(Action::Shelf);perform(Action::ShelfNearby);auto has=[&](Action a){return std::any_of(renderer_->targets.begin(),renderer_->targets.end(),[&](auto& t){return t.action==a;});};
                 pass=content_.shelfTab==2&&has(Action::NearbyBase)&&has(Action(int(Action::NearbyBase)+1))&&has(Action::NearbyForgetBase)&&!has(Action(int(Action::NearbyForgetBase)+1));
+                pass=pass&&has(Action(int(Action::NearbyRingBase)+2))&&!has(Action::NearbyRingBase)&&accessibleName(Action(int(Action::NearbyRingBase)+2))==L"Ring Test phone";
                 perform(Action::NearbyBase);pass=pass&&shareTarget_=="a1"&&content_.nearbyTarget=="a1";
-                settings_.sharing=was;content_.settings=settings_;content_.nearby.clear();shareTarget_.clear();content_.nearbyTarget.clear();content_.shelfTab=0;perform(Action::Close);SetTimer(window_,13,300,nullptr);break;}
+                settings_.sharing=was;content_.settings=settings_;content_.nearby.clear();shareTarget_.clear();content_.nearbyTarget.clear();content_.shelfTab=0;perform(Action::Close);
+                content_.pinned=false;phoneCard(L"UI test message",L"Nothing real",L"Messages  \u00b7  Test phone",nullptr,3);
+                pass=pass&&state_==IslandState::Notification&&content_.notice.kind==19&&accessAlert(content_.notice).find(L"From Messages")!=std::wstring::npos;
+                events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);SetTimer(window_,13,300,nullptr);break;}
             // Now Playing over a fullscreen app (as if one had hidden the island, with a made-up track): touching the
             // screen's top edge above the island shows it; 0.8 s after the pointer leaves, it hides again.
             case 33:{transition(IslandState::Compact);auto& p=content_.playback;p.available=true;p.playing=true;p.id=0xfffffffffffbull;p.title=L"UI test song";p.source=L"qa.test";

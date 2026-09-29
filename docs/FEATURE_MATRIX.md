@@ -200,3 +200,12 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Health over time | One reading a day; first falls below 90% and 80% marked | Fills in from when the island started keeping history |
 | What's new | The Updated card opens the release's notes; the wheel scrolls | From 0.18.1 on (the version doing the updating saves the notes) |
 | Signed releases | Authenticode, pinned publisher certificate checked by the updater | Self-issued certificate: Windows shows the signer without vouching for it |
+
+| v0.19.0-preview.1 feature | Implemented | Limits |
+|---|---|---|
+| Phone pairing | Protocol 2, revision 2 ("2.2;phone"); phones remembered as phones | Same network |
+| Phone remote | Status (media with cover sent once per song, volume, battery, CPU, weather), media keys, volume, mute, seek, clipboard both ways, open http(s) links, lock | *My phone can control this PC* |
+| Phone notifications | Cards (kind 19) with the app's icon (PNG up to 24 KB), title, text, app and phone; calls stay 14 s | *My phone's notifications*; memory only |
+| Phone battery | On its Nearby row; a card at 20% and below while not charging (once until it charges) | As the phone reports it |
+| Ring | Nearby row button; the phone rings at full alarm volume until found (a minute at most) | Phone app 1.0 or later |
+| Android app | [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.0.0: remote, files, Shelf, music, notifications, battery, find my phone, self-updating | Android 9+; glass refraction on 13+, blur on 12+ |

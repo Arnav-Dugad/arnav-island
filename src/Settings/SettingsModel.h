@@ -151,6 +151,8 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(8,L"Capture and clipboard shortcuts",L"Alt+Shift+S snip  \u00b7  Alt+Shift+T copy text  \u00b7  Alt+Shift+C pick a colour  \u00b7  Alt+Shift+V clipboard","captureShortcuts",&Settings::captureShortcuts);
     toggle(8,L"Share with my PCs",L"Send files to your own PCs on this network (Shelf \u203a Nearby). Paired once with a code, and encrypted","sharing",&Settings::sharing);
     toggle(8,L"My PCs can take from the Shelf",L"Your paired PCs can see this Shelf in Shelf › Nearby and take a copy of what is on it","shelfOpen",&Settings::shelfOpen);
+    toggle(8,L"My phone can control this PC",L"Arnav Island for Android shows what plays here and can play, skip, seek, change the volume, lock this PC and share the clipboard","phoneControl",&Settings::phoneControl);
+    toggle(8,L"My phone’s notifications",L"A paired phone’s notifications and battery show on the island. Kept in memory only","phoneNotices",&Settings::phoneNotices);
     toggle(8,L"Keep the Shelf after restarts",L"Remembers links to your Shelf files and dropped text on this PC, never copies of the files","pinnedShelf",&Settings::pinnedShelf);
     button(8,L"Saved workspaces",L"Remove every saved app set; open apps are not affected",L"Remove",SettingAction::ClearWorkspaces);
     toggle(9,L"Update automatically",L"New versions download from the island\u2019s GitHub releases, are checked, and install while the island rests","autoUpdate",&Settings::autoUpdate);

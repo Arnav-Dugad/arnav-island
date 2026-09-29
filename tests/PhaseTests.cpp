@@ -601,6 +601,10 @@ int main(){try{
         for(auto it=std::sregex_iterator(src.begin(),src.end(),started);it!=std::sregex_iterator();++it)used.insert((*it)[1]);
         std::string missing;for(auto& u:used)if(!known.count(u))missing+=u+" ";
         test(used.size()>=15&&missing.empty(),("the glass's properties all exist before its expressions and springs start (missing: "+missing+")").c_str());}
+    // ---- 0.19: phones (settings v19) -------------------------------------------------------------------------------
+    {std::stringstream v18("version 18\nautoUpdate 0\n");auto s=Settings::parse(v18);test(s.version==Settings::currentVersion&&!s.autoUpdate&&s.phoneControl&&s.phoneNotices,"v18 settings gain the v19 features (a phone's remote and notifications)");
+        Settings off;off.phoneControl=false;off.phoneNotices=false;std::stringstream io;off.write(io);auto back=Settings::parse(io);test(!back.phoneControl&&!back.phoneNotices&&back.version==Settings::currentVersion,"v19 settings round-trip");
+        int found=0;for(auto& i:settingItems())if((i.key=="phoneControl"||i.key=="phoneNotices")&&i.section==8)++found;test(found==2,"Settings has the phone's remote and its notifications, with sharing");}
     // ---- 0.18.1: drops that run and merge, What's new, health crossings, release notes ---------------------------
     {GlassDrops still;still.reset(300,40,14,7);float area=0;for(auto& d:still.drops)area+=d.r*d.r;
         test(still.drops.size()==14&&std::all_of(still.drops.begin(),still.drops.end(),[](auto& d){return d.alive&&d.x>=0&&d.x<=300&&d.y>=0&&d.y<=40&&d.r>=.9f&&d.r<=3.2f;}),"drops bead inside the island");

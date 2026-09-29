@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -18,11 +19,22 @@ namespace nexus {
 // Phase 5H (revision 1 of protocol 2, announced as "2.1"; older PCs read only the 2): a music offer carries the
 // song's cover, and a paired PC can look into this PC's Shelf and take a file or folder from it (while this PC
 // lets it: the "shelfOpen" setting). Revision 0 PCs are never asked for either.
+// 0.19 (revision 2, announced "2.2"): phones. Arnav Island for Android pairs like a PC and adds ";phone" to its
+// announcement; it can ask a paired PC for its status and control it (mode R: now playing with the cover, media keys,
+// volume, mute, lock, clipboard both ways, seeking, opening a link), send the phone's battery and notifications to
+// the island (mode N), and be rung from the island (mode F, find my phone).
 constexpr UINT ShareMessage=WM_APP+45;
-constexpr int shareProtocol=2,shareRevision=1;
+constexpr int shareProtocol=2,shareRevision=2;
+// Remote commands (mode R) and their answers.
+enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,ClipboardGet=6,ClipboardSet=7,Seek=8,Open=9};
+constexpr uint8_t remoteOk=0,remoteNotAllowed=1,remoteUnsupported=2,remoteFailed=3;
+// What the island reports to a phone's remote. cover: a small JPEG (at most shareCoverLimit bytes), or empty.
+struct RemoteStatus{bool available=false,playing=false,canPrevious=false,canNext=false,canToggle=false,canSeek=false,muted=false,charging=false,batteryPresent=false;
+    double position=0,duration=0;int volume=0,battery=-1,cpu=-1;std::wstring title,artist,app,name,weather;std::vector<uint8_t> cover;};
 // version: the protocol the PC announced (1: an older Arnav Island that can't take protocol 2 transfers); revision: the
 // revision within it (0 before Phase 5H).
-struct SharePeer{std::string id;std::wstring name;bool paired=false,online=false;int version=shareProtocol,revision=0;};
+// phone: Arnav Island for Android; battery (-1 unknown) and charging: as the phone last said.
+struct SharePeer{std::string id;std::wstring name;bool paired=false,online=false;int version=shareProtocol,revision=0;bool phone=false;int battery=-1;bool charging=false;};
 // Music on its way to another PC. file: the song's own file when the island plays it (sent only if asked for).
 // cover: the song's cover as a small JPEG (at most shareCoverLimit bytes; revision 1).
 constexpr size_t shareCoverLimit=96*1024;
@@ -39,11 +51,17 @@ struct ShareEvent{
     // ShelfList: a paired PC's Shelf (shelf; code 0 shown, 1 that PC keeps its Shelf to itself, 2 it couldn't be asked:
     // detail says why). ShelfTaken: a paired PC took `file` from this PC's Shelf. Received with code 1: the files
     // were taken from the other PC's Shelf (not offered by it).
-    enum class Kind{Peers,PairCode,Paired,PairFailed,Offer,Progress,Received,Sent,Failed,Handoff,HandoffAnswered,HandoffFile,ShelfList,ShelfTaken} kind=Kind::Peers;
+    // Revision 2: PhoneStatus (battery, charging), PhoneNotice (a phone's notification: app, file its title, detail its
+    // text, icon a small PNG, urgent for calls), Rang (a phone answered find-my-phone).
+    enum class Kind{Peers,PairCode,Paired,PairFailed,Offer,Progress,Received,Sent,Failed,Handoff,HandoffAnswered,HandoffFile,ShelfList,ShelfTaken,PhoneStatus,PhoneNotice,Rang} kind=Kind::Peers;
     std::string peer;std::wstring name,file,detail;uint64_t size=0,done=0;uint32_t code=0,transfer=0,count=0;bool folder=false,outgoing=false;ShareHandoff handoff;std::vector<ShareShelfItem> shelf;
+    std::wstring app;std::vector<uint8_t> icon;int battery=-1;bool charging=false,urgent=false;
 };
 // loopback: listen on 127.0.0.1 only (tests; no firewall prompt). handoff: where a handed-off song's file is kept.
-struct ShareOptions{uint16_t tcpPort=47820,udpPort=47821;bool discovery=true,loopback=false;std::wstring folder,downloads,name,handoff;};
+// remote: answers a phone's remote command (called on a network thread): its answer byte, then its payload. Unset: the
+// commands are unsupported.
+struct ShareOptions{uint16_t tcpPort=47820,udpPort=47821;bool discovery=true,loopback=false;std::wstring folder,downloads,name,handoff;
+    std::function<std::vector<uint8_t>(const std::string& peer,RemoteCommand command,const std::vector<uint8_t>& payload)> remote;};
 class ShareService{
 public:
     // notify: posted ShareMessage whenever events are waiting (null: poll take()).
@@ -72,6 +90,8 @@ public:
     // name) taken into Downloads: Progress, then Received with code 1, or Failed. Returns the transfer's id.
     void askShelf(const std::string& peer);
     uint32_t takeFromShelf(const std::string& peer,uint32_t index,const std::wstring& name);
+    // Revision 2: rings a paired phone (Rang when it answered, or Failed).
+    void ring(const std::string& peer);
     std::vector<ShareEvent> take();
     struct Core;
 private:
@@ -82,6 +102,9 @@ std::wstring safeShareName(const std::wstring& name);
 // A received relative path ("Photos/2024/a.jpg"), each part made safe; "." and ".." parts and empty ones are
 // dropped, and at most 24 parts are kept. Empty when nothing is left.
 std::vector<std::wstring> safeSharePath(const std::wstring& path);
+// The remote's status answer (remoteOk, then the payload the phone reads): the cover is sent only when its SHA-256
+// differs from haveCover, the one the phone already shows.
+std::vector<uint8_t> remoteStatusAnswer(const RemoteStatus& status,const std::vector<uint8_t>& haveCover);
 // "Photos", "notes.txt", or "notes.txt and 2 more", for a transfer of these top-level items.
 std::wstring shareTitle(const std::vector<std::wstring>& names);
 }

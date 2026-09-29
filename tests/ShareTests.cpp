@@ -8,6 +8,7 @@
 #include "Productivity/ShareService.h"
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -31,6 +32,13 @@ int main(){
     CHECK((safeSharePath(L"C:\\Windows\\x.dll")==std::vector<std::wstring>{L"C_",L"Windows",L"x.dll"}));CHECK(safeSharePath(L"/../..").empty());CHECK(safeSharePath(std::wstring(100,L'a')+L"/"+std::wstring(100,L'/')).size()==1);
     {std::wstring deep;for(int i=0;i<40;++i)deep+=L"d/";deep+=L"f.txt";CHECK(safeSharePath(deep).size()==24);}
     CHECK((safeSharePath(L"a/CON/b.txt")==std::vector<std::wstring>{L"a",L"_CON",L"b.txt"}));
+    // Revision 2: the remote's status (flags, position, volume, battery, CPU, the cover once, then "unchanged", five lines).
+    {RemoteStatus st;st.available=st.playing=st.canNext=true;st.batteryPresent=true;st.position=61.5;st.duration=200;st.volume=142;st.battery=77;st.cpu=-1;st.title=L"A\nB";st.name=L"Desk";st.cover.assign(900,7);
+        const auto a=remoteStatusAnswer(st,{});CHECK(a.size()>30&&a[0]==remoteOk);const uint16_t flags=uint16_t(a[1]|a[2]<<8);CHECK(flags==(1|2|8|256));
+        double position=0;std::memcpy(&position,a.data()+3,8);CHECK(position==61.5);CHECK(a[19]==100&&a[20]==77&&a[21]==255&&a[22]==1);
+        const std::vector<uint8_t> hash(a.begin()+23,a.begin()+55);const auto b=remoteStatusAnswer(st,hash);CHECK(b[22]==2&&b.size()==a.size()-32-4-900);
+        const uint32_t n=uint32_t(b[23]|b[24]<<8|b[25]<<16|b[26]<<24);CHECK(std::string(b.begin()+27,b.end())=="A B\n\n\nDesk\n"&&n==b.size()-27);
+        st.cover.clear();CHECK(remoteStatusAnswer(st,hash)[22]==0);}
     CHECK(shareTitle({L"Photos"})==L"Photos");CHECK(shareTitle({L"a.txt",L"b.txt",L"c.txt"})==L"a.txt and 2 more");CHECK(safeShareName(L"")==L"file");CHECK(safeShareName(std::wstring(300,L'a')+L".pdf").size()==120);CHECK(safeShareName(std::wstring(300,L'a')+L".pdf").ends_with(L".pdf"));
     const fs::path root=fs::temp_directory_path()/(L"arnav-share-test-"+std::to_wstring(GetTickCount64()));fs::create_directories(root);
     const fs::path file=root/L"hello.bin";{std::mt19937 random(7);std::ofstream out(file,std::ios::binary);for(int i=0;i<1000003;++i)out.put(char(random()&255));}

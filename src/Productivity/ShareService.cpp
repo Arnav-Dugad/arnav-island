@@ -26,7 +26,9 @@ constexpr uint8_t protocolVersion=uint8_t(shareProtocol);
 constexpr size_t chunkSize=256*1024,maxFrame=chunkSize+64;
 constexpr uint64_t maxFile=16ull<<30;
 constexpr char magic[4]={'A','R','N','V'};
-constexpr uint8_t modePair='P',modeSend='S',modeMusic='H',modeList='L',modeTake='T';
+constexpr uint8_t modePair='P',modeSend='S',modeMusic='H',modeList='L',modeTake='T',modeRemote='R',modeNotice='N',modeFind='F';
+// Revision 2 frames.
+constexpr uint8_t frameRequest=0x20,frameReply=0x21,frameNotice=0x30,frameNoticeAck=0x31,frameRing=0x40,frameRingAck=0x41;
 bool success(LONG status){return status>=0;}
 std::string hex(const uint8_t* p,size_t n){static const char* digits="0123456789abcdef";std::string s;s.reserve(n*2);for(size_t i=0;i<n;++i){s+=digits[p[i]>>4];s+=digits[p[i]&15];}return s;}
 std::string hex(const Bytes& b){return hex(b.data(),b.size());}
@@ -169,7 +171,8 @@ std::wstring shareTitle(const std::vector<std::wstring>& names){
     return names[0]+L" and "+std::to_wstring(names.size()-1)+L" more";
 }
 struct ShareService::Core:std::enable_shared_from_this<Core>{
-    struct Peer{std::wstring name;std::string address;uint16_t port=0;int version=1,revision=0;Clock::time_point seen{};bool online=false;Bytes key;/* the paired public key; empty when not paired */};
+    struct Peer{std::wstring name;std::string address;uint16_t port=0;int version=1,revision=0;Clock::time_point seen{};bool online=false;Bytes key;/* the paired public key; empty when not paired */
+        bool phone=false;int battery=-1;bool charging=false;};
     // A person's answer (pairing or an offer), waited for by a session thread.
     struct Decision{std::mutex m;std::condition_variable cv;int value=-1;
         void set(int v){{std::lock_guard lock(m);if(value<0)value=v;}cv.notify_all();}
@@ -186,6 +189,8 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
     ~Core(){if(key)BCryptDestroyKey(key);if(wsa)WSACleanup();}
     fs::path identityFile()const{return fs::path(o.folder)/L"share-identity.nexus";}
     fs::path peersFile()const{return fs::path(o.folder)/L"share-peers.nexus";}
+    // Revision 2: which paired peers are phones, apart from the peers file (which older versions read as it was).
+    fs::path phonesFile()const{return fs::path(o.folder)/L"share-phones.nexus";}
     void post(ShareEvent e){{std::lock_guard lock(m);events.push_back(std::move(e));}if(notify)PostMessageW(notify,ShareMessage,0,0);}
     void postPeers(){ShareEvent e;e.kind=ShareEvent::Kind::Peers;post(std::move(e));}
     void fail(ShareEvent::Kind kind,const std::string& peer,const std::wstring& name,const std::wstring& file,const std::wstring& detail,uint32_t transfer=0,bool outgoing=false){ShareEvent e;e.kind=kind;e.peer=peer;e.name=name;e.file=file;e.detail=detail;e.transfer=transfer;e.outgoing=outgoing;post(std::move(e));}
@@ -215,9 +220,11 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
     }
     void loadPeers(){std::ifstream in(peersFile());std::string line;while(std::getline(in,line)){const auto a=line.find('\t'),b=line.find('\t',a==std::string::npos?a:a+1);if(a==std::string::npos||b==std::string::npos)continue;
         const std::string peer=line.substr(0,a);const Bytes k=unhex(line.substr(a+1,b-a-1));const Bytes nameBytes=unhex(line.substr(b+1));if(unhex(peer).size()!=16||k.size()!=64)continue;
-        auto& p=peers[peer];p.key=k;p.version=shareProtocol;p.name=cleanName(wide(std::string(nameBytes.begin(),nameBytes.end())));}}
+        auto& p=peers[peer];p.key=k;p.version=shareProtocol;p.name=cleanName(wide(std::string(nameBytes.begin(),nameBytes.end())));}
+        std::ifstream phones(phonesFile());while(std::getline(phones,line)){auto it=peers.find(line);if(it!=peers.end()){it->second.phone=true;it->second.revision=shareRevision;}}}
     // Called with m held.
-    void savePeers(){std::error_code e;fs::create_directories(o.folder,e);std::ofstream out(peersFile(),std::ios::trunc);for(auto& [peer,p]:peers)if(!p.key.empty()){const std::string n=utf8(p.name);out<<peer<<'\t'<<hex(p.key)<<'\t'<<hex(reinterpret_cast<const uint8_t*>(n.data()),n.size())<<'\n';}}
+    void savePeers(){std::error_code e;fs::create_directories(o.folder,e);std::ofstream out(peersFile(),std::ios::trunc);for(auto& [peer,p]:peers)if(!p.key.empty()){const std::string n=utf8(p.name);out<<peer<<'\t'<<hex(p.key)<<'\t'<<hex(reinterpret_cast<const uint8_t*>(n.data()),n.size())<<'\n';}
+        std::ofstream phones(phonesFile(),std::ios::trunc);for(auto& [peer,p]:peers)if(!p.key.empty()&&p.phone)phones<<peer<<'\n';}
     bool start(){
         WSADATA data{};if(WSAStartup(MAKEWORD(2,2),&data)!=0){failure="Networking is unavailable";return false;}wsa=true;
         if(!providers().ok){failure="Encryption is unavailable";return false;}
@@ -254,9 +261,10 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
             const auto semi=parts[2].find(';');const int port=std::atoi(parts[2].substr(0,semi).c_str());if(port<=0||port>65535)continue;
             const int version=semi==std::string::npos?1:std::clamp(std::atoi(parts[2].c_str()+semi+1),1,99);
             const auto dot=semi==std::string::npos?std::string::npos:parts[2].find('.',semi);const int revision=dot==std::string::npos?0:std::clamp(std::atoi(parts[2].c_str()+dot+1),0,99);
+            const bool phone=parts[2].find(";phone")!=std::string::npos;
             char address[INET_ADDRSTRLEN]{};inet_ntop(AF_INET,&from.sin_addr,address,sizeof(address));const std::wstring name=cleanName(wide(text.substr(start)));
             bool changed=false;{std::lock_guard lock(m);auto& p=peers[parts[1]];changed=!p.online||p.address!=address||p.port!=port||p.version!=version||p.revision!=revision||(p.key.empty()&&p.name!=name);
-                p.address=address;p.port=uint16_t(port);p.version=version;p.revision=revision;p.online=true;p.seen=Clock::now();if(p.key.empty()||p.name.empty())p.name=name;}
+                changed=changed||p.phone!=phone;if(phone&&!p.phone&&!p.key.empty()){p.phone=true;savePeers();}p.address=address;p.port=uint16_t(port);p.version=version;p.revision=revision;p.phone=phone;p.online=true;p.seen=Clock::now();if(p.key.empty()||p.name.empty())p.name=name;}
             if(changed)postPeers();
         }
     }
@@ -294,7 +302,7 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         ss.peerName=cleanName(wide(std::string(hello.begin()+118,hello.end())));if(ss.peerId==id)return false;
         bool allowed=false;{std::lock_guard lock(m);
             if(mode==modePair&&!pairing){pairing=claim=std::make_shared<Decision>();allowed=true;}
-            else if(mode==modeSend||mode==modeMusic||mode==modeList||mode==modeTake){auto it=peers.find(hex(ss.peerId));allowed=it!=peers.end()&&!it->second.key.empty()&&it->second.key==ss.peerPub;}}
+            else if(mode==modeSend||mode==modeMusic||mode==modeList||mode==modeTake||mode==modeRemote||mode==modeNotice){auto it=peers.find(hex(ss.peerId));allowed=it!=peers.end()&&!it->second.key.empty()&&it->second.key==ss.peerPub;}}
         if(!allowed){Bytes no(magic,magic+4);no.push_back(protocolVersion);no.push_back(1);sendFrame(s,no);return false;}
         const Bytes nonce=randomBytes(32);if(nonce.size()!=32)return false;
         Bytes reply(magic,magic+4);reply.push_back(protocolVersion);reply.push_back(0);append(reply,id);append(reply,pub);append(reply,nonce);append(reply,utf8(o.name));
@@ -314,7 +322,8 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
     void incoming(SOCKET s){
         timeout(s,15000);Session ss;uint8_t mode=0;std::shared_ptr<Decision> claim;
         if(!welcome(s,ss,mode,claim)){if(claim)releasePairing(claim);return;}
-        if(mode==modePair)pairSession(s,ss,claim);else if(mode==modeMusic)receiveMusic(s,ss);else if(mode==modeList)serveList(s,ss);else if(mode==modeTake)serveTake(s,ss);else receive(s,ss);
+        if(mode==modePair)pairSession(s,ss,claim);else if(mode==modeMusic)receiveMusic(s,ss);else if(mode==modeList)serveList(s,ss);else if(mode==modeTake)serveTake(s,ss);
+        else if(mode==modeRemote)serveRemote(s,ss);else if(mode==modeNotice)serveNotice(s,ss);else receive(s,ss);
     }
     // Progress for a transfer: at most one event per percent and per tenth of a second (and always the last).
     struct Progress{Core& core;ShareEvent base;uint64_t total=0,done=0;int shown=-1;Clock::time_point at{};
@@ -521,6 +530,37 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         if(!whole){std::error_code e;if(!saved.empty())fs::remove(saved,e);fail(ShareEvent::Kind::Failed,peer,from,music.title,L"The song didn't arrive whole from "+from,transfer);return;}
         ShareEvent e;e.kind=ShareEvent::Kind::HandoffFile;e.peer=peer;e.name=from;e.file=music.title;e.detail=saved.wstring();e.transfer=transfer;e.handoff=music;post(e);
     }
+    // ---- revision 2: phones ----
+    // One remote command, answered by the island (options.remote) on this thread.
+    void serveRemote(SOCKET s,Session& ss){
+        Bytes request;if(!opened(s,ss.channel,request)||request.size()<2||request[0]!=frameRequest)return;
+        const RemoteCommand command=RemoteCommand(request[1]);const Bytes payload(request.begin()+2,request.end());
+        Bytes answer=o.remote?o.remote(hex(ss.peerId),command,payload):Bytes{remoteUnsupported};if(answer.empty())answer={remoteFailed};
+        Bytes reply{frameReply};append(reply,answer);if(reply.size()>maxFrame)reply={frameReply,remoteFailed};sealed(s,ss.channel,reply);
+    }
+    // A phone's status (battery) or one of its notifications, for the island.
+    void serveNotice(SOCKET s,Session& ss){
+        const std::string peer=hex(ss.peerId);Bytes f;if(!opened(s,ss.channel,f)||f.size()<2||f[0]!=frameNotice)return;
+        ShareEvent e;e.peer=peer;e.name=nameOf(peer,ss.peerName);
+        if(f[1]==1&&f.size()>=4){e.kind=ShareEvent::Kind::PhoneStatus;e.battery=int(int8_t(f[2]));e.charging=f[3]!=0;if(e.battery<-1||e.battery>100)e.battery=-1;
+            {std::lock_guard lock(m);auto it=peers.find(peer);if(it!=peers.end()){it->second.battery=e.battery;it->second.charging=e.charging;}}}
+        else if(f[1]==2&&f.size()>=3+4){e.kind=ShareEvent::Kind::PhoneNotice;e.urgent=f[2]!=0;size_t at=3;const uint32_t n=get32(f.data()+at);at+=4;if(n>64*1024||at+n+4>f.size())return;
+            const std::wstring text=wide(std::string(f.begin()+long(at),f.begin()+long(at+n)));at+=n;const uint32_t icon=get32(f.data()+at);at+=4;if(icon>24*1024||at+icon>f.size())return;
+            e.icon.assign(f.begin()+long(at),f.begin()+long(at+icon));
+            std::vector<std::wstring> lines;size_t from=0;for(int k=0;k<4;++k){size_t end=text.find(L'\n',from);if(end==std::wstring::npos)end=text.size();lines.push_back(from<=text.size()?text.substr(from,end-from):L"");from=end+1;}
+            auto clean=[](std::wstring t,size_t limit){std::wstring out;for(wchar_t c:t)if(c>=32&&c!=127)out+=c;if(out.size()>limit)out.resize(limit);return out;};
+            e.app=clean(lines[0],80);e.file=clean(lines[1],200);e.detail=clean(lines[2],600);if(e.app.empty()&&e.file.empty()&&e.detail.empty())return;}
+        else return;
+        sealed(s,ss.channel,Bytes{frameNoticeAck});post(std::move(e));
+    }
+    void ringPhone(const std::string& peer,uint32_t transfer){
+        Peer target;std::wstring why;SOCKET s=INVALID_SOCKET;Session ss;bool rang=false;
+        if(ready(peer,target,why)&&(target.revision>=2||(why=L"Update Arnav Island on "+target.name+L" to ring it",false))&&reach(target,peer,modeFind,transfer,s,ss,why)){
+            Bytes ack;rang=sealed(s,ss.channel,Bytes{frameRing})&&opened(s,ss.channel,ack)&&ack.size()==1&&ack[0]==frameRingAck;if(!rang)why=target.name+L" didn't answer";}
+        if(s!=INVALID_SOCKET){untrack(s);closesocket(s);}
+        finish(transfer);
+        if(rang){ShareEvent e;e.kind=ShareEvent::Kind::Rang;e.peer=peer;e.name=target.name;post(e);}else fail(ShareEvent::Kind::Failed,peer,target.name,{},why,transfer,true);
+    }
     void pairWith(const std::string& peer,const std::shared_ptr<Decision>& d){
         Peer target;{std::lock_guard lock(m);auto it=peers.find(peer);if(it!=peers.end())target=it->second;}
         if(target.online&&target.version<shareProtocol){releasePairing(d);fail(ShareEvent::Kind::PairFailed,peer,target.name,{},L"Update Arnav Island on "+target.name+L" first");return;}
@@ -538,7 +578,7 @@ bool ShareService::running()const{return core_->ok;}
 std::string ShareService::error()const{return core_->failure;}
 std::string ShareService::id()const{return hex(core_->id);}
 std::vector<SharePeer> ShareService::peers()const{
-    std::vector<SharePeer> list;{std::lock_guard lock(core_->m);for(auto& [peer,p]:core_->peers)if(p.online||!p.key.empty())list.push_back({peer,p.name,!p.key.empty(),p.online,p.version,p.revision});}
+    std::vector<SharePeer> list;{std::lock_guard lock(core_->m);for(auto& [peer,p]:core_->peers)if(p.online||!p.key.empty())list.push_back({peer,p.name,!p.key.empty(),p.online,p.version,p.revision,p.phone,p.battery,p.charging});}
     std::stable_sort(list.begin(),list.end(),[](auto& a,auto& b){const int ra=(a.online?0:2)+(a.paired?0:1),rb=(b.online?0:2)+(b.paired?0:1);return ra!=rb?ra<rb:a.name<b.name;});return list;
 }
 void ShareService::addPeer(const std::string& peer,const std::wstring& name,const std::string& address,uint16_t port,int version,int revision){
@@ -567,5 +607,16 @@ void ShareService::askShelf(const std::string& peer){if(!core_->ok)return;std::t
 uint32_t ShareService::takeFromShelf(const std::string& peer,uint32_t index,const std::wstring& name){
     if(!core_->ok)return 0;const uint32_t transfer=core_->newTransfer();
     std::thread([core=core_,peer,index,name,transfer]{core->takeItem(peer,index,name,transfer);}).detach();return transfer;}
+void ShareService::ring(const std::string& peer){if(!core_->ok)return;const uint32_t transfer=core_->newTransfer();std::thread([core=core_,peer,transfer]{core->ringPhone(peer,transfer);}).detach();}
+std::vector<uint8_t> remoteStatusAnswer(const RemoteStatus& st,const std::vector<uint8_t>& haveCover){
+    Bytes b{remoteOk};uint16_t flags=0;auto bit=[&](int i,bool on){if(on)flags|=uint16_t(1u<<i);};
+    bit(0,st.available);bit(1,st.playing);bit(2,st.canPrevious);bit(3,st.canNext);bit(4,st.canToggle);bit(5,st.muted);bit(6,st.charging);bit(7,st.canSeek);bit(8,st.batteryPresent);
+    b.push_back(uint8_t(flags));b.push_back(uint8_t(flags>>8));putF64(b,st.position);putF64(b,st.duration);b.push_back(uint8_t(std::clamp(st.volume,0,100)));b.push_back(uint8_t(int8_t(std::clamp(st.battery,-1,100))));b.push_back(uint8_t(st.cpu<0?255:std::clamp(st.cpu,0,100)));
+    if(st.cover.empty()||st.cover.size()>shareCoverLimit)b.push_back(0);
+    else{const Bytes hash=Sha().add(st.cover).done();if(hash==haveCover)b.push_back(2);else{b.push_back(1);append(b,hash);put32(b,uint32_t(st.cover.size()));append(b,st.cover);}}
+    auto line=[](const std::wstring& v){std::wstring t=v.substr(0,512);for(auto& c:t)if(c==L'\n'||c==L'\r'||c==L'\0')c=L' ';return t;};
+    const std::string text=utf8(line(st.title)+L"\n"+line(st.artist)+L"\n"+line(st.app)+L"\n"+line(st.name)+L"\n"+line(st.weather));put32(b,uint32_t(text.size()));append(b,text);
+    return b;
+}
 std::vector<ShareEvent> ShareService::take(){std::lock_guard lock(core_->m);std::vector<ShareEvent> out;out.swap(core_->events);return out;}
 }

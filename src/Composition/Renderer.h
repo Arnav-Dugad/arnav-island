@@ -81,7 +81,9 @@ struct ContentSnapshot {
     // Kind 8: sound moved to headphones (device = the output, app = the previous output, switchBack offered).
     // Kinds 9-11: a colour was picked, text was copied from the screen, a snip went to the Shelf (detail and colour describe it).
     // progress: music from another PC (kind 17), how far into the song it is (0..1; -1 unknown).
-    struct Notice{int kind=0;BluetoothDevice device;std::wstring app;std::shared_ptr<const Artwork> icon;bool switchBack=false;std::wstring detail;uint32_t colour=0;std::wstring path;double progress=-1;} notice;
+    // 0.19: phone (a pairing or card from Arnav Island for Android); kind 19 is a phone's card: a notification (app its title,
+    // detail its text, icon the app's icon, source the app and the phone), a phone running low, rung, or what it did here.
+    struct Notice{int kind=0;BluetoothDevice device;std::wstring app;std::shared_ptr<const Artwork> icon;bool switchBack=false;std::wstring detail;uint32_t colour=0;std::wstring path;double progress=-1;bool phone=false;std::wstring source;} notice;
     // Phase 4: clipboard history on the Shelf, privacy indicators and the command bar.
     int shelfTab=0,clipOffset=0;bool clipsPaused=false;std::wstring clipStatus;double clipStatusUntil=0;struct Clip{uint64_t id=0;int kind=0;std::wstring preview,meta;std::shared_ptr<const Artwork> thumbnail,icon;bool pinned=false,secret=false;
         // Phase 5F, rich rows: a colour code's colour, code (preview is then its first line), a link's host and path and its site icon.

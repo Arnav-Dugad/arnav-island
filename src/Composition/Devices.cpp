@@ -57,6 +57,11 @@ void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UI
         surface(cardIconSurface_,56,56,[&](auto* rt){
             if(s.notice.kind==9){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(s.notice.colour),&b);rt->FillEllipse(D2D1::Ellipse({28,28},23,23),b.Get());b->SetColor(D2D1::ColorF(ink,.22f));rt->DrawEllipse(D2D1::Ellipse({28,28},23.5f,23.5f),b.Get(),1.5f);return;}
             if(s.notice.kind==10){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),Icon::Text,16,16,24,accent);return;}
+            // 0.19: a phone's card: the app's own icon on a rounded plate, else a phone.
+            if(s.notice.kind==19){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);
+                if(s.notice.icon){rt->FillRoundedRectangle(D2D1::RoundedRect({4,4,52,52},13,13),b.Get());ComPtr<ID2D1RoundedRectangleGeometry> g;d2d_->CreateRoundedRectangleGeometry(D2D1::RoundedRect({7,7,49,49},11,11),&g);
+                    ComPtr<ID2D1Layer> layer;rt->CreateLayer(&layer);rt->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),g.Get()),layer.Get());drawPreview(rt,*s.notice.icon,7,7,42,42);rt->PopLayer();}
+                else{rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),Icon::Phone,16,16,24,accent);}return;}
             // 0.18: the island has updated itself.
             if(s.notice.kind==18){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),Icon::Spark,16,16,24,accent);return;}
             if(s.notice.kind==11){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({4,4,52,52},12,12),b.Get());if(s.notice.icon)drawPreview(rt,*s.notice.icon,6,6,44,44);else drawIcon(rt,d2d_.Get(),Icon::Snip,16,16,24,accent);return;}
