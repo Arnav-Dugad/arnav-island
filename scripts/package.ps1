@@ -1,4 +1,4 @@
-param([string]$Version='0.20.0-preview.1')
+param([string]$Version='0.20.1-preview.1')
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
 $exe=Join-Path $projectRoot 'build\ArnavIsland.exe'

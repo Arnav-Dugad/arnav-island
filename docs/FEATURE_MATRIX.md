@@ -222,3 +222,10 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Proximity | Welcome card after 2 min away; lock after 45 s gone with 30 s idle | Same-network presence only |
 | Trackpad and keyboard | SendInput moves, buttons, wheel, Unicode text and virtual keys | *My phone can control this PC* |
 | Find this PC | Chime eight times with a splash and *Here I am* | Phone app 1.1 or later |
+
+| v0.20.1-preview.1 feature | Implemented | Limits |
+|---|---|---|
+| Every broker at once | HiveMQ, EMQX and Mosquitto all stay connected; hellos and codes on each; a tunnel keeps to one both devices are on; IPv4/IPv6 fast fallback | Needs one broker both devices reach |
+| Retransmission | Unacknowledged messages sent again after 1.5 s (doubling to 8 s); gaps reported at once (at most every 300 ms) and filled from what came early; ends after 45 s without progress | Older versions on the other side: as before |
+| Pairing QR code | `arnavisland://pair/<code>?k=<fingerprint>`, byte mode, level M, version 4 (33 x 33), drawn on white in Nearby | The phone app 1.2 scans it |
+| Key fingerprint | First 10 bytes of the SHA-256 of this PC's public key; the phone refuses another key and confirms by itself | Typed codes still confirm on both |

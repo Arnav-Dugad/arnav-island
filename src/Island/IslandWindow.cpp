@@ -1,3 +1,4 @@
+#include "Productivity/QrCode.h"
 #include "Common/Capture.h"
 #include "IslandWindow.h"
 #include "Media/CoverCodec.h"
@@ -108,6 +109,10 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     if(testing_&&cmd.find(L"--qa-adaptive")!=std::wstring::npos){qaBackdrop_=true;settings_.material=2;settings_.adaptiveText=true;applySettings(false,true);}
     // --qa-nearby: the Shelf's Nearby tab with illustrative PCs (no network); --qa-share-card=<14|15|16>: a sharing card.
     if(testing_&&cmd.find(L"--qa-nearby")!=std::wstring::npos){settings_.sharing=true;content_.settings=settings_;content_.shareName=L"Desk PC";content_.nearby={{"a1",L"Studio PC",true,true,shareProtocol,shareRevision},{"b2",L"Travel laptop",false,true,shareProtocol,shareRevision},{"c3",L"Living room PC",true,false,shareProtocol,shareRevision}};content_.nearbyTarget=shareTarget_="a1";
+        content_.page=Page::Shelf;content_.shelfTab=2;content_.pinned=true;transition(IslandState::Expanded);refresh();}
+    // --qa-pairing: Nearby with a pairing code on offer and its QR code (an illustrative code; no network).
+    if(testing_&&cmd.find(L"--qa-pairing")!=std::wstring::npos){settings_.sharing=true;settings_.relay=true;content_.settings=settings_;content_.shareName=L"Desk PC";
+        const auto qr=qrEncode("arnavisland://pair/7K2PMX4Q?k=4f1c9a07d2b8e63a5c10");content_.pairing={L"7K2P-MX4Q",seconds()+600,qr.size,qr.modules};
         content_.page=Page::Shelf;content_.shelfTab=2;content_.pinned=true;transition(IslandState::Expanded);refresh();}
     // --qa-late (with --qa-share-card): the card comes 5 s after start (so a screen reader client is already listening).
     if(auto at=cmd.find(L"--qa-share-card=");testing_&&at!=std::wstring::npos&&cmd.find(L"--qa-late")!=std::wstring::npos){qaLateCard_=_wtoi(cmd.c_str()+at+16);SetTimer(window_,71,5000,nullptr);}
@@ -661,7 +666,15 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                     pass=pass&&state_==IslandState::Notification&&content_.notice.actions.size()==2&&has(Action::NoticeActionBase)&&has(Action(int(Action::NoticeActionBase)+1))&&accessibleName(Action(int(Action::NoticeActionBase)+1))==L"Mark read";
                     perform(Action::NoticeActionBase);pass=pass&&content_.command.active&&content_.command.reply&&content_.command.replyTo==L"Mum"&&content_.command.replyKey=="k1";
                     closeCommand(false);
-                    content_.pinned=false;shareCard(20,L"7K2P-MX4Q",L"On your phone: Arnav Island \u203a Pair with a code",{},3);pass=pass&&content_.notice.kind==20&&has(Action::PairingStop);
+                    // 0.20.1: the code's card opens Nearby with its QR code (the pairing link), and Stop there puts Nearby back.
+                    {const bool wasSharing=settings_.sharing,wasRelay=settings_.relay;settings_.sharing=true;settings_.relay=true;content_.settings=settings_;
+                        const auto qr=qrEncode("arnavisland://pair/7K2PMX4Q?k=4f1c9a07d2b8e63a5c10");content_.pairing={L"7K2P-MX4Q",seconds()+600,qr.size,qr.modules};
+                        content_.pinned=false;shareCard(20,L"7K2P-MX4Q",L"Scan its QR code, or type it on your phone",{},3);
+                        pass=pass&&qr.size==33&&content_.notice.kind==20&&has(Action::PairingStop)&&has(Action::PairingShow)&&accessibleName(Action::PairingShow)==L"Show the QR code";
+                        perform(Action::PairingShow);
+                        pass=pass&&state_==IslandState::Expanded&&content_.page==Page::Shelf&&content_.shelfTab==2&&has(Action::PairingStop)&&!has(Action::PairAnywhere);
+                        perform(Action::PairingStop);pass=pass&&content_.pairing.code.empty()&&has(Action::PairAnywhere);
+                        settings_.sharing=wasSharing;settings_.relay=wasRelay;content_.settings=settings_;content_.shelfTab=0;perform(Action::Close);}
                     events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);}
                 content_.pinned=false;phoneCard(L"UI test message",L"Nothing real",L"Messages  \u00b7  Test phone",nullptr,3);
                 pass=pass&&state_==IslandState::Notification&&content_.notice.kind==19&&accessAlert(content_.notice).find(L"From Messages")!=std::wstring::npos;

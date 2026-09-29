@@ -4,7 +4,7 @@ A native Windows 11 island with physical spring motion, real system information 
 
 [Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.20.0-preview.1) · [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.1
 
-**Your phone, anywhere.** Your phone and your PCs now reach each other on any network: another Wi-Fi, mobile data, anywhere. It’s free and end-to-end encrypted. To pair from far away, use the code on **Shelf › Nearby › Pair with a code**.
+**Your phone, anywhere.** Your phone and your PCs now reach each other on any network: another Wi-Fi, mobile data, anywhere. It’s free and end-to-end encrypted. To pair from far away, open **Shelf › Nearby › Pair with a code** and scan its QR code with the phone app (or type the code).
 
 **On the island:**
 - reply to your phone’s messages from the keyboard

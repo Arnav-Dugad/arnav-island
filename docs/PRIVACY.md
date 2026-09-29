@@ -178,3 +178,9 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
   - Copies Windows marks as excluded from clipboard monitoring or history are never sent.
   - Password-like copies are marked sensitive, so the phone hides them.
 - **Proximity** uses only whether your phone is on your network. The lock uses Windows' own idle time; nothing is recorded.
+
+## v0.20.1 scan to pair
+
+- **The island stays on all three brokers at once**, so each of them sees the same as before: your IP address and random-looking topics, with everything sealed.
+- **The pairing QR code** shows the code and this PC's key fingerprint (the first 10 bytes of the SHA-256 of its public key). The fingerprint is not a secret; it only lets the phone check it reached this PC. The QR code is drawn on screen and never sent anywhere.
+- **The phone's camera** reads the code on the phone, only while its scanner is open. Nothing it sees is kept or sent.

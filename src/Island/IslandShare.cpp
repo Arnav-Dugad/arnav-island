@@ -1,3 +1,4 @@
+#include "Productivity/QrCode.h"
 #include "IslandWindow.h"
 #include "Media/CoverCodec.h"
 #include <shlobj.h>
@@ -88,7 +89,7 @@ void IslandWindow::shareEvents(){
             if(state_==IslandState::Expanded&&(content_.page==Page::Shelf||content_.page==Page::Media))redraw=true;break;}
         case K::PairCode:{wchar_t code[16];swprintf(code,16,L"%03u %03u",e.code/1000,e.code%1000);shareCard(14,e.name,code,{},60);
             const bool phone=std::any_of(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==e.peer&&p.phone;});if(content_.notice.kind==14&&content_.notice.phone!=phone){content_.notice.phone=phone;refresh();}break;}
-        case K::Paired:{const bool phone=std::any_of(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==e.peer&&p.phone;});
+        case K::Paired:{content_.pairing={};const bool phone=std::any_of(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==e.peer&&p.phone;});
             shareCard(16,L"Paired with "+e.name,phone?std::wstring(L"Files go both ways, and it can control this PC"):e.detail,{},4);break;}
         case K::PairFailed:shareCard(16,L"Not paired with "+(e.name.empty()?std::wstring(L"that PC"):e.name),e.detail,{},4.5);break;
         // 0.20: photos a phone took for the Shelf come in without asking (while that's on).
@@ -140,9 +141,14 @@ void IslandWindow::shareEvents(){
             while(from<e.detail.size()&&info.values.size()<40){size_t end=e.detail.find(L'\n',from);if(end==std::wstring::npos)end=e.detail.size();const std::wstring line=e.detail.substr(from,end-from);from=end+1;
                 const auto tab=line.find(L'\t');if(tab!=std::wstring::npos&&tab>0)info.values.push_back({line.substr(0,tab).substr(0,32),line.substr(tab+1).substr(0,80)});}
             if(content_.phoneView.open&&content_.phoneView.peer==e.peer)redraw=true;break;}
-        // Pairing from anywhere: the code to type on the phone (up to ten minutes).
-        case K::PairingCode:if(e.detail.empty())shareCard(16,L"Couldn\u2019t make a code",L"This PC isn\u2019t connected to the internet",{},4.5);
-            else shareCard(20,e.detail,L"On your phone: Arnav Island \u203a Pair with a code",{},600);break;
+        // Pairing from anywhere: the code (for ten minutes) and its QR code, the link a phone's camera opens. Shown large in
+        // Nearby when that's open; otherwise a card that opens it.
+        case K::PairingCode:{if(e.detail.empty()){content_.pairing={};shareCard(16,L"Couldn\u2019t make a code",L"This PC isn\u2019t connected to the internet",{},4.5);break;}
+            std::string plain;for(wchar_t c:e.detail)if(c!=L'-')plain+=char(c);const auto qr=qrEncode(share_?share_->pairingLink(plain):"arnavisland://pair/"+plain);
+            content_.pairing={e.detail,now+600,qr.size,qr.modules};
+            if(state_==IslandState::Expanded&&content_.page==Page::Shelf&&content_.shelfTab==2){content_.phoneView={};content_.remote.open=false;redraw=true;}
+            else shareCard(20,e.detail,L"Scan its QR code, or type it on your phone",{},600);
+            break;}
         case K::Rang:phoneCard(L"Ringing "+e.name,L"Loudly, even on silent. Stop it on the phone",e.name,nullptr,4);break;}
     }
     if(redraw&&renderer_)refresh();
@@ -214,8 +220,14 @@ bool IslandWindow::shareAction(Action a){
     if(inRange(a,Action::NearbyRingBase,Action::NearbyRingEnd)){const size_t i=size_t(int(a)-int(Action::NearbyRingBase));
         if(share_&&i<content_.nearby.size()&&content_.nearby[i].paired&&content_.nearby[i].phone){share_->ring(content_.nearby[i].id);note(L"Ringing "+content_.nearby[i].name+L"\u2026");store_.log("Info","phone_ring");}return true;}
     // 0.20: pairing from anywhere with a code; a phone's own view; its notification's actions (a reply opens a reply box).
+    // A code already on offer is shown again rather than replaced.
+    if(a==Action::PairAnywhere&&!content_.pairing.code.empty()&&now<content_.pairing.until){content_.phoneView={};refresh();return true;}
     if(a==Action::PairAnywhere){if(!share_)return true;if(!share_->internet()){note(L"This PC isn\u2019t connected to the internet");return true;}share_->hostPairing();note(L"Making a code\u2026");store_.log("Info","pair_anywhere");return true;}
-    if(a==Action::PairingStop){if(share_)share_->stopPairing();close();return true;}
+    if(a==Action::PairingStop){const bool card=state_==IslandState::Notification&&content_.notice.kind==20;content_.pairing={};if(share_)share_->stopPairing();
+        if(card)close();else refresh();return true;}
+    // The pairing card's QR code: Nearby opens with it, large enough for a phone's camera.
+    if(a==Action::PairingShow){events_.dismiss(now);content_.activity.clear();content_.page=Page::Shelf;content_.shelfTab=2;content_.shelfDetail=-1;content_.phoneView={};content_.remote.open=false;
+        content_.pinned=true;transition(IslandState::Expanded);refresh();animate();return true;}
     if(a==Action::PhoneBack){content_.phoneView={};if(!motion_.reduced){motion_.swipe.reset(-22,now);motion_.swipe.retarget(0,now,MotionTokens::content);}refresh();animate();return true;}
     if(a==Action::PhoneRing||a==Action::PhonePhoto||a==Action::PhoneClipboard){const std::string peer=content_.phoneView.peer;auto it=std::find_if(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==peer;});
         if(!share_||it==content_.nearby.end())return true;

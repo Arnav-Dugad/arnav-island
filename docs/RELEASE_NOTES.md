@@ -1,3 +1,33 @@
+# Arnav Island 0.20.1-preview.1 — scan to pair, from anywhere
+
+## Fixed: the phone couldn’t find this PC with a code
+- **What went wrong:** each device kept to one public broker. When this PC was on one (HiveMQ) and the phone on another (EMQX), the phone never heard the code, however it was typed.
+- **Now both stay on all three brokers at once** (HiveMQ, EMQX and Eclipse Mosquitto). Codes and hellos go out on every one, and each connection keeps to a broker both devices share.
+- **Connecting is quicker** on networks whose IPv6 doesn’t reach a broker. IPv4 and IPv6 now race, and an address that doesn’t answer gets 4 s. On the test PC all three brokers connect in about 1.4 s.
+- **Nothing is lost on the way.** A public broker may drop a message now and then. Before, one dropped message ended a pairing or a transfer. Now:
+  - whatever isn’t acknowledged in time is sent again
+  - a gap is reported at once and filled
+  - a connection ends only when nothing gets through for 45 s
+
+## Pair by QR code
+- **Shelf › Nearby › Pair with a code** now shows a QR code beside the code. The code’s card has a **QR code** button that opens it.
+- In [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.2, choose **Devices › Scan the QR code**, and point the phone at the island.
+- **The QR code also carries this PC’s key fingerprint:** the first 10 bytes of the SHA-256 of its public key.
+  - The phone pairs only with the PC whose code it scanned.
+  - It says yes by itself, so you confirm the six digits once, on the PC.
+- Typing the code still works as before.
+
+## Checks
+- **Unit suites:** core 11,682; model 2,061; phase 5,724; share 199 (18 new: the QR encoder against a golden matrix, and the pairing link); provider lifecycle passing.
+- **QR encoder:** every mask, versions 1 to 10 at level M, matches the reference encoder (Nayuki’s qrcodegen) module for module. The island’s own render, captured in dark and light, decodes to the link (zxing-cpp). The phone decodes the same matrix (ZXing).
+- **The phone against this PC’s engine, live over the internet:**
+  - the phone on one broker, this PC on all three
+  - this PC on one broker, the phone on all three: first a scanned link with another PC’s key (refused, nothing paired), then the right one
+  - every 5th message from this PC and every 4th from the phone dropped on purpose: pairing, the remote, presence and files both ways all complete
+  - the full relay test: a typed code, files both ways, the remote, notices, ring and music
+- **UI test** on the signed build: all 53 stages, including the pairing card's **QR code** button, the pairing view and **Stop**.
+- **Settings end-to-end:** 216 checks, 0 failures.
+
 # Arnav Island 0.20.0-preview.1 — your phone, anywhere
 
 ## Anywhere

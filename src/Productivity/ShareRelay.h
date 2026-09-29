@@ -7,14 +7,16 @@
 #include <string>
 #include <vector>
 namespace nexus {
-// 0.20: paired devices reach each other on any network, through a free public MQTT broker (HiveMQ, then EMQX, then
-// Eclipse Mosquitto), over TLS. Nothing there can be read or linked to you:
+// 0.20: paired devices reach each other on any network, through free public MQTT brokers (HiveMQ, EMQX and Eclipse
+// Mosquitto), over TLS. 0.20.1: every broker at once, so two devices always share one. Nothing there can be read or
+// linked to you:
 // - Each pair talks on topics named from its own secret: SHA-256 of the pair's static ECDH, which only the two paired
 //   devices can compute.
 // - Every message is also sealed with AES-256-GCM under a key from that secret. The protocol inside is the same one used
 //   on your own network, with its own handshake and encryption.
 // A connection through the broker is a tunnel. Its bytes are carried in numbered messages with a window of
-// acknowledgements, and the service gets one end of a local socket pair, so the protocol runs through it unchanged.
+// acknowledgements (0.20.1: what a broker drops is sent again), and the service gets one end of a local socket pair, so
+// the protocol runs through it unchanged.
 // Devices say hello every minute (and when they arrive or leave), which is how each knows the other is there.
 // Pairing across networks uses a short code shown by one device and typed on the other; the six digits are still
 // confirmed on both, as on a local network.
@@ -26,8 +28,10 @@ struct RelayOptions{
     std::function<void(SOCKET inner,const std::string& peer)> incoming;
     // Presence or the connection to the broker changed.
     std::function<void()> changed;
-    // Brokers to try in order (host, WebSocket port; path /mqtt). Empty: HiveMQ, EMQX, Eclipse Mosquitto.
+    // Brokers to stay on (host, WebSocket port; path /mqtt). Empty: HiveMQ, EMQX, Eclipse Mosquitto.
     std::vector<std::pair<std::wstring,uint16_t>> brokers;
+    // Tests: the first sending of every Nth data message is left out (as a broker might drop it), 0 none.
+    int loseEvery=0;
 };
 class Relay{
 public:
@@ -36,8 +40,8 @@ public:
     // The paired devices it listens for, and says hello to.
     void pairs(std::vector<RelayPair> list);
     RelayPresence presence(const std::string& peer)const;
-    // Connected to a broker (which), and ready for tunnels.
-    bool connected()const;std::wstring broker()const;
+    // Connected to at least one broker (and which, and how many), and ready for tunnels.
+    bool connected()const;std::wstring broker()const;int brokersUp()const;
     // A tunnel to a paired device that is here; INVALID_SOCKET (why says why) otherwise. The caller owns the socket.
     SOCKET open(const std::string& peer,std::wstring& why);
     // Offers a pairing code for ten minutes ("7K2P-MX4Q"); the device that types it arrives through `incoming` with an

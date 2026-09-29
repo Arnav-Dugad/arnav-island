@@ -250,7 +250,12 @@ A few smaller changes:
 - An offer's flags byte adds *to the Shelf* (bit 1), sent only to revision 3.
 - The status adds bit 9: the universal clipboard is on.
 
-**The relay** (`ShareRelay`) carries the same protocol between networks. Each side connects to a public MQTT broker over WebSocket and TLS (WinHTTP on Windows, a TLS socket on Android). It tries broker.hivemq.com, broker.emqx.io and test.mosquitto.org in turn, with MQTT 3.1.1, QoS 0 and a clean session.
+**The relay** (`ShareRelay`) carries the same protocol between networks. Each side connects to public MQTT brokers over WebSocket and TLS (WinHTTP on Windows, a TLS socket on Android), with MQTT 3.1.1, QoS 0 and a clean session. Since 0.20.1 it stays on all three at once: broker.hivemq.com, broker.emqx.io and test.mosquitto.org.
+- Hellos and pairing codes go out on every broker.
+- A device counts as here when it was heard on any broker in the last 150 s.
+- A tunnel keeps to one broker: the one the other device was heard on most lately. A code's tunnel opens on all, and keeps to whichever the other device answers on.
+- A broker that drops ends only the tunnels on it.
+- Before 0.20.1 each side kept to the first broker that answered. Two devices on different brokers never met, which is why a phone couldn't find a PC by its code.
 
 A paired pair's secret S is SHA-256 of `arnav-relay-v1` and the pair's ECDH agreement. Topics are `arnavisland/r1/` followed by 40 hex characters of SHA-256 over:
 - `inbox`, S and the device's id, for a device's inbox
@@ -262,4 +267,20 @@ Every message is AES-256-GCM with a fresh nonce and the topic as associated data
 
 A tunnel is joined to a local loopback socket pair, so the ordinary handshake, pairing check and per-connection keys run through it unchanged. Data moves in 48 KB chunks, 64 in flight, acknowledged every 24; that measured 0.84 MB/s through a public broker. Hellos go out once a minute, and a device silent for 150 s counts as gone.
 
+**Retransmission (0.20.1).** A broker at QoS 0 may drop a message. In testing, EMQX dropped three small messages in a row in the middle of a transfer, and the tunnel used to end at the first gap. Now:
+- The sender keeps each message until it is acknowledged. The end of each burst asks for an acknowledgement.
+- A message not acknowledged within 1.5 s is sent again, eight at a time. The wait doubles up to 8 s, and resets on progress. An OPEN is sent again too, until the other side answers.
+- The receiver keeps messages that come early, up to two windows. It reports the gap at once with the sequence it is missing (at most every 300 ms), and a duplicate gets its acknowledgement again.
+- Everything written is acknowledged before a tunnel's close is sent.
+- A tunnel ends after 45 s without progress, or a gap open for 30 s.
+- A tunnel id that just ended is remembered for 2 minutes, so a late OPEN starts nothing.
+
+Older versions still work with this: their acknowledgements and duplicates behave as before. A test switch drops every Nth data message on purpose, and the phone's interop tests use it in both directions.
+
 **Pairing codes** are 8 characters from `23456789ABCDEFGHJKMNPQRSTUVWXYZ`, valid for 10 minutes. The code's hash names the rendezvous topics and keys, and the usual six-digit confirmation follows over the tunnel. Someone who only watches the broker never has the code.
+
+**Pairing QR codes (0.20.1).** Nearby also shows the code as a QR code (`QrCode.cpp`: byte mode, level M, versions 1 to 10, the standard mask penalty). It holds the link `arnavisland://pair/<code>?k=<fingerprint>`, where the fingerprint is the first 10 bytes of the SHA-256 of this PC's public key, in hex. The link is 50 bytes, so the code is version 4 (33 x 33). The phone checks the fingerprint against the key its handshake received:
+- Another key: the phone refuses, and nothing is paired.
+- The same key: the phone says yes by itself, and the PC still confirms the six digits.
+
+Someone who sees the QR code and races the PC to answer it can't pass the fingerprint check.

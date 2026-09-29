@@ -342,3 +342,15 @@ Limits:
 - **Relay speed.** About 0.8 MB/s: fine for photos and documents, slow for big videos. On the same network it's full speed.
 - **Replies and calls** depend on what the phone's apps offer in their notifications. Apps whose actions open a screen on the phone can't be run from here.
 - **Proximity** knows only whether the phone is on the same network, not how far away it is.
+
+## Status after v0.20.1-preview.1 — scan to pair — 2026-09-30
+
+Shipped, as asked:
+- **Fixed: the phone couldn't find this PC with a code.** Each side kept to one public broker, and theirs differed. Now both stay on all three, and a tunnel keeps to a broker both share.
+- **Pair by QR code:** Nearby shows it, and the phone app 1.2 scans it. The code carries this PC's key fingerprint, so the phone pairs only with this PC and you confirm once, on the PC.
+- **A relay that doesn't drop:** lost messages are sent again, so a broker that drops one no longer ends a pairing or a transfer.
+- **[Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.2.0:** the scanner, pairing links that open the app, and the same relay fixes.
+
+Limits:
+- **The phone's own camera app** may not open `arnavisland://` links. The scanner in Arnav Island for Android always does.
+- **All three brokers blocked** (some workplace networks do this): devices on different networks still can't meet.

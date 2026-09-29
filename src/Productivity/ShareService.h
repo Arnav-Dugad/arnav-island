@@ -72,8 +72,9 @@ struct ShareEvent{
 // loopback: listen on 127.0.0.1 only (tests; no firewall prompt). handoff: where a handed-off song's file is kept.
 // remote: answers a phone's remote command (called on a network thread): its answer byte, then its payload. Unset: the
 // commands are unsupported.
-// relay: reach paired devices on other networks through the public relay (relayBrokers: tests; empty for the usual ones).
-struct ShareOptions{uint16_t tcpPort=47820,udpPort=47821;bool discovery=true,loopback=false,relay=false;std::wstring folder,downloads,name,handoff;std::vector<std::pair<std::wstring,uint16_t>> relayBrokers;
+// relay: reach paired devices on other networks through the public relay (relayBrokers, relayLoseEvery: tests; empty and
+// 0 for the usual ones).
+struct ShareOptions{uint16_t tcpPort=47820,udpPort=47821;bool discovery=true,loopback=false,relay=false;std::wstring folder,downloads,name,handoff;std::vector<std::pair<std::wstring,uint16_t>> relayBrokers;int relayLoseEvery=0;
     std::function<std::vector<uint8_t>(const std::string& peer,RemoteCommand command,const std::vector<uint8_t>& payload)> remote;
     // Revision 3: a phone's trackpad and keyboard, one frame at a time (0x60 move, 0x61 button, 0x62 scroll, 0x63 text,
     // 0x64 key), called on a network thread.
@@ -111,6 +112,10 @@ public:
     // 0.20: pairing from anywhere. hostPairing offers a code for ten minutes (a PairingCode event says which); the device
     // that types it pairs as on a local network (PairCode, then Paired). pairWithCode is the other side of it.
     void hostPairing();void stopPairing();std::string pairingCode()const;void pairWithCode(const std::string& code);
+    // 0.20.1: the link a pairing QR code carries, "arnavisland://pair/<code>?k=<fingerprint>": the fingerprint (the first
+    // ten bytes of the SHA-256 of this PC's public key, in hex) lets the phone that scans it know it reached this PC, so it
+    // pairs without asking a second time. Empty for an empty code.
+    std::string pairingLink(const std::string& code)const;
     // Revision 3, to a paired phone: one of its notification's actions (index; reply: the text for one that takes it),
     // the clipboard (sensitive: marked so on the phone), and asking it for a photo for the Shelf. Failures come as Failed.
     void noticeAction(const std::string& peer,const std::string& key,int action,const std::wstring& reply);

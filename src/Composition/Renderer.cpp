@@ -243,7 +243,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         setArtPulse(pulse);}
     setBeatEdge(s.settings.beatEdge&&!s.reducedMotion&&s.playback.playing,accent,glass,s.reducedMotion);
     frostAllowed_=glass&&s.settings.material==1&&s.blur&&s.settings.restFrost&&!s.reducedMotion;updateFrost();
-    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track,accent2);updateLyrics(s,ink,muted,accent);updateBubble(s);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateRing(s,accent);updateCard(s,track,accent,solidRaised,ink);updateBud(s,ink,muted,accent,solidRaised);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-3.f:30.f,stats||(shelf&&s.settings.sharing)?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||(shelf&&!(s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size())&&!(s.shelfTab==2&&s.remote.open)&&!(s.dropHover&&s.settings.sharing&&std::any_of(s.nearby.begin(),s.nearby.end(),[](auto& p){return p.paired;}))),s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
+    updateAtmosphere(s);updatePeek(s);updateArtwork(s,solidRaised);updateTimeline(s,accent,track,accent2);updateLyrics(s,ink,muted,accent);updateBubble(s);updateRings(s,accent,muted,track);updateSpectrumLayout(s,accent);updateRing(s,accent);updateCard(s,track,accent,solidRaised,ink);updateBud(s,ink,muted,accent,solidRaised);updatePrivacyBand(s,ink,muted,solidRaised);{const bool panel=s.expanded&&!s.live;const bool stats=panel&&s.page==Page::System,audio=panel&&s.page==Page::Audio,shelf=panel&&s.page==Page::Shelf;updateTabs(s,0,stats?-3.f:30.f,stats||(shelf&&s.settings.sharing)?3:2,stats?s.statsTab:shelf?s.shelfTab:s.audioTab,stats||audio||(shelf&&!(s.shelfTab==0&&s.shelfDetail>=0&&size_t(s.shelfDetail)<s.shelf.size())&&!(s.shelfTab==2&&s.remote.open)&&!(s.shelfTab==2&&s.phoneView.open)&&!(s.shelfTab==2&&!s.pairing.code.empty()&&seconds()<s.pairing.until)&&!(s.dropHover&&s.settings.sharing&&std::any_of(s.nearby.begin(),s.nearby.end(),[](auto& p){return p.paired;}))),s.light?0x262c34:0xe8ecf2);}updateHud(s,accent,track);updateBadge(s,glass?(s.light?0xf1f2f4:0x15161a):bg);
     headerSpots_.clear();compactTargets.clear();bool lyricOn=false;float sungX=0,sungW=0;
     surface(headerSurface_,600,150,[&](auto* rt){
         if(s.expanded)return;
@@ -399,7 +399,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         // 0.20: pairing from anywhere, the code to type on the phone.
         if(s.card&&s.notice.kind==20){const auto& n=s.notice;
             text(rt,L"Pair from anywhere",72,2,176,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.app,72,20,176,19,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,30);
-            text(rt,n.detail,72,46,176,9,muted);button(Action::PairingStop,L"Stop",256,14,76,28);return;}
+            text(rt,n.detail,72,46,176,9,muted);button(Action::PairingShow,L"QR code",256,4,76,26,true);button(Action::PairingStop,L"Stop",256,34,76,22);return;}
         if(s.card&&s.notice.kind>=14&&s.notice.kind<=17){
             // Sharing: the pairing code both PCs show, a file to accept, or how a transfer or a pairing went.
             // A detail too long for its room keeps what follows its first dot (a size, where it's from) and shortens the name.
@@ -735,7 +735,9 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             std::vector<size_t> dropPeers;if(s.dropHover&&s.settings.sharing)for(size_t i=0;i<s.nearby.size()&&i<4;++i)if(s.nearby[i].paired)dropPeers.push_back(i);
             const bool remoteView=!detail&&dropPeers.empty()&&s.shelfTab==2&&s.remote.open;
             const bool phoneView=!detail&&dropPeers.empty()&&s.shelfTab==2&&s.phoneView.open&&!remoteView;
-            if(!detail&&dropPeers.empty()&&!remoteView&&!phoneView){if(s.settings.sharing)tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"},{Action::ShelfNearby,L"Nearby"}},s.shelfTab,30);else tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"}},s.shelfTab,30);}
+            // 0.20.1: a pairing code on offer takes Nearby over, with its QR code.
+            const bool pairingView=!detail&&dropPeers.empty()&&s.shelfTab==2&&!remoteView&&!phoneView&&!s.pairing.code.empty()&&seconds()<s.pairing.until;
+            if(!detail&&dropPeers.empty()&&!remoteView&&!phoneView&&!pairingView){if(s.settings.sharing)tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"},{Action::ShelfNearby,L"Nearby"}},s.shelfTab,30);else tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"}},s.shelfTab,30);}
             const bool status=!s.clipStatus.empty()&&seconds()<s.clipStatusUntil,shelfNote=!s.shelfStatus.empty()&&(s.shelfBusy||seconds()<s.shelfStatusUntil);
             // An icon and a label in one raised button.
             auto action=[&](Action a,Icon glyph,const wchar_t* name,float x,float y,float w,bool enabled=true){targets.push_back({a,x,y,w,30,enabled});box(x,y,w,30,raised,9);drawIcon(rt,d2d_.Get(),glyph,x+10,y+8,14,enabled?ink:muted,enabled?1.f:.5f);text(rt,name,x+29,y,w-33,10.5f,enabled?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,30);};
@@ -818,6 +820,26 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 std::wstring footer=shelfNote?s.shelfStatus:!playing.empty()?L"♪  "+playing:!model.empty()?model:std::wstring();
                 if(!shelfNote&&known){const int ago=int(seconds()-info->second.at);if(ago>=90)footer+=(footer.empty()?L"":L"  ·  ")+std::wstring(L"updated ")+(ago<3600?std::to_wstring(ago/60)+L" min ago":std::to_wstring(ago/3600)+L" h ago");}
                 text(rt,footer,0,203,380,10,shelfNote?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
+            }else if(pairingView){
+                // 0.20.1: pairing from anywhere. The QR code (the pairing link, with this PC's key fingerprint, for the phone's
+                // scanner) on white with a quiet margin, as scanners want it whatever the theme; beside it the code to type, and
+                // how long it lasts.
+                const auto& pr=s.pairing;
+                text(rt,L"Pair from anywhere",0,26,300,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,30);button(Action::PairingStop,L"Stop",316,29,64,24);
+                const float side=144,y0=58;ComPtr<ID2D1SolidColorBrush> qb;rt->CreateSolidColorBrush(D2D1::ColorF(0xffffff),&qb);
+                rt->FillRoundedRectangle(D2D1::RoundedRect({0,y0,side,y0+side},14,14),qb.Get());
+                qb->SetColor(D2D1::ColorF(accent,.85f));rt->DrawRoundedRectangle(D2D1::RoundedRect({-1.5f,y0-1.5f,side+1.5f,y0+side+1.5f},15.5f,15.5f),qb.Get(),1.5f);
+                if(pr.size>0&&pr.modules.size()==size_t(pr.size)*size_t(pr.size)){
+                    const float module=std::floor((side-18)/float(pr.size)*4)/4,span=module*float(pr.size),ox=(side-span)/2,oy=y0+(side-span)/2;
+                    qb->SetColor(D2D1::ColorF(0x0b0e14));const auto mode=rt->GetAntialiasMode();rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+                    for(int y=0;y<pr.size;++y)for(int x=0;x<pr.size;++x)if(pr.modules[size_t(y)*size_t(pr.size)+size_t(x)])rt->FillRectangle(D2D1::RectF(ox+float(x)*module,oy+float(y)*module,ox+float(x+1)*module,oy+float(y+1)*module),qb.Get());
+                    rt->SetAntialiasMode(mode);}
+                text(rt,L"Scan it with your phone",160,58,220,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+                text(rt,L"In Arnav Island on your phone:",160,80,220,10,muted);text(rt,L"Devices \u203a Scan the QR code",160,96,220,10,muted);
+                text(rt,L"Or type this code",160,124,220,9.5f,muted);text(rt,pr.code,160,138,220,22,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,32);
+                const int left=std::max(1,int(std::ceil((pr.until-seconds())/60)));
+                text(rt,left==1?std::wstring(L"Valid for less than a minute"):L"Valid for "+std::to_wstring(left)+L" more minutes",160,176,220,9.5f,muted);
+                text(rt,shelfNote?s.shelfStatus:std::wstring(L"Waiting for your phone  \u00b7  end-to-end encrypted, on any network"),0,203,380,10,shelfNote?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
             }else if(remoteView){
                 // Phase 5H: a paired PC's Shelf. Clicking an item takes a copy into Downloads (and onto this Shelf).
                 const auto& r=s.remote;const int n=int(r.items.size());auto sizeLabel=[](uint64_t v){wchar_t t[32];if(v<1024)swprintf(t,32,L"%llu bytes",static_cast<unsigned long long>(v));else if(v<(1ull<<20))swprintf(t,32,L"%.0f KB",double(v)/1024);else if(v<(1ull<<30))swprintf(t,32,L"%.1f MB",double(v)/1048576);else swprintf(t,32,L"%.2f GB",double(v)/1073741824);return std::wstring(t);};

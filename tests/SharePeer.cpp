@@ -4,7 +4,8 @@
 // made-up status. Not part of the app.
 //   share_peer <port> <folder> [cover.jpg name] [--relay]
 //   then: peer <id> <port> | send <id> <path> | shelf <path> | handoff <id> <file|-> | ring <id> | host | code <code> | peers | quit
-// --relay: also through the public relay (as on other networks); host offers a pairing code (CODE ...), code pairs with one.
+// --relay: also through the public relay (as on other networks); host offers a pairing code (CODE, then the LINK its QR
+// code carries), code pairs with one. --relay-lose=N: every Nth data message is sent only the second time (as if dropped).
 // With a cover (screenshots of the phone app), the remote reports a made-up song that plays on, under that PC name, and
 // keeps the volume it is given; each shelf command adds to the Shelf (a "<path>.preview" JPEG beside a file is its preview).
 #include "Productivity/ShareService.h"
@@ -28,12 +29,16 @@ std::string narrow(const std::wstring& w){if(w.empty())return {};const int n=Wid
 std::wstring widen(const std::string& s){if(s.empty())return {};const int n=MultiByteToWideChar(CP_UTF8,0,s.data(),int(s.size()),nullptr,0);std::wstring w(size_t(n),L'\0');MultiByteToWideChar(CP_UTF8,0,s.data(),int(s.size()),w.data(),n);return w;}
 }
 int main(int argc,char** argv){
-    bool relay=false;{int kept=0;for(int i=0;i<argc;++i){if(std::string(argv[i])=="--relay")relay=true;else argv[kept++]=argv[i];}argc=kept;}
+    // --relay: reach devices through the public brokers too. --relay-only=N: through that broker alone (0 HiveMQ, 1 EMQX,
+    // 2 Mosquitto), as a device that can't reach the others would (the interop tests pair such a PC with a phone on all).
+    bool relay=false;int only=-1,lose=0;{int kept=0;for(int i=0;i<argc;++i){const std::string a=argv[i];if(a=="--relay")relay=true;else if(a.rfind("--relay-only=",0)==0){relay=true;only=std::atoi(a.c_str()+13);}
+        else if(a.rfind("--relay-lose=",0)==0)lose=std::atoi(a.c_str()+13);else argv[kept++]=argv[i];}argc=kept;}
     if(argc<3){std::cerr<<"share_peer <port> <folder>\n";return 2;}
     const uint16_t port=uint16_t(std::atoi(argv[1]));const std::filesystem::path folder=widen(argv[2]);std::error_code e;std::filesystem::create_directories(folder/L"dl",e);
     std::vector<uint8_t> qaCover;std::wstring name=L"Interop PC";const bool qa=argc>=5;
     if(qa){std::ifstream in(argv[3],std::ios::binary);qaCover.assign(std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>());name=widen(argv[4]);}
-    ShareOptions o;o.tcpPort=port;o.discovery=false;o.loopback=true;o.folder=folder.wstring();o.downloads=(folder/L"dl").wstring();o.handoff=(folder/L"handoff").wstring();o.name=name;o.relay=relay;
+    ShareOptions o;o.tcpPort=port;o.discovery=false;o.loopback=true;o.folder=folder.wstring();o.downloads=(folder/L"dl").wstring();o.handoff=(folder/L"handoff").wstring();o.name=name;o.relay=relay;o.relayLoseEvery=lose;
+    if(only>=0&&only<=2){const std::pair<std::wstring,uint16_t> all[]={{L"broker.hivemq.com",8884},{L"broker.emqx.io",8084},{L"test.mosquitto.org",8081}};o.relayBrokers={all[only]};}
     const auto began=std::chrono::steady_clock::now();auto volume=std::make_shared<std::atomic<int>>(42);auto muted=std::make_shared<std::atomic<bool>>(false);auto playing=std::make_shared<std::atomic<bool>>(true);
     o.input=[](const std::string&,const std::vector<uint8_t>& f){std::string h;static const char* d="0123456789abcdef";for(uint8_t b:f){h+=d[b>>4];h+=d[b&15];}say("INPUT "+h);};
     o.remote=[=](const std::string& peer,RemoteCommand c,const std::vector<uint8_t>& payload)->std::vector<uint8_t>{
@@ -62,7 +67,9 @@ int main(int argc,char** argv){
     std::thread events([&]{
         while(!done){for(auto& ev:share.take()){using K=ShareEvent::Kind;
                 switch(ev.kind){
-                case K::PairCode:say("PAIRCODE "+std::to_string(ev.code));say("PEERID "+ev.peer);share.confirmPair(true);break;
+                // ARNAV_QA_CONFIRM_DELAY=<s> (screenshots): the PC says yes that much later.
+                case K::PairCode:{say("PAIRCODE "+std::to_string(ev.code));say("PEERID "+ev.peer);const char* wait=std::getenv("ARNAV_QA_CONFIRM_DELAY");
+                    if(wait){const int s=std::atoi(wait);std::thread([&share,s]{std::this_thread::sleep_for(std::chrono::seconds(s));share.confirmPair(true);}).detach();}else share.confirmPair(true);break;}
                 case K::Paired:say("PAIRED ok");break;case K::PairFailed:say("PAIRED no "+narrow(ev.detail));break;
                 case K::Offer:say("OFFER "+std::to_string(ev.count)+" "+std::to_string(ev.size)+(ev.toShelf?" shelf":""));share.answer(ev.transfer,true);break;
                 case K::Received:say("RECEIVED "+narrow(ev.detail)+"|"+std::to_string(ev.code));break;
@@ -77,7 +84,7 @@ int main(int argc,char** argv){
                 case K::PhoneDetails:say("DETAILS "+narrow(ev.detail).substr(0,narrow(ev.detail).find('\n')));break;
                 case K::PhoneNoticeGone:say("GONE "+ev.key);break;
                 case K::Rang:say("RANG");break;
-                case K::PairingCode:say("CODE "+narrow(ev.detail));break;
+                case K::PairingCode:say("CODE "+narrow(ev.detail));say("LINK "+share.pairingLink(narrow(ev.detail)));break;
                 case K::Peers:for(auto& p:share.peers())if(p.paired)say("PRESENCE "+p.id+" "+std::to_string(p.online)+" "+std::to_string(p.viaInternet)+" "+std::to_string(p.revision)+" "+std::to_string(p.phone));break;
                 default:break;}}
             std::this_thread::sleep_for(std::chrono::milliseconds(30));}});

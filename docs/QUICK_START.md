@@ -202,7 +202,9 @@ Click a paired PC in Nearby to make it where Send goes. **Forget** unpairs it.
 
 ## v0.20 Your phone, anywhere
 
-**Pair from anywhere.** Shelf › Nearby › **Pair with a code** shows a code for ten minutes. It needs *Share with my PCs* and *Reach my devices anywhere* (Settings › Privacy & productivity). On the phone, in [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest): **Pair with your PC › On another network? Pair with a code**. Type the code, then check that both show the same six digits.
+**Pair from anywhere.** Shelf › Nearby › **Pair with a code** shows a QR code and a code for ten minutes. It needs *Share with my PCs* and *Reach my devices anywhere* (Settings › Privacy & productivity). On the phone, in [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.2 or later:
+- **Devices › Scan the QR code**, and point the phone at the island. Then choose **Pair** on the PC.
+- Or tap **Type the code instead**, type it, and check that both show the same six digits.
 
 **Already paired?** Your phone and your PCs find each other on any network by themselves. Nearby says *Online · over the internet*.
 

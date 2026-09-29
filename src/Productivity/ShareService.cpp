@@ -252,7 +252,7 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
             sockaddr_in u{};u.sin_family=AF_INET;u.sin_addr.s_addr=htonl(INADDR_ANY);u.sin_port=htons(o.udpPort);if(udp==INVALID_SOCKET||bind(udp,reinterpret_cast<sockaddr*>(&u),sizeof(u))!=0){failure="Discovery port "+std::to_string(o.udpPort)+" is in use";return false;}}
         ok=true;auto self=shared_from_this();
         listening=std::thread([self]{self->listen();});if(o.discovery)discovery=std::thread([self]{self->discover();});
-        if(o.relay){RelayOptions ro;ro.id=id;ro.name=o.name;ro.revision=shareRevision;ro.brokers=o.relayBrokers;std::weak_ptr<Core> weak=self;
+        if(o.relay){RelayOptions ro;ro.id=id;ro.name=o.name;ro.revision=shareRevision;ro.brokers=o.relayBrokers;ro.loseEvery=o.relayLoseEvery;std::weak_ptr<Core> weak=self;
             ro.incoming=[weak](SOCKET s,const std::string&){if(auto core=weak.lock()){core->track(s);core->incoming(s);core->untrack(s);}closesocket(s);};
             ro.changed=[weak]{if(auto core=weak.lock())core->postPeers();};
             relay=std::make_unique<Relay>(ro);syncRelay();}
@@ -672,6 +672,10 @@ void ShareService::hostPairing(){
     if(!core_->ok)return;std::thread([core=core_]{ShareEvent e;e.kind=ShareEvent::Kind::PairingCode;e.detail=core->relay?core->wideCode(core->relay->host()):std::wstring();core->post(e);}).detach();}
 void ShareService::stopPairing(){if(core_->relay)core_->relay->stopHosting();}
 std::string ShareService::pairingCode()const{return core_->relay?core_->relay->hosting():std::string();}
+std::string ShareService::pairingLink(const std::string& code)const{
+    std::string plain;for(char c:code){if(c=='-'||c==' ')continue;plain+=c>='a'&&c<='z'?char(c-'a'+'A'):c;}
+    if(plain.empty()||!core_->ok)return {};Bytes print=Sha().add(core_->pub).done();if(print.size()<10)return {};print.resize(10);
+    return "arnavisland://pair/"+plain+"?k="+hex(print);}
 void ShareService::pairWithCode(const std::string& code){
     std::shared_ptr<Core::Decision> d;{std::lock_guard lock(core_->m);if(core_->pairing||!core_->ok)return;d=core_->pairing=std::make_shared<Core::Decision>();}
     std::thread([core=core_,code,d]{

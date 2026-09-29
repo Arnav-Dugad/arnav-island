@@ -7,6 +7,7 @@
 // Shelf and takes a file and a folder from it (not while that Shelf is kept to itself, nor an item since removed).
 #include "Productivity/ShareRelay.h"
 #include "Productivity/ShareService.h"
+#include "Productivity/QrCode.h"
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -45,6 +46,16 @@ int main(){
         st.cover.clear();CHECK(remoteStatusAnswer(st,hash)[22]==0);
         // 0.20: bit 9 says the universal clipboard is on.
         st.clipboard=true;{const auto c=remoteStatusAnswer(st,{});CHECK(uint16_t(c[1]|c[2]<<8)==(1|2|8|256|512));}}
+    // 0.20.1: the pairing link's QR code. The modules are those of the reference encoder (Nayuki's qrcodegen) for the same
+    // text, version 3 at level M, and decode (zxing-cpp; and ZXing in the phone's own tests) to the link.
+    {const auto q=qrEncode("arnavisland://pair/7K2PMX4Q");CHECK(q.size==29&&q.modules.size()==29u*29u);
+        const char* golden[]={"1fcd317f","104b0441","175a565d","1754115d","175eee5d","1058f141","1fd5557f","001da200","17c4627c","1ea039d3","0d5f0548","12ac574b","06681dad","11b5e2db","0352f154","1d84a77b","05616206","18a13275","15f70488","110f52a8","134015fe","0012ef13","1fccfb5c","105eaf19","175261f7","175b360c","175285f2","1048d1ba","1fdb1614"};bool same=q.size==29;
+        for(int y=0;y<29&&same;++y){const unsigned long row=std::stoul(golden[y],nullptr,16);for(int x=0;x<29;++x)if(q.dark(x,y)!=(((row>>(28-x))&1)!=0))same=false;}
+        CHECK(same);
+        // The finder patterns in three corners, and the dark module by the lower one.
+        CHECK(q.dark(0,0)&&q.dark(6,6)&&!q.dark(1,1)&&q.dark(28,0)&&q.dark(0,28)&&q.dark(8,21));
+        CHECK(qrEncode("A").size==21&&qrEncode(std::string(213,'x')).size==57&&qrEncode(std::string(214,'x')).size==0);
+        for(int m=0;m<8;++m)CHECK(qrEncode("arnavisland://pair/23456789",m).size==29);}
     CHECK(shareTitle({L"Photos"})==L"Photos");CHECK(shareTitle({L"a.txt",L"b.txt",L"c.txt"})==L"a.txt and 2 more");CHECK(safeShareName(L"")==L"file");CHECK(safeShareName(std::wstring(300,L'a')+L".pdf").size()==120);CHECK(safeShareName(std::wstring(300,L'a')+L".pdf").ends_with(L".pdf"));
     const fs::path root=fs::temp_directory_path()/(L"arnav-share-test-"+std::to_wstring(GetTickCount64()));fs::create_directories(root);
     const fs::path file=root/L"hello.bin";{std::mt19937 random(7);std::ofstream out(file,std::ios::binary);for(int i=0;i<1000003;++i)out.put(char(random()&255));}
@@ -53,6 +64,10 @@ int main(){
     {
         auto a=std::make_unique<ShareService>(nullptr,options(L"A",47920));ShareService b(nullptr,options(L"B",47930));std::vector<ShareEvent> pa,pb;ShareEvent e,f;
         CHECK(a->running());CHECK(b.running());CHECK(a->id().size()==32);CHECK(a->id()!=b.id());idA=a->id();
+        // The pairing link: the code without its dash, and this PC's key fingerprint (each PC its own); its QR code is version 4.
+        {const std::string l=a->pairingLink("7K2P-MX4Q");CHECK(l.starts_with("arnavisland://pair/7K2PMX4Q?k=")&&l.size()==50);CHECK(l==a->pairingLink("7k2pmx4q"));
+            CHECK(l.substr(30).find_first_not_of("0123456789abcdef")==std::string::npos);CHECK(l!=b.pairingLink("7K2P-MX4Q"));CHECK(a->pairingLink("").empty());
+            CHECK(qrEncode(l).size==33);}
         a->addPeer(b.id(),L"PC B","127.0.0.1",47930);b.addPeer(a->id(),L"PC A","127.0.0.1",47920);
         // Before pairing, nothing is sent.
         a->send(b.id(),{file.wstring()});CHECK(waitFor(*a,pa,ShareEvent::Kind::Failed,e));CHECK(e.detail.find(L"Pair")!=std::wstring::npos);
