@@ -111,6 +111,8 @@ class IslandWindow {
     // 0.19 (IslandShare.cpp): phones. Their remote (answered here: what plays and its cover, encoded once per cover; CPU from
     // the system's times between two asks), their cards, and each phone's last battery level for its low-battery card.
     void remoteCall(LPARAM);std::vector<uint8_t> remoteAnswer(const std::string& peer,RemoteCommand,const std::vector<uint8_t>& payload);
+    // A phone's command as the network thread passes it on: posted to the island's thread, answered within 4 s.
+    static std::vector<uint8_t> remoteFromNetwork(HWND window,const std::string& peer,RemoteCommand,const std::vector<uint8_t>& payload);
     void phoneCard(const std::wstring& title,const std::wstring& detail,const std::wstring& source,std::shared_ptr<const Artwork> icon,double duration);std::wstring peerName(const std::string& peer)const;
     const Artwork* remoteCoverOf_=nullptr;std::vector<uint8_t> remoteCover_;ULONGLONG cpuIdle_=0,cpuTotal_=0;int cpuLast_=-1;std::map<std::string,int> phoneBattery_;
     std::shared_ptr<const WallpaperLuma> wallLuma_;bool wallLoading_=false,qaBackdrop_=false;void loadWallpaperLuma();void adaptBackdrop();bool backdropCovered()const;

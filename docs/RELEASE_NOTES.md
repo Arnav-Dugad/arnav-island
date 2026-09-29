@@ -1,3 +1,19 @@
+# Arnav Island 0.19.0-preview.2 — the phone’s remote, tested on the island
+
+## Checks
+- **The phone's remote.** The island's own answers to a phone are now part of the native UI test:
+  - the status is laid out as the phone reads it, cover and all
+  - links other than http and https are refused
+  - a malformed seek is refused
+  - nothing is answered while *My phone can control this PC* is off
+  - an answer arrives the way the network passes it on: posted to the island's thread and waited for
+
+  Only commands without effects are tried: nothing plays, pauses, changes the volume or locks during a test.
+- **Native UI test:** 53 of 53.
+- **Settings end to end:** 206 of 206.
+
+Everything in 0.19.0-preview.1 is included: [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest), the phone's remote, notifications, battery and **Ring**.
+
 # Arnav Island 0.19.0-preview.1 — your phone, on the island
 
 ## Arnav Island for Android

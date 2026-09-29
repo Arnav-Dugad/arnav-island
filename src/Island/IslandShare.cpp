@@ -33,10 +33,7 @@ void IslandWindow::syncSharing(){
         ShareOptions o;std::filesystem::path data=std::filesystem::path(settingsFile_).parent_path();if(data.empty())data=std::filesystem::path(folderOf(FOLDERID_LocalAppData))/L"ArnavIsland";
         o.folder=data.wstring();o.downloads=folderOf(FOLDERID_Downloads);if(o.downloads.empty())o.downloads=(data/L"Received").wstring();o.handoff=(data/L"Handoff").wstring();
         // 0.19: a phone's remote, answered on this thread (a phone gives up on an answer that takes over 4 s).
-        o.remote=[window=window_](const std::string& peer,RemoteCommand command,const std::vector<uint8_t>& payload){
-            auto call=std::make_shared<RemoteCall>();call->peer=peer;call->command=command;call->payload=payload;auto answer=call->answer.get_future();
-            auto* held=new std::shared_ptr<RemoteCall>(call);if(!PostMessageW(window,RemoteMessage,0,reinterpret_cast<LPARAM>(held))){delete held;return std::vector<uint8_t>{remoteFailed};}
-            if(answer.wait_for(std::chrono::seconds(4))!=std::future_status::ready)return std::vector<uint8_t>{remoteFailed};return answer.get();};
+        o.remote=[window=window_](const std::string& peer,RemoteCommand command,const std::vector<uint8_t>& payload){return remoteFromNetwork(window,peer,command,payload);};
         share_=std::make_unique<ShareService>(window_,o);store_.log(share_->running()?"Info":"Warning",share_->running()?"share_started":"share_unavailable");
         content_.nearby=share_->peers();}
     else if(!settings_.sharing&&share_){share_.reset();content_.nearby.clear();content_.transfers.clear();shareTarget_.clear();content_.nearbyTarget.clear();content_.handoffPicking=false;content_.remote={};if(content_.shelfTab==2)content_.shelfTab=0;}
@@ -191,6 +188,11 @@ bool IslandWindow::shareAction(Action a){
     return false;
 }
 // ---- 0.19: phones ----
+std::vector<uint8_t> IslandWindow::remoteFromNetwork(HWND window,const std::string& peer,RemoteCommand command,const std::vector<uint8_t>& payload){
+    auto call=std::make_shared<RemoteCall>();call->peer=peer;call->command=command;call->payload=payload;auto answer=call->answer.get_future();
+    auto* held=new std::shared_ptr<RemoteCall>(call);if(!PostMessageW(window,RemoteMessage,0,reinterpret_cast<LPARAM>(held))){delete held;return {remoteFailed};}
+    if(answer.wait_for(std::chrono::seconds(4))!=std::future_status::ready)return {remoteFailed};return answer.get();
+}
 std::wstring IslandWindow::peerName(const std::string& peer)const{for(auto& p:content_.nearby)if(p.id==peer)return p.name;return L"Your phone";}
 // A phone's card (kind 19): its app's icon or a phone, a title, a line of text and where it came from.
 void IslandWindow::phoneCard(const std::wstring& title,const std::wstring& detail,const std::wstring& source,std::shared_ptr<const Artwork> icon,double duration){
@@ -206,7 +208,7 @@ void IslandWindow::remoteCall(LPARAM l){
 }
 // What a paired phone asked of this PC (with "My phone can control this PC" on).
 std::vector<uint8_t> IslandWindow::remoteAnswer(const std::string& peer,RemoteCommand command,const std::vector<uint8_t>& payload){
-    if(!settings_.phoneControl||!share_)return {remoteNotAllowed};
+    if(!settings_.phoneControl)return {remoteNotAllowed};
     const auto& p=content_.playback;const double now=seconds();const std::wstring from=peerName(peer);
     // What a card shows of copied text: its first line, or dots for something password-like.
     auto shownClip=[&](const std::wstring& t){return settings_.hideSecrets&&looksSecret(t)?std::wstring(L"\u2022\u2022\u2022\u2022\u2022\u2022  \u00b7  hidden"):cardLine(t);};

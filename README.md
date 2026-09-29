@@ -2,7 +2,7 @@
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.19.0-preview.1) · **New:** [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest)
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.19.0-preview.2) · **New:** [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest)
 
 **Arnav Island for Android** is a liquid-glass companion app. From your phone you can:
 - control what plays on your PC

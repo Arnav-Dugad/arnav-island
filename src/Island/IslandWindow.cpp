@@ -631,6 +631,19 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                 pass=pass&&has(Action(int(Action::NearbyRingBase)+2))&&!has(Action::NearbyRingBase)&&accessibleName(Action(int(Action::NearbyRingBase)+2))==L"Ring Test phone";
                 perform(Action::NearbyBase);pass=pass&&shareTarget_=="a1"&&content_.nearbyTarget=="a1";
                 settings_.sharing=was;content_.settings=settings_;content_.nearby.clear();shareTarget_.clear();content_.nearbyTarget.clear();content_.shelfTab=0;perform(Action::Close);
+                // The phone's remote, answered here. Only commands without effects: nothing plays, pauses, changes the volume or locks.
+                {const auto st=remoteAnswer("c3",RemoteCommand::Status,{});bool statusOk=st.size()>=27&&st[0]==remoteOk;
+                    // Past the flags, times, volume, battery and CPU: the cover (none, or a hash, a length and the picture), then the text.
+                    size_t at=22;if(statusOk&&st[at]==1){at+=1+32;const uint32_t n=uint32_t(st[at]|st[at+1]<<8|st[at+2]<<16|uint32_t(st[at+3])<<24);at+=4+n;}else at+=1;
+                    if(statusOk&&at+4<=st.size()){const uint32_t n=uint32_t(st[at]|st[at+1]<<8|st[at+2]<<16|uint32_t(st[at+3])<<24);const std::string text(st.begin()+long(at+4),st.end());
+                        statusOk=n==text.size()&&std::count(text.begin(),text.end(),'\n')==4;}else statusOk=false;
+                    const auto open=remoteAnswer("c3",RemoteCommand::Open,{'f','t','p',':','/','/','x','.','y'});const auto seek=remoteAnswer("c3",RemoteCommand::Seek,{1,2});
+                    settings_.phoneControl=false;const auto refused=remoteAnswer("c3",RemoteCommand::Status,{});settings_.phoneControl=true;
+                    pass=pass&&statusOk&&open==std::vector<uint8_t>{remoteNotAllowed}&&!seek.empty()&&seek[0]!=remoteOk&&refused==std::vector<uint8_t>{remoteNotAllowed};
+                    // The same answer by the network's path: a thread posts the command to this one and waits (only this message is pumped).
+                    std::atomic<bool> done{false};std::vector<uint8_t> via;std::thread net([&,w=window_]{via=remoteFromNetwork(w,"c3",RemoteCommand::Status,{});done=true;});
+                    for(int i=0;i<600&&!done;++i){MSG m;while(PeekMessageW(&m,window_,RemoteMessage,RemoteMessage,PM_REMOVE))DispatchMessageW(&m);Sleep(5);}
+                    net.join();pass=pass&&via.size()>=27&&via[0]==remoteOk&&via.size()==st.size();}
                 content_.pinned=false;phoneCard(L"UI test message",L"Nothing real",L"Messages  \u00b7  Test phone",nullptr,3);
                 pass=pass&&state_==IslandState::Notification&&content_.notice.kind==19&&accessAlert(content_.notice).find(L"From Messages")!=std::wstring::npos;
                 events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);SetTimer(window_,13,300,nullptr);break;}
