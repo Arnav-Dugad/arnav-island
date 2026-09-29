@@ -232,3 +232,34 @@ The status payload holds, in order:
 - music both ways, with the song's file
 
 The ECDH secret derivation (CNG's `KDF_HASH` over Z) and Java's `ECDH` with SHA-256 of Z agree.
+
+## 0.20.0-preview.1
+
+**Revision 3.** PCs announce `2.3`, phones `2.3;phone`. What's new:
+
+| Part | Frames |
+|---|---|
+| Remote commands | Ring this PC (10). Lyrics (11), answered `[ok, state, key, count, lines]`; each line holds its time, text, and each word's time and UTF-16 start. |
+| **N** notices | Type 2 adds the key and up to three actions (flags, then the title). Type 3 is the phone's details, `name\tvalue` lines. Type 4 says a notification is gone. |
+| **A**, an action | `[0x70, key, index, reply]`, answered `[0x71, status]` (done, gone or failed). |
+| **C**, the clipboard | `[0x50, sensitive, text]`, answered `[0x51, status]`. |
+| **K**, the camera | `[0x42]`, answered `[0x43, status]`. |
+| **I**, input | A stream of move, button, scroll, text and key frames, until the phone stops or two minutes pass. |
+
+A few smaller changes:
+- An offer's flags byte adds *to the Shelf* (bit 1), sent only to revision 3.
+- The status adds bit 9: the universal clipboard is on.
+
+**The relay** (`ShareRelay`) carries the same protocol between networks. Each side connects to a public MQTT broker over WebSocket and TLS (WinHTTP on Windows, a TLS socket on Android). It tries broker.hivemq.com, broker.emqx.io and test.mosquitto.org in turn, with MQTT 3.1.1, QoS 0 and a clean session.
+
+A paired pair's secret S is SHA-256 of `arnav-relay-v1` and the pair's ECDH agreement. Topics are `arnavisland/r1/` followed by 40 hex characters of SHA-256 over:
+- `inbox`, S and the device's id, for a device's inbox
+- `host` or `guest` and the code's hash, for pairing codes
+
+Every message is AES-256-GCM with a fresh nonce and the topic as associated data. It carries one of:
+- **hello:** presence, revision, phone, name
+- **open**, **data**, **ack** and **close:** a tunnel
+
+A tunnel is joined to a local loopback socket pair, so the ordinary handshake, pairing check and per-connection keys run through it unchanged. Data moves in 48 KB chunks, 64 in flight, acknowledged every 24; that measured 0.84 MB/s through a public broker. Hellos go out once a minute, and a device silent for 150 s counts as gone.
+
+**Pairing codes** are 8 characters from `23456789ABCDEFGHJKMNPQRSTUVWXYZ`, valid for 10 minutes. The code's hash names the rendezvous topics and keys, and the usual six-digit confirmation follows over the tunnel. Someone who only watches the broker never has the code.

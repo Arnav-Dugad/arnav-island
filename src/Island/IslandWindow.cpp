@@ -511,7 +511,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
         refresh();}return 0;
     case ControlStateMessage:{auto& c=content_.controls;auto part=[&](int shift){return int((w>>shift)&15)-2;};c.wifi=part(0);c.bluetooth=part(4);c.dark=part(8);c.busy&=~int(l);
         if(state_!=IslandState::Compact&&content_.page==Page::Control)refresh();return 0;}
-    case WM_TIMER: if(w==17){KillTimer(window_,17);fullscreen();return 0;}if(w==SpreadTimer){KillTimer(window_,SpreadTimer);spreadAlerts(false);return 0;}if(w==69&&testing_){KillTimer(window_,69);spreadAlerts(true);return 0;}if(w==72&&testing_){KillTimer(window_,72);renderer_->pointer(24,14,true,true);return 0;}if(w==71&&testing_){KillTimer(window_,71);shareCard(qaLateCard_==17?17:15,qaLateCard_==17?L"Blue in Green":L"Studio PC",qaLateCard_==17?L"Miles Davis  ·  from Studio PC":L"Holiday photos  ·  12 files  ·  48.2 MB",{},60);return 0;}if(w==66&&testing_){KillTimer(window_,66);perform(Action::Shelf);return 0;}if(w==63){KillTimer(window_,63);syncBud();return 0;}if(w==68&&testing_){KillTimer(window_,68);const double t=seconds();renderer_->swipeFollow(-52,float(motion_.width.sample(t).position),float(motion_.height.sample(t).position),true,false);return 0;}if(w==67&&testing_){KillTimer(window_,67);shareCard(16,L"Received from Travel laptop",L"Trip notes.pdf",{},8);return 0;}
+    case WM_TIMER: if(shareTimer(w))return 0;if(w==17){KillTimer(window_,17);fullscreen();return 0;}if(w==SpreadTimer){KillTimer(window_,SpreadTimer);spreadAlerts(false);return 0;}if(w==69&&testing_){KillTimer(window_,69);spreadAlerts(true);return 0;}if(w==72&&testing_){KillTimer(window_,72);renderer_->pointer(24,14,true,true);return 0;}if(w==71&&testing_){KillTimer(window_,71);shareCard(qaLateCard_==17?17:15,qaLateCard_==17?L"Blue in Green":L"Studio PC",qaLateCard_==17?L"Miles Davis  ·  from Studio PC":L"Holiday photos  ·  12 files  ·  48.2 MB",{},60);return 0;}if(w==66&&testing_){KillTimer(window_,66);perform(Action::Shelf);return 0;}if(w==63){KillTimer(window_,63);syncBud();return 0;}if(w==68&&testing_){KillTimer(window_,68);const double t=seconds();renderer_->swipeFollow(-52,float(motion_.width.sample(t).position),float(motion_.height.sample(t).position),true,false);return 0;}if(w==67&&testing_){KillTimer(window_,67);shareCard(16,L"Received from Travel laptop",L"Trip notes.pdf",{},8);return 0;}
         if(w==47){controlJob(0,0);return 0;}
         if(w==46){peekTick();return 0;}
         // QA: alternate two currency answers so the rolling digits can be filmed.
@@ -644,6 +644,25 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                     std::atomic<bool> done{false};std::vector<uint8_t> via;std::thread net([&,w=window_]{via=remoteFromNetwork(w,"c3",RemoteCommand::Status,{});done=true;});
                     for(int i=0;i<600&&!done;++i){MSG m;while(PeekMessageW(&m,window_,RemoteMessage,RemoteMessage,PM_REMOVE))DispatchMessageW(&m);Sleep(5);}
                     net.join();pass=pass&&via.size()>=27&&via[0]==remoteOk&&via.size()==st.size();}
+                // 0.20: find this PC, and the song's lyrics (state, key, lines), answered here.
+                {const auto ring=remoteAnswer("c3",RemoteCommand::RingPC,{});pass=pass&&ring==std::vector<uint8_t>{remoteOk}&&content_.notice.app==L"Here I am";
+                    KillTimer(window_,RingPCTimer);ringChimes_=0;events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);
+                    const auto lyrics=remoteAnswer("c3",RemoteCommand::Lyrics,{});pass=pass&&lyrics.size()>=10&&lyrics[0]==remoteOk&&lyrics[1]<=3;}
+                // 0.20: a phone's own view from its Nearby row (its readings, and what it can do from here), and pairing with a code.
+                {settings_.sharing=true;settings_.relay=true;content_.settings=settings_;content_.nearby={{"a1",L"Test PC one",true,true},{"c3",L"Test phone",true,true,shareProtocol,shareRevision,true,64,true}};
+                    content_.phones["c3"]={{{L"Battery",L"64%"},{L"Storage",L"42 GB free of 128 GB"},{L"Network",L"Wi-Fi"},{L"Android",L"16"}},seconds()};
+                    perform(Action::Shelf);perform(Action::ShelfNearby);pass=pass&&has(Action::PairAnywhere)&&accessibleName(Action::PairAnywhere)==L"Pair with a code";
+                    perform(Action(int(Action::NearbyBase)+1));
+                    pass=pass&&content_.phoneView.open&&content_.phoneView.peer=="c3"&&has(Action::PhoneBack)&&has(Action::PhoneRing)&&has(Action::PhonePhoto)&&has(Action::PhoneClipboard)&&accessibleName(Action::PhoneRing)==L"Ring the phone";
+                    perform(Action::PhoneBack);pass=pass&&!content_.phoneView.open;
+                    settings_.sharing=was;content_.settings=settings_;content_.nearby.clear();content_.phones.clear();content_.shelfTab=0;perform(Action::Close);}
+                // 0.20: a notification's actions (a reply opens the reply box), and the pairing code's card.
+                {content_.pinned=false;phoneCard(L"Mum",L"Dinner at 8?",L"Messages  \u00b7  Test phone",nullptr,5,"c3","k1",{{L"Reply",true},{L"Mark read",false}});
+                    pass=pass&&state_==IslandState::Notification&&content_.notice.actions.size()==2&&has(Action::NoticeActionBase)&&has(Action(int(Action::NoticeActionBase)+1))&&accessibleName(Action(int(Action::NoticeActionBase)+1))==L"Mark read";
+                    perform(Action::NoticeActionBase);pass=pass&&content_.command.active&&content_.command.reply&&content_.command.replyTo==L"Mum"&&content_.command.replyKey=="k1";
+                    closeCommand(false);
+                    content_.pinned=false;shareCard(20,L"7K2P-MX4Q",L"On your phone: Arnav Island \u203a Pair with a code",{},3);pass=pass&&content_.notice.kind==20&&has(Action::PairingStop);
+                    events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);}
                 content_.pinned=false;phoneCard(L"UI test message",L"Nothing real",L"Messages  \u00b7  Test phone",nullptr,3);
                 pass=pass&&state_==IslandState::Notification&&content_.notice.kind==19&&accessAlert(content_.notice).find(L"From Messages")!=std::wstring::npos;
                 events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);SetTimer(window_,13,300,nullptr);break;}

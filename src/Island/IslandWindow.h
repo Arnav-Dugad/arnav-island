@@ -113,8 +113,18 @@ class IslandWindow {
     void remoteCall(LPARAM);std::vector<uint8_t> remoteAnswer(const std::string& peer,RemoteCommand,const std::vector<uint8_t>& payload);
     // A phone's command as the network thread passes it on: posted to the island's thread, answered within 4 s.
     static std::vector<uint8_t> remoteFromNetwork(HWND window,const std::string& peer,RemoteCommand,const std::vector<uint8_t>& payload);
-    void phoneCard(const std::wstring& title,const std::wstring& detail,const std::wstring& source,std::shared_ptr<const Artwork> icon,double duration);std::wstring peerName(const std::string& peer)const;
+    void phoneCard(const std::wstring& title,const std::wstring& detail,const std::wstring& source,std::shared_ptr<const Artwork> icon,double duration,
+        const std::string& peer={},const std::string& key={},const std::vector<std::pair<std::wstring,bool>>& actions={});std::wstring peerName(const std::string& peer)const;
     const Artwork* remoteCoverOf_=nullptr;std::vector<uint8_t> remoteCover_;ULONGLONG cpuIdle_=0,cpuTotal_=0;int cpuLast_=-1;std::map<std::string,int> phoneBattery_;
+    // 0.20 (IslandShare.cpp): any network, and more of the phone. The relay's setting as the service was started with; a phone's
+    // trackpad and keyboard (allowed while "My phone can control this PC" is on, checked from the network thread); the
+    // clipboard to phones (the last text a phone gave, so it isn't sent straight back); proximity (each phone near, and since
+    // when); find my PC's chimes; a phone's photo on its way to the Shelf; replying from the island.
+    bool relayOn_=false;std::shared_ptr<std::atomic<bool>> inputAllowed_=std::make_shared<std::atomic<bool>>(false);static void phoneInput(const std::vector<uint8_t>& frame);
+    void pushClipboardToPhones();std::wstring lastPhoneClip_;double lastClipPush_=0;
+    struct Nearness{bool here=false;double since=0;};std::map<std::string,Nearness> phoneNear_;void proximity();void proximityCheck();
+    static constexpr UINT_PTR ProximityTimer=85,RingPCTimer=86;int ringChimes_=0;std::wstring continuityPath_;
+    void openReply(const std::string& peer,const std::string& key,int action,const std::wstring& to);bool shareTimer(UINT_PTR id);
     std::shared_ptr<const WallpaperLuma> wallLuma_;bool wallLoading_=false,qaBackdrop_=false;void loadWallpaperLuma();void adaptBackdrop();bool backdropCovered()const;
     // The body's top-left in the canvas (DIPs), including how far a notification pill has dropped (drop: 0..1).
     // Phase 5H: spread side by side with a waiting alert, the pill sits further left.

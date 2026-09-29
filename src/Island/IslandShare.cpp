@@ -29,11 +29,17 @@ std::wstring cardLine(const std::wstring& t){std::wstring out;for(wchar_t c:t){i
 // Sharing runs only while its setting is on (never in test runs: no sockets, no firewall prompts there).
 void IslandWindow::syncSharing(){
     if(!window_)return;
+    // The relay's setting takes effect by starting the service again.
+    if(share_&&relayOn_!=settings_.relay){share_.reset();content_.nearby.clear();content_.transfers.clear();content_.internet=false;}
+    inputAllowed_->store(settings_.phoneControl);
     if(settings_.sharing&&!share_&&!testing_){
         ShareOptions o;std::filesystem::path data=std::filesystem::path(settingsFile_).parent_path();if(data.empty())data=std::filesystem::path(folderOf(FOLDERID_LocalAppData))/L"ArnavIsland";
         o.folder=data.wstring();o.downloads=folderOf(FOLDERID_Downloads);if(o.downloads.empty())o.downloads=(data/L"Received").wstring();o.handoff=(data/L"Handoff").wstring();
         // 0.19: a phone's remote, answered on this thread (a phone gives up on an answer that takes over 4 s).
         o.remote=[window=window_](const std::string& peer,RemoteCommand command,const std::vector<uint8_t>& payload){return remoteFromNetwork(window,peer,command,payload);};
+        // 0.20: other networks through the relay; a phone's trackpad and keyboard, straight from the network thread.
+        o.relay=settings_.relay;relayOn_=settings_.relay;
+        o.input=[allowed=inputAllowed_](const std::string&,const std::vector<uint8_t>& frame){if(allowed->load())phoneInput(frame);};
         share_=std::make_unique<ShareService>(window_,o);store_.log(share_->running()?"Info":"Warning",share_->running()?"share_started":"share_unavailable");
         content_.nearby=share_->peers();}
     else if(!settings_.sharing&&share_){share_.reset();content_.nearby.clear();content_.transfers.clear();shareTarget_.clear();content_.nearbyTarget.clear();content_.handoffPicking=false;content_.remote={};if(content_.shelfTab==2)content_.shelfTab=0;}
@@ -74,7 +80,8 @@ void IslandWindow::shareEvents(){
     for(auto& e:share_->take()){
         using K=ShareEvent::Kind;
         switch(e.kind){
-        case K::Peers:{content_.nearby=share_->peers();
+        case K::Peers:{content_.nearby=share_->peers();content_.internet=share_->internet();proximity();
+            if(content_.phoneView.open&&std::none_of(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==content_.phoneView.peer&&p.paired;}))content_.phoneView={};
             // Sends go to the chosen paired PC; failing that, the first paired PC that is here.
             const bool keep=std::any_of(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==shareTarget_&&p.paired;});
             if(!keep){shareTarget_.clear();for(auto& p:content_.nearby)if(p.paired&&p.online){shareTarget_=p.id;break;}}content_.nearbyTarget=shareTarget_;
@@ -84,7 +91,9 @@ void IslandWindow::shareEvents(){
         case K::Paired:{const bool phone=std::any_of(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==e.peer&&p.phone;});
             shareCard(16,L"Paired with "+e.name,phone?std::wstring(L"Files go both ways, and it can control this PC"):e.detail,{},4);break;}
         case K::PairFailed:shareCard(16,L"Not paired with "+(e.name.empty()?std::wstring(L"that PC"):e.name),e.detail,{},4.5);break;
-        case K::Offer:shareOffer_=e.transfer;shareCard(15,e.name,e.file+(e.count>1?L"  ·  "+filesText(e.count):L"")+L"  ·  "+bytesText(e.size),{},60);break;
+        // 0.20: photos a phone took for the Shelf come in without asking (while that's on).
+        case K::Offer:if(e.toShelf&&settings_.continuity&&std::any_of(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==e.peer&&p.phone&&p.paired;})){share_->answer(e.transfer,true);store_.log("Info","continuity_accepted");break;}
+            shareOffer_=e.transfer;shareCard(15,e.name,e.file+(e.count>1?L"  ·  "+filesText(e.count):L"")+L"  ·  "+bytesText(e.size),{},60);break;
         // Progress: the transfer's row and chip fill (redrawn at most about five times a second, and at the end).
         case K::Progress:{auto it=std::find_if(content_.transfers.begin(),content_.transfers.end(),[&](auto& t){return t.id==e.transfer;});
             if(it==content_.transfers.end()){ContentSnapshot::Transfer t;t.id=e.transfer;t.peer=e.peer;t.name=e.name;t.title=e.file;t.outgoing=e.outgoing;content_.transfers.push_back(t);it=content_.transfers.end()-1;}
@@ -94,6 +103,10 @@ void IslandWindow::shareEvents(){
             if(now-transferDrawn_>=.2||e.done==e.size){transferDrawn_=now;redraw=true;}break;}
         // Show opens Downloads with the arrival selected (a folder, or the first file).
         case K::Received:drop(e.transfer);
+            if(e.toShelf){std::wstring first;for(auto& path:e.paths)if(content_.shelf.size()<32&&std::none_of(content_.shelf.begin(),content_.shelf.end(),[&](auto& i){return i.value==path;})){
+                    content_.shelf.push_back({ShelfItem::Kind::File,path,std::filesystem::path(path).filename().wstring()});if(first.empty())first=path;}
+                requestPreviews();continuityPath_=first;
+                phoneCard(e.count==1?L"Photo from "+e.name:std::to_wstring(e.count)+L" photos from "+e.name,L"On your Shelf",e.name,nullptr,6);store_.log("Info","continuity_arrived");break;}
             if(e.code==1){if(!e.detail.empty()&&std::none_of(content_.shelf.begin(),content_.shelf.end(),[&](auto& i){return i.value==e.detail;})&&content_.shelf.size()<32){content_.shelf.push_back({ShelfItem::Kind::File,e.detail,std::filesystem::path(e.detail).filename().wstring()});requestPreviews();}
                 shareCard(16,L"Taken from "+e.name+L"\u2019s Shelf",e.file+(e.count>1?L"  ·  "+filesText(e.count):L"")+L"  ·  now on your Shelf",e.detail,6);store_.log("Info","share_shelf_taken_here");break;}
             shareCard(16,L"Received from "+e.name,e.file+(e.count>1?L"  ·  "+filesText(e.count):L""),e.detail,8);break;
@@ -102,6 +115,8 @@ void IslandWindow::shareEvents(){
             // Stopped here: a quiet note. An offer the other PC took back replaces its card.
             if(e.detail==L"You stopped it"){content_.shelfStatus=L"Stopped "+e.file;content_.shelfStatusUntil=now+3;redraw=true;break;}
             if(e.transfer&&e.transfer==handoffOffer_){handoffOffer_=0;if(state_==IslandState::Notification&&content_.notice.kind==17)shareCard(16,e.detail,e.file,{},3.5);break;}
+            // A command to a phone that didn't go (an action, a photo) names the phone rather than a file.
+            if(e.file.empty()&&e.outgoing&&!e.name.empty()){shareCard(16,L"Not done on "+e.name,e.detail,{},4.5);break;}
             shareCard(16,e.file.empty()?std::wstring(L"Couldn't share"):L"Couldn't share "+e.file,e.detail,{},5);break;}
         case K::Handoff:case K::HandoffAnswered:case K::HandoffFile:handoffEvent(e);break;
         // Phase 5H: another PC's Shelf, as asked for; and this Shelf, taken from.
@@ -113,7 +128,21 @@ void IslandWindow::shareEvents(){
             if(settings_.phoneNotices&&e.battery>=0&&e.battery<=20&&!e.charging&&it->second>20)phoneCard(e.name+L" is at "+std::to_wstring(e.battery)+L"%",L"Charge it soon",e.name,nullptr,5);
             if(e.battery>=0)it->second=e.charging?101:e.battery;if(state_==IslandState::Expanded&&content_.page==Page::Shelf)redraw=true;break;}
         case K::PhoneNotice:{if(!settings_.phoneNotices)break;
-            const std::wstring title=e.file.empty()?e.app:e.file;phoneCard(title.empty()?e.name:title,e.detail,(e.app.empty()?std::wstring():e.app+L"  \u00b7  ")+e.name,decodeCover(e.icon,96),e.urgent?14:6);store_.log("Info","phone_notice");break;}
+            // A call stays up while it rings (the phone says when it has gone); others for a few seconds, longer with actions.
+            const std::wstring title=e.file.empty()?e.app:e.file;
+            phoneCard(title.empty()?e.name:title,e.detail,(e.app.empty()?std::wstring():e.app+L"  \u00b7  ")+e.name,decodeCover(e.icon,96),e.urgent?45:e.actions.empty()?6:10,e.peer,e.key,e.actions);store_.log("Info","phone_notice");break;}
+        case K::PhoneNoticeGone:{
+            std::erase_if(heldCards_,[&](auto& h){return h.notice.kind==19&&h.notice.peer==e.peer&&h.notice.key==e.key;});
+            if(state_==IslandState::Notification&&content_.notice.kind==19&&content_.notice.peer==e.peer&&!e.key.empty()&&content_.notice.key==e.key){events_.dismiss(now);content_.activity.clear();transition(IslandState::Compact);}
+            syncBud();break;}
+        // A phone's readings, for its own view in Nearby.
+        case K::PhoneDetails:{auto& info=content_.phones[e.peer];info.values.clear();info.at=now;size_t from=0;
+            while(from<e.detail.size()&&info.values.size()<40){size_t end=e.detail.find(L'\n',from);if(end==std::wstring::npos)end=e.detail.size();const std::wstring line=e.detail.substr(from,end-from);from=end+1;
+                const auto tab=line.find(L'\t');if(tab!=std::wstring::npos&&tab>0)info.values.push_back({line.substr(0,tab).substr(0,32),line.substr(tab+1).substr(0,80)});}
+            if(content_.phoneView.open&&content_.phoneView.peer==e.peer)redraw=true;break;}
+        // Pairing from anywhere: the code to type on the phone (up to ten minutes).
+        case K::PairingCode:if(e.detail.empty())shareCard(16,L"Couldn\u2019t make a code",L"This PC isn\u2019t connected to the internet",{},4.5);
+            else shareCard(20,e.detail,L"On your phone: Arnav Island \u203a Pair with a code",{},600);break;
         case K::Rang:phoneCard(L"Ringing "+e.name,L"Loudly, even on silent. Stop it on the phone",e.name,nullptr,4);break;}
     }
     if(redraw&&renderer_)refresh();
@@ -163,6 +192,7 @@ bool IslandWindow::shareAction(Action a){
     if(inRange(a,Action::NearbyBase,Action::NearbyEnd)){const size_t i=size_t(int(a)-int(Action::NearbyBase));
         if(i<content_.nearby.size()){const auto p=content_.nearby[i];
             if(!p.paired){if(share_&&p.online){share_->pair(p.id);note(L"Pairing with "+p.name+L"…");}}
+            else if(p.phone){content_.phoneView={true,p.id};if(!motion_.reduced){motion_.swipe.reset(22,now);motion_.swipe.retarget(0,now,MotionTokens::content);}refresh();animate();store_.log("Info","phone_view");}
             else{shareTarget_=p.id;content_.nearbyTarget=p.id;refresh();}}
         return true;}
     if(inRange(a,Action::NearbyForgetBase,Action::NearbyForgetEnd)){const size_t i=size_t(int(a)-int(Action::NearbyForgetBase));
@@ -183,6 +213,21 @@ bool IslandWindow::shareAction(Action a){
     // 0.19: find my phone.
     if(inRange(a,Action::NearbyRingBase,Action::NearbyRingEnd)){const size_t i=size_t(int(a)-int(Action::NearbyRingBase));
         if(share_&&i<content_.nearby.size()&&content_.nearby[i].paired&&content_.nearby[i].phone){share_->ring(content_.nearby[i].id);note(L"Ringing "+content_.nearby[i].name+L"\u2026");store_.log("Info","phone_ring");}return true;}
+    // 0.20: pairing from anywhere with a code; a phone's own view; its notification's actions (a reply opens a reply box).
+    if(a==Action::PairAnywhere){if(!share_)return true;if(!share_->internet()){note(L"This PC isn\u2019t connected to the internet");return true;}share_->hostPairing();note(L"Making a code\u2026");store_.log("Info","pair_anywhere");return true;}
+    if(a==Action::PairingStop){if(share_)share_->stopPairing();close();return true;}
+    if(a==Action::PhoneBack){content_.phoneView={};if(!motion_.reduced){motion_.swipe.reset(-22,now);motion_.swipe.retarget(0,now,MotionTokens::content);}refresh();animate();return true;}
+    if(a==Action::PhoneRing||a==Action::PhonePhoto||a==Action::PhoneClipboard){const std::string peer=content_.phoneView.peer;auto it=std::find_if(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==peer;});
+        if(!share_||it==content_.nearby.end())return true;
+        if(a==Action::PhoneRing){share_->ring(peer);note(L"Ringing "+it->name+L"\u2026");}
+        else if(a==Action::PhonePhoto){share_->askPhoto(peer);note(L"On "+it->name+L": the camera opens, or tap its notification");}
+        else{std::wstring text;if(OpenClipboard(window_)){if(HANDLE h=GetClipboardData(CF_UNICODETEXT))if(auto* t=static_cast<const wchar_t*>(GlobalLock(h))){text.assign(t,wcsnlen(t,GlobalSize(h)/sizeof(wchar_t)));GlobalUnlock(h);}CloseClipboard();}
+            if(text.empty())note(L"There\u2019s no text on the clipboard");else{share_->pushClipboard(peer,text,looksSecret(text));note(L"On "+it->name+L"\u2019s clipboard");}}
+        return true;}
+    if(inRange(a,Action::NoticeActionBase,Action::NoticeActionEnd)){const size_t i=size_t(int(a)-int(Action::NoticeActionBase));const auto n=content_.notice;
+        if(n.kind!=19||i>=n.actions.size())return true;
+        if(n.actions[i].second){events_.dismiss(now);content_.activity.clear();openReply(n.peer,n.key,int(i),n.app);return true;}
+        if(share_)share_->noticeAction(n.peer,n.key,int(i),L"");store_.log("Info","phone_action");close();return true;}
     if(inRange(a,Action::NearbyCancelBase,Action::NearbyCancelEnd)){const size_t i=size_t(int(a)-int(Action::NearbyCancelBase));
         if(share_&&i<content_.nearby.size())for(auto& t:content_.transfers)if(t.peer==content_.nearby[i].id){share_->cancel(t.id);note(L"Stopping…");break;}return true;}
     return false;
@@ -195,9 +240,11 @@ std::vector<uint8_t> IslandWindow::remoteFromNetwork(HWND window,const std::stri
 }
 std::wstring IslandWindow::peerName(const std::string& peer)const{for(auto& p:content_.nearby)if(p.id==peer)return p.name;return L"Your phone";}
 // A phone's card (kind 19): its app's icon or a phone, a title, a line of text and where it came from.
-void IslandWindow::phoneCard(const std::wstring& title,const std::wstring& detail,const std::wstring& source,std::shared_ptr<const Artwork> icon,double duration){
+void IslandWindow::phoneCard(const std::wstring& title,const std::wstring& detail,const std::wstring& source,std::shared_ptr<const Artwork> icon,double duration,
+    const std::string& peer,const std::string& key,const std::vector<std::pair<std::wstring,bool>>& actions){
     if(!renderer_)return;
     content_.notice={};content_.notice.kind=19;content_.notice.phone=true;content_.notice.app=title;content_.notice.detail=detail;content_.notice.source=source;content_.notice.icon=std::move(icon);
+    content_.notice.peer=peer;content_.notice.key=key;content_.notice.actions=actions;if(content_.notice.actions.size()>2)content_.notice.actions.resize(2);
     content_.pinned=false;{const Activity a{ActivityKind::Notification,"phone",72,19.,2.4,duration};if(holdCard(a))return;events_.publish(a,seconds());}
     transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info","phone_card_shown");
 }
@@ -221,7 +268,7 @@ std::vector<uint8_t> IslandWindow::remoteAnswer(const std::string& peer,RemoteCo
         if(p.available&&p.artwork){if(p.artwork.get()!=remoteCoverOf_){remoteCoverOf_=p.artwork.get();remoteCover_=encodeCover(*p.artwork,320,shareCoverLimit,.82f);if(remoteCover_.empty())remoteCover_=encodeCover(*p.artwork,200,shareCoverLimit,.75f);}st.cover=remoteCover_;}
         else{remoteCoverOf_=nullptr;remoteCover_.clear();}
         st.volume=audio_?audio_->value.load():content_.volume;st.muted=audio_?audio_->muted.load():content_.muted;
-        st.battery=content_.battery;st.batteryPresent=content_.battery>=0;st.charging=content_.charging;
+        st.battery=content_.battery;st.batteryPresent=content_.battery>=0;st.charging=content_.charging;st.clipboard=settings_.sharing&&settings_.universalClipboard;
         // CPU: busy time over all time since the last ask.
         FILETIME idle{},kernel{},user{};if(GetSystemTimes(&idle,&kernel,&user)){auto v=[](FILETIME f){return (ULONGLONG(f.dwHighDateTime)<<32)|f.dwLowDateTime;};const ULONGLONG i=v(idle),t=v(kernel)+v(user);
             if(cpuTotal_&&t>cpuTotal_&&t-cpuTotal_>=100000){cpuLast_=int(std::lround(100.*(1.-double(i-cpuIdle_)/double(t-cpuTotal_))));cpuLast_=std::clamp(cpuLast_,0,100);}if(!cpuTotal_||t-cpuTotal_>=100000){cpuIdle_=i;cpuTotal_=t;}}
@@ -238,7 +285,7 @@ std::vector<uint8_t> IslandWindow::remoteAnswer(const std::string& peer,RemoteCo
         std::string u=utf8Of(text);if(u.size()>60000){size_t n=60000;while(n>0&&(uint8_t(u[n])&0xc0)==0x80)--n;u.resize(n);}
         std::vector<uint8_t> r{remoteOk};const uint32_t n=uint32_t(u.size());for(int k=0;k<4;++k)r.push_back(uint8_t(n>>(8*k)));r.insert(r.end(),u.begin(),u.end());
         phoneCard(L"Clipboard sent to "+from,text.empty()?std::wstring(L"It was empty"):shownClip(text),from,nullptr,2.5);return r;}
-    case RemoteCommand::ClipboardSet:{const std::wstring text=fromUtf8Bytes(payload,256*1024);if(text.empty())return {remoteFailed};copyText(text,true);phoneCard(L"Copied from "+from,shownClip(text),from,nullptr,3);return {remoteOk};}
+    case RemoteCommand::ClipboardSet:{const std::wstring text=fromUtf8Bytes(payload,256*1024);if(text.empty())return {remoteFailed};lastPhoneClip_=text;copyText(text,true);phoneCard(L"Copied from "+from,shownClip(text),from,nullptr,3);return {remoteOk};}
     case RemoteCommand::Seek:{if(payload.size()<8||!p.canSeek)return {remoteUnsupported};double to=0;std::memcpy(&to,payload.data(),8);if(!std::isfinite(to))return {remoteFailed};
         to=std::clamp(to,0.,std::max(0.,p.duration));mediaSeek(to);content_.playback.position=to;content_.playback.sampledAt=now;refresh();return {remoteOk};}
     // Links only (http and https), opened in the default browser.
@@ -246,6 +293,78 @@ std::vector<uint8_t> IslandWindow::remoteAnswer(const std::string& peer,RemoteCo
         if(!(low.starts_with(L"https://")||low.starts_with(L"http://"))||url.size()<10||url.find_first_of(L"\r\n\t \"")!=std::wstring::npos)return {remoteNotAllowed};
         if(reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr,L"open",url.c_str(),nullptr,nullptr,SW_SHOWNORMAL))<=32)return {remoteFailed};
         phoneCard(L"Opened from "+from,cardLine(url),from,nullptr,3);store_.log("Info","phone_open");return {remoteOk};}
+    // Find my PC: a chime, again and again, and the edge lighting up, until the card is closed (or after twelve seconds).
+    case RemoteCommand::RingPC:{ringChimes_=8;playSound(Sound::Chime);SetTimer(window_,RingPCTimer,1400,nullptr);phoneCard(L"Here I am",from+L" is looking for this PC",from,nullptr,12);store_.log("Info","phone_find_pc");return {remoteOk};}
+    // The song's lyrics, as the island has them (the phone shows them in time with the song).
+    case RemoteCommand::Lyrics:{const std::wstring key=p.available?p.title+L"\t"+p.artist:std::wstring();int state=0;std::vector<ShareLyricLine> lines;
+        if(settings_.lyrics&&p.available){using State=LyricsService::State;const auto st=State(content_.lyricsState);
+            if(content_.lyrics&&!content_.lyrics->empty()){state=2;for(auto& l:*content_.lyrics){ShareLyricLine line;line.time=l.time;line.text=l.text;for(auto& w:l.words)line.words.push_back({w.time,w.start});lines.push_back(std::move(line));}}
+            else state=st==State::Loading||st==State::Unknown?1:3;}
+        return remoteLyricsAnswer(state,key,lines);}
     default:return {remoteUnsupported};}
+}
+// A phone's trackpad and keyboard, as Windows input (relative moves, the three buttons, both wheels, typed text, keys).
+void IslandWindow::phoneInput(const std::vector<uint8_t>& f){
+    if(f.empty())return;auto i16=[&](size_t at){return int(int16_t(uint16_t(f[at]|(f[at+1]<<8))));};
+    auto mouse=[](DWORD flags,LONG dx=0,LONG dy=0,DWORD data=0){INPUT m{};m.type=INPUT_MOUSE;m.mi.dx=dx;m.mi.dy=dy;m.mi.mouseData=data;m.mi.dwFlags=flags;return m;};
+    auto key=[](WORD vk,WORD scan,DWORD flags){INPUT k{};k.type=INPUT_KEYBOARD;k.ki.wVk=vk;k.ki.wScan=scan;k.ki.dwFlags=flags;return k;};
+    std::vector<INPUT> list;
+    switch(f[0]){
+    case 0x60:if(f.size()>=5)list.push_back(mouse(MOUSEEVENTF_MOVE,i16(1),i16(3)));break;
+    case 0x61:if(f.size()>=3){const uint8_t button=f[1],state=f[2];
+        const DWORD down=button==1?MOUSEEVENTF_RIGHTDOWN:button==2?MOUSEEVENTF_MIDDLEDOWN:MOUSEEVENTF_LEFTDOWN,up=button==1?MOUSEEVENTF_RIGHTUP:button==2?MOUSEEVENTF_MIDDLEUP:MOUSEEVENTF_LEFTUP;
+        if(state==1||state==2)list.push_back(mouse(down));if(state==0||state==2)list.push_back(mouse(up));}break;
+    case 0x62:if(f.size()>=5){const int v=i16(1),h=i16(3);if(v)list.push_back(mouse(MOUSEEVENTF_WHEEL,0,0,DWORD(v)));if(h)list.push_back(mouse(MOUSEEVENTF_HWHEEL,0,0,DWORD(h)));}break;
+    case 0x63:{const std::wstring t=fromUtf8Bytes(std::vector<uint8_t>(f.begin()+1,f.end()),8000);
+        for(wchar_t c:t){if(c==L'\r')continue;if(c==L'\n'){list.push_back(key(VK_RETURN,0,0));list.push_back(key(VK_RETURN,0,KEYEVENTF_KEYUP));continue;}
+            if(c<32)continue;list.push_back(key(0,c,KEYEVENTF_UNICODE));list.push_back(key(0,c,KEYEVENTF_UNICODE|KEYEVENTF_KEYUP));}break;}
+    case 0x64:if(f.size()>=4){const WORD vk=WORD(f[1]|(f[2]<<8));const uint8_t state=f[3];if(!vk||vk>0xFE)break;
+        // Arrows, Home, End, Delete and the like are extended keys.
+        const bool extended=(vk>=VK_PRIOR&&vk<=VK_DOWN)||vk==VK_INSERT||vk==VK_DELETE||vk==VK_LWIN||vk==VK_RWIN;const DWORD ext=extended?KEYEVENTF_EXTENDEDKEY:0;const WORD scan=WORD(MapVirtualKeyW(vk,MAPVK_VK_TO_VSC));
+        if(state==1||state==2)list.push_back(key(vk,scan,ext));if(state==0||state==2)list.push_back(key(vk,scan,ext|KEYEVENTF_KEYUP));}break;
+    default:break;}
+    if(!list.empty())SendInput(UINT(list.size()),list.data(),sizeof(INPUT));
+}
+// The universal clipboard: text copied here, to every paired phone that is here (private copies stay on this PC).
+void IslandWindow::pushClipboardToPhones(){
+    if(!share_||!settings_.universalClipboard||testing_)return;
+    static const UINT exclude=RegisterClipboardFormatW(L"ExcludeClipboardContentFromMonitorProcessing"),history=RegisterClipboardFormatW(L"CanIncludeInClipboardHistory");
+    std::wstring text;bool secret=false;
+    if(OpenClipboard(window_)){secret=IsClipboardFormatAvailable(exclude);
+        if(!secret&&IsClipboardFormatAvailable(history))if(HANDLE h=GetClipboardData(history))if(auto* v=static_cast<const DWORD*>(GlobalLock(h))){secret=*v==0;GlobalUnlock(h);}
+        if(!secret)if(HANDLE h=GetClipboardData(CF_UNICODETEXT))if(auto* t=static_cast<const wchar_t*>(GlobalLock(h))){text.assign(t,wcsnlen(t,GlobalSize(h)/sizeof(wchar_t)));GlobalUnlock(h);}
+        CloseClipboard();}
+    if(secret||text.empty()||text==lastPhoneClip_||text.size()>100000)return;
+    lastPhoneClip_=text;const bool sensitive=looksSecret(text);int sent=0;
+    for(auto& p:content_.nearby)if(p.paired&&p.phone&&p.online&&p.revision>=3){share_->pushClipboard(p.id,text,sensitive);++sent;}
+    if(sent)store_.log("Info","universal_clipboard");
+}
+// Proximity: a paired phone on this network is near; leaving (for 45 s, with nobody at this PC) can lock it, and coming
+// back after two minutes away is welcomed.
+void IslandWindow::proximity(){
+    const double now=seconds();
+    for(auto& p:content_.nearby){if(!p.paired||!p.phone)continue;const bool here=p.online&&!p.viaInternet;auto it=phoneNear_.find(p.id);
+        if(it==phoneNear_.end()){phoneNear_[p.id]={here,now};continue;}if(it->second.here==here)continue;
+        const double away=now-it->second.since;it->second={here,now};
+        if(here){if(settings_.proximityWelcome&&away>=120)phoneCard(L"Welcome back",p.battery>=0?std::to_wstring(p.battery)+L"% battery"+(p.charging?std::wstring(L", charging"):std::wstring()):std::wstring(L"Your phone is here"),p.name,nullptr,4);}
+        else if(settings_.proximityLock)SetTimer(window_,ProximityTimer,46000,nullptr);}
+}
+void IslandWindow::proximityCheck(){
+    KillTimer(window_,ProximityTimer);if(!settings_.proximityLock||testing_)return;const double now=seconds();bool gone=false,anyHere=false;
+    for(auto& [id,n]:phoneNear_){if(n.here)anyHere=true;else if(now-n.since>=45)gone=true;}
+    if(!gone||anyHere)return;
+    LASTINPUTINFO input{sizeof(input)};GetLastInputInfo(&input);const DWORD idle=GetTickCount()-input.dwTime;
+    if(idle>=30000){LockWorkStation();store_.log("Info","proximity_lock");}else SetTimer(window_,ProximityTimer,15000,nullptr);
+}
+bool IslandWindow::shareTimer(UINT_PTR id){
+    if(id==ProximityTimer){proximityCheck();return true;}
+    if(id==RingPCTimer){const bool showing=state_==IslandState::Notification&&content_.notice.kind==19&&content_.notice.app==L"Here I am";
+        if(--ringChimes_<=0||!showing){KillTimer(window_,RingPCTimer);ringChimes_=0;return true;}playSound(Sound::Chime);alertSplash();return true;}
+    return false;
+}
+// Replying to a phone's notification from the island: the command bar, as a reply box.
+void IslandWindow::openReply(const std::string& peer,const std::string& key,int action,const std::wstring& to){
+    openCommand();auto& c=content_.command;c.reply=true;c.replyTo=to;c.replyPeer=peer;c.replyKey=key;c.replyAction=action;c.results.clear();c.icons.clear();
+    motion_.commandHeight=commandIslandHeight(0);animate();refresh();store_.log("Info","phone_reply_opened");
 }
 }

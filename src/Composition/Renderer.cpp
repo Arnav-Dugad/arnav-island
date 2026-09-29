@@ -322,10 +322,10 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         auto iconButton=[&](Action a,Icon glyph,float x,float y,float w=32,float h=32,bool primary=false,bool enabled=true){targets.push_back({a,x,y,w,h,enabled});if(primary)box(x,y,w,h,!enabled?raised:s.light?0x252b33:0xe8ecf2,h/2);icon(a,glyph,x+(w-18)/2,y+(h-18)/2,18,!enabled?muted:primary?(s.light?0xffffff:0x161b22):ink);};
         auto value=[](double v,int precision=0){if(v<0)return std::wstring(L"—");wchar_t buf[48];swprintf(buf,48,precision?L"%.1f":L"%.0f",v);return std::wstring(buf);};
         if(s.card&&s.command.active){
-            const auto& c=s.command;const int rowsMax=5;box(0,0,380,42,raised,14);drawIcon(rt,d2d_.Get(),c.clips?Icon::Clipboard:Icon::Search,14,12,18,c.text.empty()?muted:ink);
+            const auto& c=s.command;const int rowsMax=5;box(0,0,380,42,raised,14);drawIcon(rt,d2d_.Get(),c.reply?Icon::Phone:c.clips?Icon::Clipboard:Icon::Search,14,12,18,c.text.empty()?muted:ink);
             // The typed line scrolls left when it is wider than the field, keeping the caret visible.
             const float field=320;float width=measure(c.text,14),before=measure(c.text.substr(0,std::min(c.caret,c.text.size())),14),shift=std::max(0.f,std::min(width-field,before-field+8));
-            if(c.text.empty())text(rt,c.clips?L"Search your copies":L"Type an app, file, command or setting",46,0,field,14,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);
+            if(c.text.empty())text(rt,c.reply?L"Reply to "+c.replyTo:c.clips?std::wstring(L"Search your copies"):std::wstring(L"Type an app, file, command or setting"),46,0,field,14,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);
             else{rt->PushAxisAlignedClip(D2D1::RectF(42,0,42+field+4,42),D2D1_ANTIALIAS_MODE_ALIASED);text(rt,c.text,42-shift,0,width+40,14,ink,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);rt->PopAxisAlignedClip();}
             caretTarget_=42+before-shift;
             // Ghost completion: the rest of the top result, faint after the caret, with a Tab keycap.
@@ -366,7 +366,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             else{float x=0;
                 // The footer names what the keys do for the selected row.
                 const CommandResult* chosen=size_t(c.selected)<c.results.size()?&c.results[size_t(c.selected)]:nullptr;std::vector<std::pair<const wchar_t*,const wchar_t*>> hints;
-                if(c.clips)hints=c.paste?decltype(hints){{L"Enter",L"Paste"},{L"Shift+Enter",L"Copy only"},{L"Esc",L"Close"}}:decltype(hints){{L"Enter",L"Copy"},{L"\u2191 \u2193",L"Choose"},{L"Esc",L"Close"}};
+                if(c.reply)hints={{L"Enter",L"Send"},{L"Esc",L"Cancel"}};
+                else if(c.clips)hints=c.paste?decltype(hints){{L"Enter",L"Paste"},{L"Shift+Enter",L"Copy only"},{L"Esc",L"Close"}}:decltype(hints){{L"Enter",L"Copy"},{L"\u2191 \u2193",L"Choose"},{L"Esc",L"Close"}};
                 else if(chosen&&chosen->kind==CommandKind::OpenFile)hints={{L"Enter",L"Open"},{L"Ctrl+Enter",L"Show in folder"},{L"Ctrl+C",L"Copy path"}};
                 else if(chosen&&(chosen->kind==CommandKind::Currency||chosen->kind==CommandKind::Colour))hints={{L"Enter",L"Copy"},{L"Esc",L"Close"}};
                 else if(!ghost.empty())hints={{L"Enter",L"Run"},{L"Tab",L"Complete"},{L"Esc",L"Close"}};
@@ -388,9 +389,17 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         if(s.card&&s.notice.kind==18){const bool notes=!s.whatsNew.empty();
             text(rt,s.notice.app,72,8,notes?176.f:300.f,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,s.notice.detail,72,32,notes?176.f:300.f,10.5f,muted);if(notes)button(Action::WhatsNewOpen,L"What\u2019s new",256,16,76,26,true);return;}
         // 0.19: a phone's card: what it says, and under it where it came from (the app and the phone) beside a small phone.
-        if(s.card&&s.notice.kind==19){const auto& n=s.notice;const bool from=!n.source.empty();
-            text(rt,n.app,72,from?2.f:8.f,262,13.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,from?21.f:31.f,262,11,muted);
-            if(from){drawIcon(rt,d2d_.Get(),Icon::Phone,71,40,12,accent,.9f);text(rt,n.source,87,40,247,9,muted);}return;}
+        if(s.card&&s.notice.kind==19){const auto& n=s.notice;const bool from=!n.source.empty();const float room=n.actions.empty()?262.f:176.f;
+            text(rt,n.app,72,from?2.f:8.f,room,13.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,from?21.f:31.f,room,11,muted);
+            if(from){drawIcon(rt,d2d_.Get(),Icon::Phone,71,40,12,accent,.9f);text(rt,n.source,87,40,room-15,9,muted);}
+            // 0.20: its actions, answered on the phone (a reply opens a reply box here).
+            if(n.actions.size()==1)button(Action::NoticeActionBase,n.actions[0].first,256,14,76,28,true);
+            else if(n.actions.size()>=2){button(Action::NoticeActionBase,n.actions[0].first,256,4,76,26,true);button(Action(int(Action::NoticeActionBase)+1),n.actions[1].first,256,34,76,22);}
+            return;}
+        // 0.20: pairing from anywhere, the code to type on the phone.
+        if(s.card&&s.notice.kind==20){const auto& n=s.notice;
+            text(rt,L"Pair from anywhere",72,2,176,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.app,72,20,176,19,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,30);
+            text(rt,n.detail,72,46,176,9,muted);button(Action::PairingStop,L"Stop",256,14,76,28);return;}
         if(s.card&&s.notice.kind>=14&&s.notice.kind<=17){
             // Sharing: the pairing code both PCs show, a file to accept, or how a transfer or a pairing went.
             // A detail too long for its room keeps what follows its first dot (a size, where it's from) and shortens the name.
@@ -725,7 +734,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             // Phase 5G: files dragged over the island choose where they go: the Shelf, or one of your paired PCs (in place of the tabs and rows).
             std::vector<size_t> dropPeers;if(s.dropHover&&s.settings.sharing)for(size_t i=0;i<s.nearby.size()&&i<4;++i)if(s.nearby[i].paired)dropPeers.push_back(i);
             const bool remoteView=!detail&&dropPeers.empty()&&s.shelfTab==2&&s.remote.open;
-            if(!detail&&dropPeers.empty()&&!remoteView){if(s.settings.sharing)tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"},{Action::ShelfNearby,L"Nearby"}},s.shelfTab,30);else tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"}},s.shelfTab,30);}
+            const bool phoneView=!detail&&dropPeers.empty()&&s.shelfTab==2&&s.phoneView.open&&!remoteView;
+            if(!detail&&dropPeers.empty()&&!remoteView&&!phoneView){if(s.settings.sharing)tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"},{Action::ShelfNearby,L"Nearby"}},s.shelfTab,30);else tabs({{Action::ShelfFiles,L"Files"},{Action::ShelfClipboard,L"Clipboard"}},s.shelfTab,30);}
             const bool status=!s.clipStatus.empty()&&seconds()<s.clipStatusUntil,shelfNote=!s.shelfStatus.empty()&&(s.shelfBusy||seconds()<s.shelfStatusUntil);
             // An icon and a label in one raised button.
             auto action=[&](Action a,Icon glyph,const wchar_t* name,float x,float y,float w,bool enabled=true){targets.push_back({a,x,y,w,30,enabled});box(x,y,w,30,raised,9);drawIcon(rt,d2d_.Get(),glyph,x+10,y+8,14,enabled?ink:muted,enabled?1.f:.5f);text(rt,name,x+29,y,w-33,10.5f,enabled?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,30);};
@@ -775,6 +785,39 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                     const float tx0=fanned?146.f:112.f;text(rt,std::to_wstring(s.shelf.size())+(s.shelf.size()==1?L" item":L" items"),tx0,203,232-tx0,10,s.hovered==Action::ShelfStack?ink:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
                     if(fanned)targets.push_back({Action::ShelfStack,108,201,126,28});}
                 button(Action::ShelfZip,L"Zip",240,203,68,25,false,files&&!s.shelfBusy);button(Action::ShelfClear,L"Clear",316,203,64,25,false,!s.shelf.empty());
+            }else if(phoneView){
+                // 0.20: a phone of yours, as it last said: its battery in a ring, six of its readings, and what it can do from here.
+                const auto pit=std::find_if(s.nearby.begin(),s.nearby.end(),[&](auto& p){return p.id==s.phoneView.peer;});
+                const std::wstring name=pit!=s.nearby.end()?pit->name:std::wstring(L"Your phone");const bool here=pit!=s.nearby.end()&&pit->online;
+                const auto info=s.phones.find(s.phoneView.peer);const bool known=info!=s.phones.end()&&!info->second.values.empty();
+                auto valueOf=[&](const std::wstring& k)->std::wstring{if(!known)return {};for(auto& [n,v]:info->second.values)if(n==k)return v;return {};};
+                iconButton(Action::PhoneBack,Icon::ArrowLeft,-4,26,32,30);text(rt,name,32,26,232,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,30);
+                iconButton(Action::PhonePhoto,Icon::Camera,270,26,34,30,false,here);iconButton(Action::PhoneClipboard,Icon::Clipboard,308,26,34,30,false,here);iconButton(Action::PhoneRing,Icon::Volume,346,26,34,30,false,here);
+                // The battery.
+                int percent=pit!=s.nearby.end()?pit->battery:-1;if(percent<0){const auto b=valueOf(L"Battery");if(!b.empty())percent=std::clamp(_wtoi(b.c_str()),0,100);}
+                const bool charging=(pit!=s.nearby.end()&&pit->charging)||valueOf(L"Charging")==L"Yes";
+                box(0,62,118,136,raised,16);
+                {const UINT32 ring=charging?0x5fd98a:percent>=0&&percent<=20?0xff6b61:accent;ComPtr<ID2D1SolidColorBrush> rb;rt->CreateSolidColorBrush(D2D1::ColorF(track),&rb);
+                    rt->DrawEllipse(D2D1::Ellipse({59,114},38,38),rb.Get(),5);
+                    if(percent>0){rb->SetColor(D2D1::ColorF(ring));ComPtr<ID2D1PathGeometry> arc;d2d_->CreatePathGeometry(&arc);ComPtr<ID2D1GeometrySink> sink;arc->Open(&sink);const float a=float(std::min(percent,99))/100.f*6.2831853f;
+                        sink->BeginFigure({59,76},D2D1_FIGURE_BEGIN_HOLLOW);sink->AddArc(D2D1::ArcSegment({59+38*std::sin(a),114-38*std::cos(a)},{38,38},0,D2D1_SWEEP_DIRECTION_CLOCKWISE,a>3.14159f?D2D1_ARC_SIZE_LARGE:D2D1_ARC_SIZE_SMALL));sink->EndFigure(D2D1_FIGURE_END_OPEN);sink->Close();
+                        ComPtr<ID2D1StrokeStyle> round;auto style=D2D1::StrokeStyleProperties();style.startCap=style.endCap=D2D1_CAP_STYLE_ROUND;d2d_->CreateStrokeStyle(style,nullptr,0,&round);rt->DrawGeometry(arc.Get(),rb.Get(),5,round.Get());}}
+                label(percent>=0?std::to_wstring(percent)+L"%":std::wstring(L"—"),21,98,76,30,20,ink,DWRITE_FONT_WEIGHT_LIGHT);
+                if(charging)drawIcon(rt,d2d_.Get(),Icon::Bolt,52,128,14,0x5fd98a);
+                const std::wstring warmth=valueOf(L"Temperature");label(charging?L"Charging":!warmth.empty()?warmth:here?L"Battery":L"Away",0,164,118,20,10,muted,DWRITE_FONT_WEIGHT_NORMAL);
+                // Its readings, two columns of three.
+                std::vector<std::pair<std::wstring,std::wstring>> tiles;
+                for(const wchar_t* k:{L"Storage",L"Memory",L"Network",L"Sound",L"Android",L"Uptime"}){const auto v=valueOf(k);if(!v.empty())tiles.push_back({k,v});}
+                if(known)for(auto& [n,v]:info->second.values){if(tiles.size()>=6)break;if(n==L"Battery"||n==L"Charging"||n==L"Temperature"||n==L"Model"||n==L"Playing"||std::any_of(tiles.begin(),tiles.end(),[&](auto& t){return t.first==n;}))continue;tiles.push_back({n,v});}
+                if(!known){box(126,62,254,136,raised,16);label(here?L"Waiting for its details…":L"It’s away",136,104,234,24,12,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+                    label(here?L"Arnav Island 1.1 on the phone sends them":L"Its details show when it’s back",136,128,234,20,10,muted,DWRITE_FONT_WEIGHT_NORMAL);}
+                else for(size_t i=0;i<tiles.size()&&i<6;++i){const float x=126+float(i%2)*131,y=62+float(i/2)*46;box(x,y,123,40,raised,11);
+                    text(rt,tiles[i].first,x+10,y+4,105,9,muted);text(rt,tiles[i].second,x+10,y+18,105,11.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}
+                // What plays on it, or when it last said.
+                const std::wstring playing=valueOf(L"Playing"),model=valueOf(L"Model");
+                std::wstring footer=shelfNote?s.shelfStatus:!playing.empty()?L"♪  "+playing:!model.empty()?model:std::wstring();
+                if(!shelfNote&&known){const int ago=int(seconds()-info->second.at);if(ago>=90)footer+=(footer.empty()?L"":L"  ·  ")+std::wstring(L"updated ")+(ago<3600?std::to_wstring(ago/60)+L" min ago":std::to_wstring(ago/3600)+L" h ago");}
+                text(rt,footer,0,203,380,10,shelfNote?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
             }else if(remoteView){
                 // Phase 5H: a paired PC's Shelf. Clicking an item takes a copy into Downloads (and onto this Shelf).
                 const auto& r=s.remote;const int n=int(r.items.size());auto sizeLabel=[](uint64_t v){wchar_t t[32];if(v<1024)swprintf(t,32,L"%llu bytes",static_cast<unsigned long long>(v));else if(v<(1ull<<20))swprintf(t,32,L"%.0f KB",double(v)/1024);else if(v<(1ull<<30))swprintf(t,32,L"%.1f MB",double(v)/1048576);else swprintf(t,32,L"%.2f GB",double(v)/1073741824);return std::wstring(t);};
@@ -811,6 +854,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                     const float room=ring||browse?(shelfFiles?120.f:208.f):182.f;
                     drawIcon(rt,d2d_.Get(),p.phone?Icon::Phone:Icon::Laptop,11,y+8,16,p.online?ink:muted);text(rt,p.name,36,y+1,room,11.5f,p.online?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,17);
                     std::wstring status=p.paired?(p.online?(!ready?L"Needs the latest Arnav Island":target?L"Sends go here":L"Paired"):L"Paired \u00b7 away"):L"Not paired";
+                    if(p.paired&&p.viaInternet)status=target?L"Sends go here  \u00b7  over the internet":L"Online  \u00b7  over the internet";
                     if(p.phone&&p.paired&&p.online&&p.battery>=0)status+=L"  \u00b7  "+std::to_wstring(p.battery)+(p.charging?L"%, charging":L"%");
                     if(moving!=s.transfers.end()){const double f=moving->total?double(moving->done)/double(moving->total):0;wchar_t pc[16];swprintf(pc,16,L"  \u00b7  %d%%",int(f*100));status=(moving->outgoing?L"Sending ":L"Receiving ")+moving->title+pc;
                         if(moving->rate>0){status+=L"  \u00b7  "+rateText(moving->rate);const auto left=leftText(double(moving->total-std::min(moving->done,moving->total))/moving->rate);if(!left.empty())status+=L"  \u00b7  "+left;}
@@ -822,7 +866,9 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                         targets.push_back({row,0,y,browse||ring?browseX-4:224,32});if(shelfFiles&&ready)button(send,L"Send Shelf",sendX,y+4,82,24,true);if(browse)button(Action(int(Action::NearbyBrowseBase)+int(i)),L"Shelf",browseX,y+4,60,24);
                         if(ring)button(Action(int(Action::NearbyRingBase)+int(i)),L"Ring",browseX,y+4,60,24);button(forget,L"Forget",316,y+4,58,24);}
                     else button(row,L"Pair",316,y+4,58,24,true,p.online&&ready);}
-                text(rt,shelfNote?s.shelfStatus:(s.shareName.empty()?std::wstring(L"Visible to your PCs on this network"):L"This PC: "+s.shareName),0,203,380,10,shelfNote?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
+                // 0.20: devices on other networks pair with a code shown here.
+                const bool anywhere=s.settings.relay;if(anywhere)button(Action::PairAnywhere,L"Pair with a code",262,202,118,24,false,s.internet);
+                text(rt,shelfNote?s.shelfStatus:(s.shareName.empty()?std::wstring(L"Visible to your PCs on this network"):L"This PC: "+s.shareName+(anywhere&&s.internet?L"  \u00b7  reachable anywhere":L"")),0,203,anywhere?256.f:380.f,10,shelfNote?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
             }else if(!s.settings.clipboardHistory){
                 box(0,62,380,130,raised,18);drawIcon(rt,d2d_.Get(),Icon::Clipboard,176,74,28,accent);label(L"Keep what you copy close",20,106,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
                 label(L"Your last 24 copies, in memory only. Private copies are skipped.",20,130,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);button(Action::ClipboardEnable,L"Turn on",150,156,80,26,true);

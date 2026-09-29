@@ -141,7 +141,7 @@ std::wstring IslandWindow::budTitle(const ContentSnapshot::Notice& n){
     case 1:return n.device.name+L" connected";case 2:return n.device.name+L" disconnected";case 3:return L"Charging";case 4:return L"On battery";
     case 5:return (n.app.empty()?std::wstring(L"An app"):n.app)+L" \u00b7 camera";case 6:return (n.app.empty()?std::wstring(L"An app"):n.app)+L" \u00b7 microphone";case 7:return (n.app.empty()?std::wstring(L"An app"):n.app)+L" \u00b7 location";
     case 8:return L"Sound moved to "+n.device.name;case 9:return L"Colour picked";case 10:return L"Text copied";case 11:return L"Snip on the Shelf";case 12:return (n.app.empty()?std::wstring(L"An app"):n.app)+L" \u00b7 screen";
-    case 13:return L"Your battery this week";case 14:return L"Pair with "+n.app+L"?";case 15:return n.app+L" is sending";case 17:return L"Continue "+n.app;default:return n.app;}
+    case 13:return L"Your battery this week";case 14:return L"Pair with "+n.app+L"?";case 15:return n.app+L" is sending";case 17:return L"Continue "+n.app;case 20:return L"Pair from anywhere";default:return n.app;}
 }
 void IslandWindow::updateBattery(){
     auto reading=battery_->reading();auto estimate=battery_->estimate();

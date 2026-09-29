@@ -30,11 +30,13 @@ std::wstring copiedLabel(const ClipEntry& e){
 // Providers follow preferences: clipboard listening only when history is on,
 // the privacy watcher only when a privacy feature is on, the shortcut on demand.
 void IslandWindow::syncProductivity(){
-    if(settings_.clipboardHistory&&!testing_){clipboard_.start(window_);if(!pinsLoaded_){pinsLoaded_=true;loadPinnedClips();}
+    // The clipboard is listened to for its history, or for the universal clipboard (0.20).
+    if((settings_.clipboardHistory||settings_.universalClipboard)&&!testing_)clipboard_.start(window_);else clipboard_.stop();
+    if(settings_.clipboardHistory&&!testing_){if(!pinsLoaded_){pinsLoaded_=true;loadPinnedClips();}
         // Remembering across restarts: read the saved history back once; turned off, the saved copy is removed.
         if(settings_.clipboardKeep)loadClipHistory();else if(clipHistoryReady_){clipHistoryReady_=false;clipSignature_=0;saveClipHistory(true);}}
     // Turning history off forgets everything, pinned copies included.
-    else{clipboard_.stop();pinsLoaded_=false;if(!clips_.entries().empty()||!content_.clips.empty()){clips_.forget();clipViews();}savePinnedClips();clipHistoryReady_=false;clipSignature_=0;saveClipHistory(true);}
+    else{pinsLoaded_=false;if(!clips_.entries().empty()||!content_.clips.empty()){clips_.forget();clipViews();}savePinnedClips();clipHistoryReady_=false;clipSignature_=0;saveClipHistory(true);}
     if(settings_.pinnedShelf!=pinnedShelfWas_){pinnedShelfWas_=settings_.pinnedShelf;if(settings_.pinnedShelf&&content_.shelf.empty())loadShelfFile();shelfChanged();}
     syncCaptureHotkeys();
     const bool privacy=(settings_.privacyDots||settings_.privacyCards)&&!testing_;
@@ -103,6 +105,7 @@ void IslandWindow::syncHotkey(){
 }
 // ---- Clipboard -------------------------------------------------------------
 void IslandWindow::onClipboard(){
+    pushClipboardToPhones();
     if(!settings_.clipboardHistory||clips_.paused)return;
     ClipEntry e;auto read=clipboard_.capture(e);
     if(read==ClipboardWatcher::Read::Busy){if(clipRetries_++<5)SetTimer(window_,ClipboardRetryTimer,80,nullptr);return;}
@@ -176,7 +179,7 @@ void IslandWindow::closeCommand(bool restoreFocus){
     transition(IslandState::Compact);feedback(Action::None);
     HWND back=commandReturn_;commandReturn_=nullptr;if(restoreFocus&&back&&IsWindow(back))SetForegroundWindow(back);
 }
-void IslandWindow::commandQuery(bool refreshState){if(content_.command.clips){clipResults();return;}if(commands_)commands_->query(content_.command.text,workspaces_.names(),commandContext(),commandMemory_.items(),settings_.currency,refreshState);}
+void IslandWindow::commandQuery(bool refreshState){if(content_.command.reply)return;if(content_.command.clips){clipResults();return;}if(commands_)commands_->query(content_.command.text,workspaces_.names(),commandContext(),commandMemory_.items(),settings_.currency,refreshState);}
 // What the island is doing, so an empty bar can suggest the obvious next step.
 CommandContext IslandWindow::commandContext(){
     CommandContext c;const auto& p=content_.playback;c.media=p.available&&p.canToggle;c.playing=c.media&&p.playing;c.track=p.title.empty()?L"":p.title+(p.artist.empty()?L"":L"  \u00b7  "+p.artist);
@@ -197,7 +200,7 @@ void IslandWindow::revealResult(size_t index){
     commandStatus(L"Windows could not show that file",true);
 }
 void IslandWindow::commandResults(){
-    if(!commands_||!content_.command.active||content_.command.clips)return;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;
+    if(!commands_||!content_.command.active||content_.command.clips||content_.command.reply)return;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;
     auto seq=commands_->results(results,icons);if(seq<commandSeq_)return;commandSeq_=seq;
     // Phase 5G: "play" and a song finds it in your Music folder; "shuffle" plays it all; "continue on" offers the music to a paired PC.
     {const std::wstring typed=lowered(trimmed(content_.command.text));std::vector<CommandResult> extra;
@@ -221,10 +224,10 @@ void IslandWindow::commandSelect(int index){
 // A short horizontal shake: nothing to run.
 void IslandWindow::commandShake(){if(motion_.reduced)return;double now=seconds();motion_.dragX.reset(0,now,-420);motion_.dragX.retarget(0,now,{1,900,16});animate();}
 void IslandWindow::commandChar(wchar_t ch){
-    auto& c=content_.command;if(!c.active||ch<0x20||ch==0x7f||c.text.size()>=160)return;
+    auto& c=content_.command;if(!c.active||ch<0x20||ch==0x7f||c.text.size()>=(c.reply?600u:160u))return;
     c.text.insert(c.caret,1,ch);++c.caret;c.armed=false;c.status.clear();
     // "clip " switches to searching the clipboard history.
-    if(!c.clips&&c.text==L"clip "){c.clips=true;c.paste=true;c.text.clear();c.caret=0;c.selected=0;}
+    if(!c.clips&&!c.reply&&c.text==L"clip "){c.clips=true;c.paste=true;c.text.clear();c.caret=0;c.selected=0;}
     commandQuery();refresh();
 }
 // Returns true when the key was used by the command bar.
@@ -237,9 +240,11 @@ bool IslandWindow::commandKey(WPARAM key){
     case VK_ESCAPE:closeCommand();return true;
     // Space is typed (it arrives as WM_CHAR); the island's own "Space activates the highlight" must not run a result.
     case VK_SPACE:return true;
-    case VK_RETURN:if(ctrl&&!c.clips){revealResult(size_t(c.selected));return true;}runCommand(size_t(c.selected));return true;
+    // 0.20: a reply goes back to the phone's notification.
+    case VK_RETURN:if(c.reply){if(trimmed(c.text).empty()){commandShake();return true;}if(share_)share_->noticeAction(c.replyPeer,c.replyKey,c.replyAction,c.text);store_.log("Info","phone_reply");closeCommand();return true;}
+        if(ctrl&&!c.clips){revealResult(size_t(c.selected));return true;}runCommand(size_t(c.selected));return true;
     // Tab takes the ghost completion (the rest of an app, command or file name).
-    case VK_TAB:{if(c.clips||c.results.empty())return true;const auto ghost=ghostSuffix(c.text,c.results[0].completion);if(ghost.empty()||c.caret!=c.text.size()){commandShake();return true;}
+    case VK_TAB:{if(c.clips||c.reply||c.results.empty())return true;const auto ghost=ghostSuffix(c.text,c.results[0].completion);if(ghost.empty()||c.caret!=c.text.size()){commandShake();return true;}
         c.text=c.results[0].completion.substr(0,160);c.caret=c.text.size();edited=true;break;}
     case 'C':{if(!ctrl)return false;if(size_t(c.selected)<c.results.size()){const auto& r=c.results[size_t(c.selected)];
         if(r.kind==CommandKind::OpenFile){copyText(r.target);commandStatus(L"Path copied",false,false);}else if(r.kind==CommandKind::Currency){copyText(r.target);commandStatus(L"Copied "+r.answer,false,false);}}return true;}

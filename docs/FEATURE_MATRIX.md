@@ -209,3 +209,16 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Phone battery | On its Nearby row; a card at 20% and below while not charging (once until it charges) | As the phone reports it |
 | Ring | Nearby row button; the phone rings at full alarm volume until found (a minute at most) | Phone app 1.0 or later |
 | Android app | [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.0.0: remote, files, Shelf, music, notifications, battery, find my phone, self-updating | Android 9+; glass refraction on 13+, blur on 12+ |
+
+| v0.20.0-preview.1 feature | Implemented | Limits |
+|---|---|---|
+| Any network | Relay over WSS to public MQTT brokers (HiveMQ, EMQX, Mosquitto, in turn); per-pair topics and AES-256-GCM keys from the pairing's ECDH; the protocol runs unchanged through a loopback tunnel | Needs one reachable broker; about 0.8 MB/s |
+| Pair with a code | 8 characters, valid 10 minutes; then the usual six-digit confirmation | *Reach my devices anywhere* |
+| Notification actions | Up to 2 per card; replies typed in the command bar; the card goes when the phone's notification does | Actions that open a screen on the phone are left out |
+| Calls | Incoming calls with Decline and Answer; urgent card | As the phone's dialer offers them |
+| Your phone's view | Battery ring, charging, temperature, storage, memory, network, sound, Android, uptime, playing; Ring, Photo, Clipboard | Phone app 1.1 or later |
+| Universal clipboard | Text both ways; excluded and history-hidden copies skipped; secrets marked sensitive | Off by default; phones copy when their app opens |
+| Photos to the Shelf | Offers flagged for the Shelf are accepted from paired phones and pinned there | *Photos from my phone go on the Shelf* |
+| Proximity | Welcome card after 2 min away; lock after 45 s gone with 30 s idle | Same-network presence only |
+| Trackpad and keyboard | SendInput moves, buttons, wheel, Unicode text and virtual keys | *My phone can control this PC* |
+| Find this PC | Chime eight times with a splash and *Here I am* | Phone app 1.1 or later |

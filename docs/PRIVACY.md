@@ -163,3 +163,18 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **Automatic updates** (on by default, Settings › About › *Update automatically*). A minute and a half after it starts, and every six hours, the island asks GitHub (`api.github.com`) for the list of this app's releases. It downloads a newer one from GitHub, as a browser would. GitHub sees your IP address and the island's name in the request, nothing else. Turning it off stops the checks.
 - **Air quality** comes from Open-Meteo's air quality service, asked with the same rounded coordinates as the forecast, only while weather is on.
 - **Battery details**, including its serial number, are read from Windows on this PC, shown only in the island, and never sent anywhere. Public screenshots use an illustrative battery.
+
+## v0.20 your phone, anywhere
+
+- **Reach my devices anywhere** (on, and only while sharing is on). When a paired device isn't on your network, the island reaches it through a public MQTT broker over TLS: broker.hivemq.com, broker.emqx.io or test.mosquitto.org, whichever answers.
+  - The broker sees your IP address and connections to random-looking topic names. Everything published is AES-256-GCM, with keys only your paired devices can derive, and the topic bound in.
+  - The broker can't read what passes, change it, or tell which devices are yours.
+  - A pairing code is never sent anywhere; only a hash of it names the rendezvous.
+  - Turn it off in Settings › Privacy & productivity.
+- **Your phone's details** (battery, storage, memory, network, sound, Android version, uptime, what plays) are sent by the phone, shown only in the island, kept in memory, and never sent on.
+- **Notification actions and replies.** Only the action's name and a short key come here, and the phone runs the action itself. A reply you type goes to the phone and nowhere else.
+- **Universal clipboard** (off by default).
+  - Text you copy goes to your paired phones.
+  - Copies Windows marks as excluded from clipboard monitoring or history are never sent.
+  - Password-like copies are marked sensitive, so the phone hides them.
+- **Proximity** uses only whether your phone is on your network. The lock uses Windows' own idle time; nothing is recorded.

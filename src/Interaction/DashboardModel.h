@@ -26,7 +26,10 @@ enum class Action { None,Overview,Media,System,Focus,Settings,Pin,Close,Play,Pre
     // 0.18.1 (556-559): the battery's health over time, and the What's new sheet after an update.
     BatteryChart=556,WhatsNewOpen=557,WhatsNewBack=558,
     // 0.19 (559-563): a paired phone rung from its Nearby row.
-    NearbyRingBase=559,NearbyRingEnd=563,ActionEnd=563 };
+    NearbyRingBase=559,NearbyRingEnd=563,
+    // 0.20 (563-571): pairing from anywhere, a phone's own view (ring it, ask it for a photo, give it the clipboard), and
+    // the actions on a phone's notification card.
+    PairAnywhere=563,PairingStop=564,PhoneBack=565,PhoneRing=566,PhonePhoto=567,PhoneClipboard=568,NoticeActionBase=569,NoticeActionEnd=571,ActionEnd=571 };
 inline bool inRange(Action a,Action base,Action end){return int(a)>=int(base)&&int(a)<int(end);}
 // Command bar layout: input 42, then 40 per row, then the key hints.
 inline float commandFooterY(int rows){return 52+40.f*float(rows)+2;}

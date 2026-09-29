@@ -1,16 +1,25 @@
-# Arnav Island 0.19 — your phone, on the island
+# Arnav Island 0.20 — your phone, anywhere
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.19.0-preview.2) · **New:** [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest)
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.20.0-preview.1) · [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.1
 
-**Arnav Island for Android** is a liquid-glass companion app. From your phone you can:
-- control what plays on your PC
+**Your phone, anywhere.** Your phone and your PCs now reach each other on any network: another Wi-Fi, mobile data, anywhere. It’s free and end-to-end encrypted. To pair from far away, use the code on **Shelf › Nearby › Pair with a code**.
+
+**On the island:**
+- reply to your phone’s messages from the keyboard
+- see who’s calling, and decline
+- your phone’s own view: battery, storage, memory, network, sound and more
+- a universal clipboard
+- photos from the phone land on the Shelf
+- lock the PC when your phone leaves
+
+**[Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest)** is a liquid-glass companion app. From your phone you can:
+- control what plays here, with its lyrics
+- use the phone as the trackpad and keyboard
+- find this PC
 - send files both ways and take from the Shelf
-- share the clipboard both ways
-- lock the PC
-
-On the island, you see your phone’s notifications and battery, and **Ring** finds your phone.
+- control the PC’s music from the phone’s lock screen and widgets
 
 ![Two alerts side by side](docs/evidence/v0.17/alerts-side-by-side.png)
 
@@ -25,7 +34,7 @@ On the island, you see your phone’s notifications and battery, and **Ring** fi
 
 ![Up next, a song being dragged into place](docs/evidence/v0.17/up-next.png)
 
-No account, subscription, browser engine, driver or administrator access is required. Extract the ZIP and run ArnavIsland.exe. Only a few features go online, and all are off until you turn them on: synced lyrics, currency conversion, weather and site icons. Sharing and handing music over talk only to your own PCs on your network; the music library reads your Music folder on this PC only.
+No account, subscription, browser engine, driver or administrator access is required. Extract the ZIP and run ArnavIsland.exe. Only a few features go online, and all are off until you turn them on: synced lyrics, currency conversion, weather and site icons. Sharing talks only to your own devices: directly on your network, and through a public relay when they’re on different networks. The relay is end-to-end encrypted, and *Reach my devices anywhere* turns it off. the music library reads your Music folder on this PC only.
 
 [Release notes](docs/RELEASE_NOTES.md) · [Quick start](docs/QUICK_START.md) · [Report](docs/REPORT.md) · [Feature limits](docs/FEATURE_MATRIX.md) · [Delivery phases](docs/DELIVERY_PHASES.md) · [Design system](docs/DESIGN_SYSTEM.md) · [Performance](docs/PERFORMANCE_RESULTS.md) · [Privacy](docs/PRIVACY.md)
 

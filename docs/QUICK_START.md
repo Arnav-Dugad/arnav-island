@@ -199,3 +199,19 @@ Click a paired PC in Nearby to make it where Send goes. **Forget** unpairs it.
 **Two alerts.** Point at them and they spread side by side; click the second to see it now.
 
 **Screen readers.** Narrator (Win+Ctrl+Enter), NVDA or JAWS find the island as *Island*; its buttons, switches and sliders are listed with their names, and alerts are read out as they arrive.
+
+## v0.20 Your phone, anywhere
+
+**Pair from anywhere.** Shelf › Nearby › **Pair with a code** shows a code for ten minutes. It needs *Share with my PCs* and *Reach my devices anywhere* (Settings › Privacy & productivity). On the phone, in [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest): **Pair with your PC › On another network? Pair with a code**. Type the code, then check that both show the same six digits.
+
+**Already paired?** Your phone and your PCs find each other on any network by themselves. Nearby says *Online · over the internet*.
+
+**Your phone's view.** Shelf › Nearby, click your phone. You see its battery, storage, memory, network and sound. **Ring** finds it; **Photo** opens its camera, and the photo lands on the Shelf; **Clipboard** puts this PC's clipboard on it.
+
+**Reply from the island.** On a message from your phone, press **Reply**, type, and press Enter. Esc cancels. For a call, press **Decline**.
+
+**Universal clipboard.** Settings › Privacy & productivity › *Universal clipboard*: copy on one, paste on the other.
+
+**Proximity.** Settings › Privacy & productivity:
+- *Welcome my phone back* shows its battery when it comes home.
+- *Lock when my phone leaves* locks this PC once your phone has gone and nobody is using the PC.

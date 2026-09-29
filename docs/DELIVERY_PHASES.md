@@ -314,3 +314,31 @@ Limits:
 - **The same Wi-Fi.** Phones and PCs find each other by broadcast on the local network. Networks that isolate devices (many guest and campus networks) keep them apart.
 - **Continuing music without a file.** When this PC plays a song in an app, the phone looks for it in its own music app. Where that app starts is up to the app.
 - **Notification access** is Android's to give. The app asks, and the person turns it on in Android's settings.
+
+## Status after v0.20.0-preview.1 — your phone, anywhere — 2026-09-29
+
+Shipped, as asked:
+- **Any network, free.** Phones and PCs reach each other through a public relay, end-to-end encrypted, when they aren't on the same network. They pair from anywhere with a code.
+- **Your phone's details on the island:** its own view from Nearby.
+- **From the Android suggestions list:**
+  - replies and actions from the island
+  - calls (see and decline)
+  - a universal clipboard
+  - continuity camera (photos to the Shelf)
+  - the trackpad and keyboard
+  - lyrics on the phone
+  - find this PC
+  - proximity (lock when the phone leaves, welcome it back)
+- **[Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.1.0:**
+  - a switch for the liquid glass
+  - faster glass that looks the same
+  - the PC's music on the lock screen, widgets and shortcuts
+  - the morphing island, cover depth, haptic scrubbing, a volume dial
+  - files in flight, weather on the glass, and the ring radar
+- **Settings v20:** *Reach my devices anywhere*, *Universal clipboard*, *Photos from my phone go on the Shelf*, *Lock when my phone leaves*, *Welcome my phone back*.
+
+Limits:
+- **The relay is a public broker.** If all three brokers are down or blocked (some workplace networks block them), devices on different networks can't meet. On the same network nothing changes.
+- **Relay speed.** About 0.8 MB/s: fine for photos and documents, slow for big videos. On the same network it's full speed.
+- **Replies and calls** depend on what the phone's apps offer in their notifications. Apps whose actions open a screen on the phone can't be run from here.
+- **Proximity** knows only whether the phone is on the same network, not how far away it is.

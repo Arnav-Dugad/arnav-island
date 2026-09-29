@@ -23,18 +23,25 @@ namespace nexus {
 // announcement; it can ask a paired PC for its status and control it (mode R: now playing with the cover, media keys,
 // volume, mute, lock, clipboard both ways, seeking, opening a link), send the phone's battery and notifications to
 // the island (mode N), and be rung from the island (mode F, find my phone).
+// 0.20 (revision 3, "2.3"): any network. Paired devices reach each other through a public relay when they aren't on the
+// same network (ShareRelay.h); a phone can pair from anywhere with a code this PC shows. Also: details of a phone
+// (notices), its notifications' actions and replies, the clipboard both ways, input from a phone, finding this PC, the
+// song's lyrics, photos for the Shelf.
 constexpr UINT ShareMessage=WM_APP+45;
-constexpr int shareProtocol=2,shareRevision=2;
+constexpr int shareProtocol=2,shareRevision=3;
 // Remote commands (mode R) and their answers.
-enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,ClipboardGet=6,ClipboardSet=7,Seek=8,Open=9};
+// Revision 3: RingPC (find this PC), Lyrics (the song's lines and word times, when the island has them).
+enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,ClipboardGet=6,ClipboardSet=7,Seek=8,Open=9,RingPC=10,Lyrics=11};
 constexpr uint8_t remoteOk=0,remoteNotAllowed=1,remoteUnsupported=2,remoteFailed=3;
 // What the island reports to a phone's remote. cover: a small JPEG (at most shareCoverLimit bytes), or empty.
-struct RemoteStatus{bool available=false,playing=false,canPrevious=false,canNext=false,canToggle=false,canSeek=false,muted=false,charging=false,batteryPresent=false;
+// clipboard (0.20): the island's universal clipboard is on, so the phone sends its own copies over as it opens.
+struct RemoteStatus{bool available=false,playing=false,canPrevious=false,canNext=false,canToggle=false,canSeek=false,muted=false,charging=false,batteryPresent=false,clipboard=false;
     double position=0,duration=0;int volume=0,battery=-1,cpu=-1;std::wstring title,artist,app,name,weather;std::vector<uint8_t> cover;};
 // version: the protocol the PC announced (1: an older Arnav Island that can't take protocol 2 transfers); revision: the
 // revision within it (0 before Phase 5H).
 // phone: Arnav Island for Android; battery (-1 unknown) and charging: as the phone last said.
-struct SharePeer{std::string id;std::wstring name;bool paired=false,online=false;int version=shareProtocol,revision=0;bool phone=false;int battery=-1;bool charging=false;};
+// viaInternet: here only through the relay (not on this network).
+struct SharePeer{std::string id;std::wstring name;bool paired=false,online=false;int version=shareProtocol,revision=0;bool phone=false;int battery=-1;bool charging=false;bool viaInternet=false;};
 // Music on its way to another PC. file: the song's own file when the island plays it (sent only if asked for).
 // cover: the song's cover as a small JPEG (at most shareCoverLimit bytes; revision 1).
 constexpr size_t shareCoverLimit=96*1024;
@@ -53,15 +60,24 @@ struct ShareEvent{
     // were taken from the other PC's Shelf (not offered by it).
     // Revision 2: PhoneStatus (battery, charging), PhoneNotice (a phone's notification: app, file its title, detail its
     // text, icon a small PNG, urgent for calls), Rang (a phone answered find-my-phone).
-    enum class Kind{Peers,PairCode,Paired,PairFailed,Offer,Progress,Received,Sent,Failed,Handoff,HandoffAnswered,HandoffFile,ShelfList,ShelfTaken,PhoneStatus,PhoneNotice,Rang} kind=Kind::Peers;
+    // Revision 3: PairingCode (detail the code to show, empty when one couldn't be made); PhoneDetails (detail: the phone's
+    // readings, one "name<TAB>value" a line); PhoneNoticeGone (key: a notification the phone no longer shows). A
+    // PhoneNotice carries its key and actions (their titles, and whether each takes a reply). An Offer or Received with
+    // toShelf: photos a phone took for this PC's Shelf.
+    enum class Kind{Peers,PairCode,Paired,PairFailed,Offer,Progress,Received,Sent,Failed,Handoff,HandoffAnswered,HandoffFile,ShelfList,ShelfTaken,PhoneStatus,PhoneNotice,Rang,PairingCode,PhoneDetails,PhoneNoticeGone} kind=Kind::Peers;
     std::string peer;std::wstring name,file,detail;uint64_t size=0,done=0;uint32_t code=0,transfer=0,count=0;bool folder=false,outgoing=false;ShareHandoff handoff;std::vector<ShareShelfItem> shelf;
     std::wstring app;std::vector<uint8_t> icon;int battery=-1;bool charging=false,urgent=false;
+    std::string key;std::vector<std::pair<std::wstring,bool>> actions;bool toShelf=false;std::vector<std::wstring> paths;
 };
 // loopback: listen on 127.0.0.1 only (tests; no firewall prompt). handoff: where a handed-off song's file is kept.
 // remote: answers a phone's remote command (called on a network thread): its answer byte, then its payload. Unset: the
 // commands are unsupported.
-struct ShareOptions{uint16_t tcpPort=47820,udpPort=47821;bool discovery=true,loopback=false;std::wstring folder,downloads,name,handoff;
-    std::function<std::vector<uint8_t>(const std::string& peer,RemoteCommand command,const std::vector<uint8_t>& payload)> remote;};
+// relay: reach paired devices on other networks through the public relay (relayBrokers: tests; empty for the usual ones).
+struct ShareOptions{uint16_t tcpPort=47820,udpPort=47821;bool discovery=true,loopback=false,relay=false;std::wstring folder,downloads,name,handoff;std::vector<std::pair<std::wstring,uint16_t>> relayBrokers;
+    std::function<std::vector<uint8_t>(const std::string& peer,RemoteCommand command,const std::vector<uint8_t>& payload)> remote;
+    // Revision 3: a phone's trackpad and keyboard, one frame at a time (0x60 move, 0x61 button, 0x62 scroll, 0x63 text,
+    // 0x64 key), called on a network thread.
+    std::function<void(const std::string& peer,const std::vector<uint8_t>& frame)> input;};
 class ShareService{
 public:
     // notify: posted ShareMessage whenever events are waiting (null: poll take()).
@@ -92,6 +108,16 @@ public:
     uint32_t takeFromShelf(const std::string& peer,uint32_t index,const std::wstring& name);
     // Revision 2: rings a paired phone (Rang when it answered, or Failed).
     void ring(const std::string& peer);
+    // 0.20: pairing from anywhere. hostPairing offers a code for ten minutes (a PairingCode event says which); the device
+    // that types it pairs as on a local network (PairCode, then Paired). pairWithCode is the other side of it.
+    void hostPairing();void stopPairing();std::string pairingCode()const;void pairWithCode(const std::string& code);
+    // Revision 3, to a paired phone: one of its notification's actions (index; reply: the text for one that takes it),
+    // the clipboard (sensitive: marked so on the phone), and asking it for a photo for the Shelf. Failures come as Failed.
+    void noticeAction(const std::string& peer,const std::string& key,int action,const std::wstring& reply);
+    void pushClipboard(const std::string& peer,const std::wstring& text,bool sensitive);
+    void askPhoto(const std::string& peer);
+    // Connected to the relay (and through which broker).
+    bool internet()const;std::wstring relayBroker()const;
     std::vector<ShareEvent> take();
     struct Core;
 private:
@@ -105,6 +131,11 @@ std::vector<std::wstring> safeSharePath(const std::wstring& path);
 // The remote's status answer (remoteOk, then the payload the phone reads): the cover is sent only when its SHA-256
 // differs from haveCover, the one the phone already shows.
 std::vector<uint8_t> remoteStatusAnswer(const RemoteStatus& status,const std::vector<uint8_t>& haveCover);
+// Revision 3: the song's lyrics for a phone. state: 0 lyrics are off here, 1 being looked for, 2 found, 3 none found; key:
+// which song ("title<TAB>artist"); each line's start (seconds), text and its words' starts (seconds, and where in the
+// text each begins, in UTF-16 units). At most 400 lines.
+struct ShareLyricLine{double time=0;std::wstring text;std::vector<std::pair<double,uint32_t>> words;};
+std::vector<uint8_t> remoteLyricsAnswer(int state,const std::wstring& key,const std::vector<ShareLyricLine>& lines);
 // "Photos", "notes.txt", or "notes.txt and 2 more", for a transfer of these top-level items.
 std::wstring shareTitle(const std::vector<std::wstring>& names);
 }

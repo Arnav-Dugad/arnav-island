@@ -1,3 +1,49 @@
+# Arnav Island 0.20.0-preview.1 — your phone, anywhere
+
+## Anywhere
+- **Your phone and your PCs reach each other on any network:** another Wi-Fi, mobile data, anywhere. It’s free and needs no account.
+  - On the same network they still talk directly.
+  - Otherwise they meet through a free public relay (an MQTT broker over TLS). Everything is sealed end to end, so the relay sees only random-looking topics and encrypted bytes.
+- **Pair from anywhere:** **Shelf › Nearby › Pair with a code** shows a code for ten minutes. Type it on the phone ([Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.1), then confirm the same six digits on both.
+- Devices you have already paired find each other anywhere on their own. Nearby says **Online · over the internet**.
+- **Settings › Privacy & productivity › Reach my devices anywhere** (on) turns it off.
+
+## Your phone on the island
+- **Reply from the island.** A message from your phone shows its actions: **Reply** opens the command bar as a reply box, where Enter sends and Esc cancels. Actions like *Mark as read* run on the phone. The card goes when the notification does.
+- **Calls.** See who’s calling, and **Decline** (or answer) from here. The card stays while it rings.
+- **Your phone’s view.** Click your phone in Nearby. You see:
+  - its battery on a ring, with charging and temperature
+  - storage, memory, network, sound, Android version and uptime
+  - what plays on it
+
+  Its buttons ring it, ask it for a photo, or send this PC’s clipboard to it.
+- **Universal clipboard** (Settings › Privacy & productivity, off by default). What you copy here goes to your paired phones, and what they copy comes here. Password-like copies are marked sensitive on the phone.
+- **Photos from my phone go on the Shelf** (on). A photo taken for this PC lands on the Shelf without asking.
+- **Proximity:**
+  - **Welcome my phone back** (on): a card with its battery when your phone comes back after two minutes away.
+  - **Lock when my phone leaves** (off): locks this PC when your phone has left your network for 45 seconds and nobody has used the PC for 30.
+- **Find this PC.** The phone can ring this PC: it chimes and shows *Here I am*.
+- **The phone as trackpad and keyboard** (with *My phone can control this PC*): the pointer, clicks, scrolling, drags, typing and keys.
+- **Lyrics on the phone.** The phone shows this island’s word-timed lyrics for what plays here.
+
+## Checks
+- **Unit suites:** core 11,682; model 2,061; phase 5,724 (18 new: settings v20); share 181 (9 new: pairing codes, the loopback pair, the status’s clipboard bit); provider lifecycle passing.
+- **The phone against this PC’s engine**, on one network and over the internet relay:
+  - pairing with a code
+  - presence
+  - files both ways
+  - the remote with the new commands (find this PC, lyrics)
+  - notification actions and replies
+  - the phone’s details
+  - notices that go
+  - the clipboard pushed to the phone
+  - a photo asked for
+  - the trackpad’s frames
+  - photos to the Shelf
+- **Relay throughput:** about 0.84 MB/s through the public broker (2.5 MB, identical on arrival).
+- **Native UI test:** 53 of 53. New stages cover your phone’s view, a notification’s actions and the reply box, the pairing code’s card, and the answers to *find this PC* and lyrics.
+- **Settings end to end:** 216 of 216 (10 new: the five switches of settings v20, each both ways).
+
 # Arnav Island 0.19.0-preview.2 — the phone’s remote, tested on the island
 
 ## Checks
@@ -37,7 +83,7 @@ Everything in 0.19.0-preview.1 is included: [Arnav Island for Android](https://g
 - **What your phone did here.** A card when it copies the clipboard, or opens a link. Password-like text stays hidden.
 
 ## Settings
-- Settings › Sharing has two new switches, both on:
+- Settings › Privacy & productivity has two new switches, both on:
   - **My phone can control this PC**
   - **My phone’s notifications**
 

@@ -43,6 +43,9 @@ struct ContentSnapshot {
     std::shared_ptr<const LumaGrid> adapt;
     // Sharing: your PCs on this network, the paired one sends go to, and this PC's name.
     std::vector<SharePeer> nearby;std::string nearbyTarget;std::wstring shareName;
+    // 0.20: connected to the relay; a phone's own view (its latest readings, "name<TAB>value", and when they came).
+    bool internet=false;struct PhoneView{bool open=false;std::string peer;} phoneView;
+    struct PhoneInfo{std::vector<std::pair<std::wstring,std::wstring>> values;double at=0;};std::map<std::string,PhoneInfo> phones;
     // Phase 5G: transfers under way (a Nearby row's progress and Stop, the compact island's chip), and the zone a drag
     // over the island would drop into (DropShelf, or NearbyBase + the PC's row), shown while files are dragged over it.
     // Phase 5H: rate, its speed in bytes a second (smoothed; 0 until known), sampled at rateAt (island seconds) when rateDone had arrived.
@@ -83,7 +86,10 @@ struct ContentSnapshot {
     // progress: music from another PC (kind 17), how far into the song it is (0..1; -1 unknown).
     // 0.19: phone (a pairing or card from Arnav Island for Android); kind 19 is a phone's card: a notification (app its title,
     // detail its text, icon the app's icon, source the app and the phone), a phone running low, rung, or what it did here.
-    struct Notice{int kind=0;BluetoothDevice device;std::wstring app;std::shared_ptr<const Artwork> icon;bool switchBack=false;std::wstring detail;uint32_t colour=0;std::wstring path;double progress=-1;bool phone=false;std::wstring source;} notice;
+    // 0.20: a phone notification's peer, key and actions (a title each, and whether it takes a reply). Kind 20: a pairing code
+    // this PC offers (app the code).
+    struct Notice{int kind=0;BluetoothDevice device;std::wstring app;std::shared_ptr<const Artwork> icon;bool switchBack=false;std::wstring detail;uint32_t colour=0;std::wstring path;double progress=-1;bool phone=false;std::wstring source;
+        std::string peer,key;std::vector<std::pair<std::wstring,bool>> actions;} notice;
     // Phase 4: clipboard history on the Shelf, privacy indicators and the command bar.
     int shelfTab=0,clipOffset=0;bool clipsPaused=false;std::wstring clipStatus;double clipStatusUntil=0;struct Clip{uint64_t id=0;int kind=0;std::wstring preview,meta;std::shared_ptr<const Artwork> thumbnail,icon;bool pinned=false,secret=false;
         // Phase 5F, rich rows: a colour code's colour, code (preview is then its first line), a link's host and path and its site icon.
@@ -111,7 +117,9 @@ struct ContentSnapshot {
     // 0.18.1: the health chart (one reading a day: Unix day, health 0-1) in place of the last 24 hours; and after an update,
     // its notes for the What's new sheet (opened from the Updated card), paged by the wheel.
     bool batteryHealthChart=false;std::vector<std::pair<int64_t,float>> healthDays;std::vector<NoteLine> whatsNew;bool whatsNewView=false;int whatsNewOffset=0;
-    struct Command{bool clips=false,paste=false;bool active=false,armed=false,error=false;std::wstring text,status;size_t caret=0;int selected=0;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;} command;
+    // 0.20: reply, the bar answers a phone's notification (replyTo: to whom; the peer, key and action it goes back to).
+    struct Command{bool clips=false,paste=false;bool active=false,armed=false,error=false;std::wstring text,status;size_t caret=0;int selected=0;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;
+        bool reply=false;std::wstring replyTo;std::string replyPeer,replyKey;int replyAction=0;} command;
 };
 
 class Renderer {

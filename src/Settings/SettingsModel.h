@@ -153,6 +153,11 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(8,L"My PCs can take from the Shelf",L"Your paired PCs can see this Shelf in Shelf › Nearby and take a copy of what is on it","shelfOpen",&Settings::shelfOpen);
     toggle(8,L"My phone can control this PC",L"Arnav Island for Android shows what plays here and can play, skip, seek, change the volume, lock this PC and share the clipboard","phoneControl",&Settings::phoneControl);
     toggle(8,L"My phone’s notifications",L"A paired phone’s notifications and battery show on the island. Kept in memory only","phoneNotices",&Settings::phoneNotices);
+    toggle(8,L"Reach my devices anywhere",L"Your phone and PCs connect through the internet when they aren’t on this network. End-to-end encrypted; a free public relay passes it on without being able to read it","relay",&Settings::relay);
+    toggle(8,L"Universal clipboard",L"What you copy here is on your phone’s clipboard a moment later. Password-like copies are marked private there","universalClipboard",&Settings::universalClipboard);
+    toggle(8,L"Photos from my phone go on the Shelf",L"A photo you take for this PC with Arnav Island on your phone lands on the Shelf without asking","continuity",&Settings::continuity);
+    toggle(8,L"Lock when my phone leaves",L"When your paired phone has left this network for 45 seconds and nobody is using this PC, it locks","proximityLock",&Settings::proximityLock);
+    toggle(8,L"Welcome my phone back",L"A card with its battery when your phone comes back to this network","proximityWelcome",&Settings::proximityWelcome);
     toggle(8,L"Keep the Shelf after restarts",L"Remembers links to your Shelf files and dropped text on this PC, never copies of the files","pinnedShelf",&Settings::pinnedShelf);
     button(8,L"Saved workspaces",L"Remove every saved app set; open apps are not affected",L"Remove",SettingAction::ClearWorkspaces);
     toggle(9,L"Update automatically",L"New versions download from the island\u2019s GitHub releases, are checked, and install while the island rests","autoUpdate",&Settings::autoUpdate);
