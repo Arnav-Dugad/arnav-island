@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <cstdint>
 #include <functional>
+#include "Mirror/MirrorIo.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -32,8 +33,9 @@ constexpr UINT ShareMessage=WM_APP+45;
 // with no new handshake); the relay has a direct path. Revision 5 (0.22): a phone controls the whole island (its stats,
 // settings, controls, command bar, sound output and pages) and tells it about its hotspot. Revision 6 (0.23): the PC's
 // battery in full and each core's load for the phone; this PC asks a phone for its readings (mode Q, kept open) while
-// the Phone page shows, and tells it about the focus clock.
-constexpr int shareProtocol=2,shareRevision=6;
+// the Phone page shows, and tells it about the focus clock. Revision 7 (0.24): screens either way (mode V, a phone opens
+// it: see Mirror/MirrorHost.h).
+constexpr int shareProtocol=2,shareRevision=7;
 // Remote commands (mode R) and their answers.
 // Revision 3: RingPC (find this PC), Lyrics (the song's lines and word times, when the island has them).
 enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,ClipboardGet=6,ClipboardSet=7,Seek=8,Open=9,RingPC=10,Lyrics=11,
@@ -92,7 +94,10 @@ struct ShareOptions{uint16_t tcpPort=47820,udpPort=47821;bool discovery=true,loo
     std::function<std::vector<uint8_t>(const std::string& peer,RemoteCommand command,const std::vector<uint8_t>& payload)> remote;
     // Revision 3: a phone's trackpad and keyboard, one frame at a time (0x60 move, 0x61 button, 0x62 scroll, 0x63 text,
     // 0x64 key), called on a network thread.
-    std::function<void(const std::string& peer,const std::vector<uint8_t>& frame)> input;};
+    std::function<void(const std::string& peer,const std::vector<uint8_t>& frame)> input;
+    // Revision 7: a screen, either way, on a connection a paired phone opens (mode V): its first frame, its name and the
+    // connection. Called on a network thread; returns when the screen ends. Unset: refused as unsupported.
+    std::function<void(const std::string& peer,const std::wstring& name,const std::vector<uint8_t>& request,mirror::MirrorIo& io)> mirror;};
 class ShareService{
 public:
     // notify: posted ShareMessage whenever events are waiting (null: poll take()).

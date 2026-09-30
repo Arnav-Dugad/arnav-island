@@ -1,5 +1,7 @@
 #include "Productivity/QrCode.h"
 #include "IslandWindow.h"
+#include "Mirror/MirrorHost.h"
+#include "Mirror/MirrorWindow.h"
 #include "Media/CoverCodec.h"
 #include <shlobj.h>
 #include <cmath>
@@ -41,6 +43,17 @@ void IslandWindow::syncSharing(){
         // 0.20: other networks through the relay; a phone's trackpad and keyboard, straight from the network thread.
         o.relay=settings_.relay;relayOn_=settings_.relay;
         o.input=[allowed=inputAllowed_](const std::string&,const std::vector<uint8_t>& frame){if(allowed->load())phoneInput(frame);};
+        // 0.24: screens, either way, on the network thread. This screen goes to a phone only while it may control this
+        // PC (its taps and typing come back as input); a phone's own screen opens in a window here.
+        o.mirror=[window=window_,allowed=inputAllowed_,stop=mirrorStop_](const std::string&,const std::wstring& name,const std::vector<uint8_t>& request,mirror::MirrorIo& io){
+            mirror::MirrorRequest r;if(!mirror::readRequest(request,r)){io.send(mirror::refusal(2));return;}
+            if(r.kind==1){
+                if(!allowed->load()){io.send(mirror::refusal(1));return;}
+                stop->store(false);auto* phone=new std::wstring(name);if(!PostMessageW(window,MirrorMessage,1,LPARAM(phone)))delete phone;
+                auto source=mirror::monitorSource({0,0});
+                mirror::sendScreen(io,r,*source,[allowed](const std::vector<uint8_t>& f){if(allowed->load())phoneInput(f);},[](RECT a){mirrorArea(&a);},*stop);
+                PostMessageW(window,MirrorMessage,0,0);return;}
+            mirror::MirrorWindow shown;mirror::receiveScreen(io,r,shown,shown.closed);};
         share_=std::make_unique<ShareService>(window_,o);store_.log(share_->running()?"Info":"Warning",share_->running()?"share_started":"share_unavailable");
         content_.nearby=share_->peers();}
     else if(!settings_.sharing&&share_){share_.reset();content_.nearby.clear();content_.transfers.clear();shareTarget_.clear();content_.nearbyTarget.clear();content_.handoffPicking=false;content_.remote={};if(content_.shelfTab==2)content_.shelfTab=0;}
@@ -250,6 +263,8 @@ bool IslandWindow::shareAction(Action a){
     // 0.22: a phone's hotspot, joined from its card or its view.
     if(a==Action::HotspotJoin){const std::string peer=content_.notice.peer;events_.dismiss(now);content_.activity.clear();transition(IslandState::Compact);joinHotspot(peer);return true;}
     if(a==Action::HotspotLater){close();return true;}
+    // 0.24: stop showing this screen on the phone.
+    if(a==Action::MirrorStop){mirrorStop_->store(true);close();return true;}
     if(a==Action::PhoneHotspot){joinHotspot(content_.page==Page::Phone?content_.phonePage:content_.phoneView.peer);return true;}
     if(a==Action::PhoneBack){content_.phoneView={};if(!motion_.reduced){motion_.swipe.reset(-22,now);motion_.swipe.retarget(0,now,MotionTokens::content);}refresh();animate();return true;}
     if(a==Action::PhoneRing||a==Action::PhonePhoto||a==Action::PhoneClipboard){const std::string peer=content_.page==Page::Phone?content_.phonePage:content_.phoneView.peer;auto it=std::find_if(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==peer;});
@@ -347,6 +362,11 @@ std::vector<uint8_t> IslandWindow::remoteAnswer(const std::string& peer,RemoteCo
     default:return {remoteUnsupported};}
 }
 // A phone's trackpad and keyboard, as Windows input (relative moves, the three buttons, both wheels, typed text, keys).
+// 0.24: the part of the virtual desktop a phone sees (this screen, while shown), for its taps: read with null, set otherwise.
+RECT IslandWindow::mirrorArea(const RECT* set){
+    static std::mutex lock;static RECT area{0,0,GetSystemMetrics(SM_CXSCREEN),GetSystemMetrics(SM_CYSCREEN)};
+    std::lock_guard held(lock);if(set)area=*set;return area;
+}
 void IslandWindow::phoneInput(const std::vector<uint8_t>& f){
     if(f.empty())return;auto i16=[&](size_t at){return int(int16_t(uint16_t(f[at]|(f[at+1]<<8))));};
     auto mouse=[](DWORD flags,LONG dx=0,LONG dy=0,DWORD data=0){INPUT m{};m.type=INPUT_MOUSE;m.mi.dx=dx;m.mi.dy=dy;m.mi.mouseData=data;m.mi.dwFlags=flags;return m;};
@@ -354,6 +374,10 @@ void IslandWindow::phoneInput(const std::vector<uint8_t>& f){
     std::vector<INPUT> list;
     switch(f[0]){
     case 0x60:if(f.size()>=5)list.push_back(mouse(MOUSEEVENTF_MOVE,i16(1),i16(3)));break;
+    // 0.24: a point on this screen as the phone shows it (0-65535 each way), onto the virtual desktop.
+    case 0x65:if(f.size()>=5){const RECT a=mirrorArea(nullptr);const double x=a.left+(f[1]|(f[2]<<8))/65535.*(a.right-a.left-1),y=a.top+(f[3]|(f[4]<<8))/65535.*(a.bottom-a.top-1);
+        const int vx=GetSystemMetrics(SM_XVIRTUALSCREEN),vy=GetSystemMetrics(SM_YVIRTUALSCREEN),vw=std::max(2,GetSystemMetrics(SM_CXVIRTUALSCREEN)),vh=std::max(2,GetSystemMetrics(SM_CYVIRTUALSCREEN));
+        list.push_back(mouse(MOUSEEVENTF_MOVE|MOUSEEVENTF_ABSOLUTE|MOUSEEVENTF_VIRTUALDESK,LONG((x-vx)*65535./(vw-1)),LONG((y-vy)*65535./(vh-1))));}break;
     case 0x61:if(f.size()>=3){const uint8_t button=f[1],state=f[2];
         const DWORD down=button==1?MOUSEEVENTF_RIGHTDOWN:button==2?MOUSEEVENTF_MIDDLEDOWN:MOUSEEVENTF_LEFTDOWN,up=button==1?MOUSEEVENTF_RIGHTUP:button==2?MOUSEEVENTF_MIDDLEUP:MOUSEEVENTF_LEFTUP;
         if(state==1||state==2)list.push_back(mouse(down));if(state==0||state==2)list.push_back(mouse(up));}break;
@@ -440,6 +464,17 @@ void IslandWindow::syncPhoneFocus(){
     for(int i=0;i<4;++i)state.push_back(uint8_t(name.size()>>(8*i)));state.insert(state.end(),name.begin(),name.end());
     for(auto& p:content_.nearby)if(p.paired&&p.phone&&p.online&&p.revision>=6&&!focusTold_.count(p.id)){focusTold_.insert(p.id);share_->tellPhoneFocus(p.id,state);}
     focusShared_=f.running;
+}
+// 0.24: this screen on a phone: a card that says so (with Stop) and the screen dot while it lasts; a word when it ends.
+void IslandWindow::mirrorMessage(WPARAM w,LPARAM l){
+    std::unique_ptr<std::wstring> phone(reinterpret_cast<std::wstring*>(l));
+    if(w==1&&phone){mirroring_=*phone;updatePrivacy();
+        if(renderer_){content_.notice={};content_.notice.kind=22;content_.notice.app=L"Showing this screen on "+mirroring_;content_.notice.detail=L"Its taps and typing reach this PC";
+            content_.pinned=false;{const Activity a{ActivityKind::Notification,"mirror",74,22.,2.4,8.};if(!holdCard(a)){events_.publish(a,seconds());transition(IslandState::Notification);presentActivity();alertSplash();}}}
+        store_.log("Info","mirror_screen_started");return;}
+    if(w==0){const std::wstring was=mirroring_;mirroring_.clear();updatePrivacy();
+        if(state_==IslandState::Notification&&content_.notice.kind==22){events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);}
+        if(!was.empty())shareCard(16,L"Stopped showing this screen",was,{},3);store_.log("Info","mirror_screen_ended");}
 }
 // Whether the card showing waits for someone's answer: pairing (14), files offered (15), music handed off (17), the
 // pairing code (20), a phone's message with actions or a call (19). Such a card isn't folded away by the pointer.

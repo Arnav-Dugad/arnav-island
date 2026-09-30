@@ -35,6 +35,8 @@ constexpr uint8_t frameRequest=0x20,frameReply=0x21,frameNotice=0x30,frameNotice
 constexpr uint8_t modeInput='I',modeAction='A',modeClip='C',modeCamera='K';
 // Revision 6: asking a phone (this PC asks; kept open for more).
 constexpr uint8_t modeQuery='Q',frameQuery=0x80,frameQueryReply=0x81;
+// Revision 7: a screen, either way (a phone opens it).
+constexpr uint8_t modeMirror='V';
 constexpr uint8_t frameAction=0x70,frameActionAck=0x71,frameClip=0x50,frameClipAck=0x51,frameCamera=0x42,frameCameraAck=0x43;
 bool success(LONG status){return status>=0;}
 std::string hex(const uint8_t* p,size_t n){static const char* digits="0123456789abcdef";std::string s;s.reserve(n*2);for(size_t i=0;i<n;++i){s+=digits[p[i]>>4];s+=digits[p[i]&15];}return s;}
@@ -78,16 +80,19 @@ Bytes dpapi(const Bytes& b,bool unprotect){DATA_BLOB in{DWORD(b.size()),const_ca
     const BOOL ok=unprotect?CryptUnprotectData(&in,nullptr,nullptr,nullptr,nullptr,CRYPTPROTECT_UI_FORBIDDEN,&out):CryptProtectData(&in,L"Arnav Island sharing key",nullptr,nullptr,nullptr,CRYPTPROTECT_UI_FORBIDDEN,&out);
     if(!ok)return {};Bytes r(out.pbData,out.pbData+out.cbData);SecureZeroMemory(out.pbData,out.cbData);LocalFree(out.pbData);return r;}
 // AES-256-GCM, one direction byte and a frame counter as the nonce, so no nonce ever repeats under a session key.
-struct Channel{BCRYPT_KEY_HANDLE key=nullptr;uint8_t sendDir=1,recvDir=2;uint64_t sent=0,received=0;
-    Channel()=default;Channel(const Channel&)=delete;Channel& operator=(const Channel&)=delete;~Channel(){if(key)BCryptDestroyKey(key);}
-    bool init(const Bytes& k,bool initiator){sendDir=initiator?1:2;recvDir=initiator?2:1;return success(BCryptGenerateSymmetricKey(providers().aes,&key,nullptr,0,const_cast<PUCHAR>(k.data()),ULONG(k.size()),0));}
+// Each direction has a key object of its own (the same key): a CNG key object isn't safe to use from two threads at
+// once, and a screen seals on one thread (input, feedback) while it opens on another.
+struct Channel{BCRYPT_KEY_HANDLE key=nullptr,openKey=nullptr;uint8_t sendDir=1,recvDir=2;uint64_t sent=0,received=0;
+    Channel()=default;Channel(const Channel&)=delete;Channel& operator=(const Channel&)=delete;~Channel(){if(key)BCryptDestroyKey(key);if(openKey)BCryptDestroyKey(openKey);}
+    bool init(const Bytes& k,bool initiator){sendDir=initiator?1:2;recvDir=initiator?2:1;
+        return success(BCryptGenerateSymmetricKey(providers().aes,&key,nullptr,0,const_cast<PUCHAR>(k.data()),ULONG(k.size()),0))&&success(BCryptGenerateSymmetricKey(providers().aes,&openKey,nullptr,0,const_cast<PUCHAR>(k.data()),ULONG(k.size()),0));}
     static std::array<uint8_t,12> nonce(uint8_t dir,uint64_t n){std::array<uint8_t,12> v{};v[0]=dir;for(int i=0;i<8;++i)v[size_t(4+i)]=uint8_t(n>>(8*i));return v;}
     bool seal(const Bytes& plain,Bytes& out){if(!key||plain.empty())return false;auto iv=nonce(sendDir,sent++);out.assign(plain.size()+16,0);BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO info;BCRYPT_INIT_AUTH_MODE_INFO(info);
         info.pbNonce=iv.data();info.cbNonce=12;info.pbTag=out.data()+plain.size();info.cbTag=16;ULONG got=0;
         return success(BCryptEncrypt(key,const_cast<PUCHAR>(plain.data()),ULONG(plain.size()),&info,nullptr,0,out.data(),ULONG(plain.size()),&got,0))&&got==plain.size();}
-    bool open(const Bytes& in,Bytes& plain){if(!key||in.size()<=16)return false;auto iv=nonce(recvDir,received++);const size_t n=in.size()-16;plain.assign(n,0);BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO info;BCRYPT_INIT_AUTH_MODE_INFO(info);
+    bool open(const Bytes& in,Bytes& plain){if(!openKey||in.size()<=16)return false;auto iv=nonce(recvDir,received++);const size_t n=in.size()-16;plain.assign(n,0);BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO info;BCRYPT_INIT_AUTH_MODE_INFO(info);
         info.pbNonce=iv.data();info.cbNonce=12;info.pbTag=const_cast<PUCHAR>(in.data()+n);info.cbTag=16;ULONG got=0;
-        return success(BCryptDecrypt(key,const_cast<PUCHAR>(in.data()),ULONG(n),&info,nullptr,0,plain.data(),ULONG(n),&got,0))&&got==n;}};
+        return success(BCryptDecrypt(openKey,const_cast<PUCHAR>(in.data()),ULONG(n),&info,nullptr,0,plain.data(),ULONG(n),&got,0))&&got==n;}};
 // Waiting on a socket: in fifth-of-a-second slices, so a transfer stopped from another thread (the thread's
 // `abort` flag) ends promptly; a blocking call on Windows does not wake when the socket is shut down.
 // `limit` is the longest wait for the socket to be ready, set by timeout().
@@ -323,7 +328,7 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         ss.peerName=cleanName(wide(std::string(hello.begin()+118,hello.end())));if(ss.peerId==id)return false;
         bool allowed=false;{std::lock_guard lock(m);
             if(mode==modePair&&!pairing){pairing=claim=std::make_shared<Decision>();allowed=true;}
-            else if(mode==modeSend||mode==modeMusic||mode==modeList||mode==modeTake||mode==modeRemote||mode==modeNotice||mode==modeInput){auto it=peers.find(hex(ss.peerId));allowed=it!=peers.end()&&!it->second.key.empty()&&it->second.key==ss.peerPub;}}
+            else if(mode==modeSend||mode==modeMusic||mode==modeList||mode==modeTake||mode==modeRemote||mode==modeNotice||mode==modeInput||mode==modeMirror){auto it=peers.find(hex(ss.peerId));allowed=it!=peers.end()&&!it->second.key.empty()&&it->second.key==ss.peerPub;}}
         if(!allowed){Bytes no(magic,magic+4);no.push_back(protocolVersion);no.push_back(1);sendFrame(s,no);return false;}
         const Bytes nonce=randomBytes(32);if(nonce.size()!=32)return false;
         Bytes reply(magic,magic+4);reply.push_back(protocolVersion);reply.push_back(0);append(reply,id);append(reply,pub);append(reply,nonce);append(reply,utf8(o.name));
@@ -345,7 +350,7 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         timeout(s,15000);Session ss;uint8_t mode=0;std::shared_ptr<Decision> claim;
         if(!welcome(s,ss,mode,claim)){if(claim)releasePairing(claim);return;}
         if(mode==modePair)pairSession(s,ss,claim);else if(mode==modeMusic)receiveMusic(s,ss);else if(mode==modeList)serveList(s,ss);else if(mode==modeTake)serveTake(s,ss);
-        else if(mode==modeRemote)serveRemote(s,ss);else if(mode==modeNotice)serveNotice(s,ss);else if(mode==modeInput)serveInput(s,ss);else receive(s,ss);
+        else if(mode==modeRemote)serveRemote(s,ss);else if(mode==modeNotice)serveNotice(s,ss);else if(mode==modeInput)serveInput(s,ss);else if(mode==modeMirror)serveMirror(s,ss);else receive(s,ss);
     }
     // Progress for a transfer: at most one event per percent and per tenth of a second (and always the last).
     struct Progress{Core& core;ShareEvent base;uint64_t total=0,done=0;int shown=-1;Clock::time_point at{};
@@ -597,6 +602,20 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
             if(e.code&&(!text(32,e.file)||!text(64,e.detail)||e.file.empty()))return false;}
         else return false;
         const bool acked=sealed(s,ss.channel,Bytes{frameNoticeAck});post(std::move(e));return acked;
+    }
+    // Revision 7: a screen, either way: the phone's request goes to the island with the connection, until it ends.
+    void serveMirror(SOCKET s,Session& ss){
+        const std::string peer=hex(ss.peerId);Bytes first;timeout(s,15000);if(!opened(s,ss.channel,first)||first.empty()||first[0]!=0xA0)return;
+        if(!o.mirror){Bytes no{0xA1,remoteUnsupported};no.resize(14,0);sealed(s,ss.channel,no);return;}
+        std::mutex sending;mirror::MirrorIo io;
+        io.send=[&](const Bytes& b){std::lock_guard held(sending);timeout(s,15000);return sealed(s,ss.channel,b);};
+        // Waits only for a frame to start (the socket's own timeouts stay as the sender set them); once one starts it's read
+        // whole, since giving up halfway would lose the stream's place.
+        io.receive=[&](Bytes& b,int ms){fd_set set;FD_ZERO(&set);FD_SET(s,&set);timeval t{ms/1000,(ms%1000)*1000};if(select(0,&set,nullptr,nullptr,&t)!=1)return false;wire.limit=15000;return opened(s,ss.channel,b);};
+        // How it's reached: on this network, or through the relay (its direct path or a broker).
+        bool here=false;{std::lock_guard lock(m);auto it=peers.find(peer);here=it!=peers.end()&&it->second.online;}
+        if(!here){const RelayPath p=path(peer);io.path=p.kind==2?2:1;io.rtt=p.rtt;}
+        o.mirror(peer,nameOf(peer,ss.peerName),first,io);
     }
     // A phone's trackpad and keyboard: its frames until it stops (or is idle for two minutes).
     void serveInput(SOCKET s,Session& ss){

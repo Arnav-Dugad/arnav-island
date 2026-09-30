@@ -346,3 +346,24 @@ Sleep, restart and shut down wait 0.9 s, so the answer reaches the phone first.
   - **Command 1 (readings)** answers `[u32 n, lines]` and `[u32 n, cover JPEG]`.
   - **Command 2 (the focus clock)** sends `[mode, running, finished, f64 shown, f64 duration, name]`.
   - **Keeping it open:** a connection idle for 40 s is reopened (the phone closes one after a minute). A reused one gets 6 s to answer, then a fresh one is tried.
+
+## 0.24.0-preview.1
+
+**Revision 7.** Announced as `2.7`. Mode V, opened by the phone. The first frame is `[0xA0, kind]`:
+- **Kind 1, this PC's screen:** u16 longest, u16 shortest, u8 fps, u32 bps (0: as the path allows).
+- **Kind 2, the phone's screen:** u16 width, u16 height, u8 fps, then its name (u32 length and UTF-8).
+
+The answer is `[0xA1, status, u16 w, u16 h, u8 fps, u32 bps, encoder name]`.
+
+**After that:**
+- **Video:** `[0xA2, flags (1 key, 2 first, 4 last), u32 number, u64 time in 100 ns, Annex B]`, in chunks of up to 128 KB.
+- **From the side showing it:**
+  - `[0xA3, u32 last, u16 decode ms, u32 kbps, u8 fps]` twice a second
+  - `[0xA4]` asks for a key frame
+  - `[0xA5, u16 w, u16 h, u8 fps]` gives new limits (also the keep-alive)
+- **Input:**
+  - to the PC: `[0xA9, input frame]`, where 0x65 is an absolute point (0 to 65535 each way, mapped to the area shown)
+  - to the phone: `[0xA6, action, u16 x, u16 y]`, `[0xA7, key]` and `[0xA8, text]`
+- **End:** `[0xAF]`, from either side.
+
+**Concurrency.** `Channel` now holds a key object per direction. A screen seals on one thread (input, feedback) while it opens on another, and a CNG key object isn't safe to use from two threads at once. Waits for a screen's frames end only between frames: `select` for readability, then the whole frame with the normal 15 s limit.

@@ -146,9 +146,11 @@ void IslandWindow::copyClip(size_t index){
 }
 // ---- Privacy ---------------------------------------------------------------
 void IslandWindow::updatePrivacy(){
-    if(!privacy_)return;auto now=privacy_->uses();
+    if(!privacy_&&mirroring_.empty())return;auto now=privacy_?privacy_->uses():std::vector<PrivacyUse>{};
+    // 0.24: this screen on a phone shows as the screen's dot (its card is the island's own).
+    if(!mirroring_.empty()){PrivacyUse u{};u.capability=Capability::ScreenCapture;u.app=mirroring_;u.key=L"arnav-mirror";now.push_back(u);}
     // A card for each camera or microphone that newly starts; location changes only the dots.
-    if(settings_.privacyCards)for(auto& u:now)if(u.capability!=Capability::Location&&std::find(privacyUses_.begin(),privacyUses_.end(),u)==privacyUses_.end()){showPrivacyNotice(u);break;}
+    if(settings_.privacyCards)for(auto& u:now)if(u.capability!=Capability::Location&&u.key!=L"arnav-mirror"&&std::find(privacyUses_.begin(),privacyUses_.end(),u)==privacyUses_.end()){showPrivacyNotice(u);break;}
     bool changed=now.size()!=privacyUses_.size();privacyUses_=std::move(now);content_.privacy=settings_.privacyDots?privacyUses_:std::vector<PrivacyUse>{};
     if(changed)store_.log("Info",privacyUses_.empty()?"privacy_indicators_cleared":"privacy_indicators_shown");
     refresh();animate();

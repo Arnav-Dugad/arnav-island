@@ -254,3 +254,10 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | PC battery for the phone | Remote command 18: level, flags, minutes left and to full, capacities, rate, voltage, cycles, temperature, health now and a week before, names, the last day | Needs *My phone can control this PC* |
 | Cores | Stats gain each logical processor's load (NtQuerySystemInformation), up to 64 | — |
 | Hotspot card | Shown whenever the island didn't know the hotspot was on; a phone that goes away takes its hotspot with it; the one this PC joined isn't offered again | — |
+
+| v0.24.0-preview.1 feature | Implemented | Limits |
+|---|---|---|
+| This PC's screen to a phone | DXGI desktop duplication with the pointer drawn in; hardware H.264 (Media Foundation, low latency, CBR, no B-frames, GOP of two seconds) with a software fallback; sized and paced by path (1440p60 here, 1080p60 direct, 720p20 relay); bit rate from −25 % on slow sends to +15 % after easy seconds; no new frames while the phone is a second behind; a keep-alive each second | Needs *My phone can control this PC*; one monitor (the primary) |
+| Touch from the phone | Absolute points (input 0x65) mapped to the part of the desktop shown, with the phone's clicks, scrolling and keys | — |
+| A phone's screen here | A floating window: rounded, shadowed, aspect-locked, draggable, pinned; DXVA decoding; reshapes when the phone turns; click/drag/wheel/right/middle/typing to the phone | Control needs the phone app's accessibility service |
+| Mirror mode (revision 7) | Mode V, opened by the phone: request, reply, frames in 128 KB chunks, feedback twice a second, key-frame requests, limits, input both ways, stop | Needs the phone app 1.6 |

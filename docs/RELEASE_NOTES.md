@@ -1,3 +1,52 @@
+# Arnav Island 0.24.0-preview.1 — screens, both ways
+
+## Your PC's screen on your phone
+**In the phone app 1.6, open Remote › *your PC*'s screen.** This PC's screen shows on the phone, as sharp and smooth as the connection allows:
+- **On the same Wi-Fi:** up to 1440p at 60 frames a second (never more than the phone's own screen).
+- **Directly over the internet:** up to 1080p at 60.
+- **Through the relay:** up to 720p at 20, light enough for a slow connection.
+
+**How it stays smooth:**
+- The picture is encoded by this PC's graphics card (H.264, tuned for low delay), with the pointer drawn in.
+- The bit rate follows the connection. It drops by a quarter when the path fills and climbs back after a few easy seconds.
+- A phone that falls behind gets a fresh picture instead of growing lag.
+- A still screen sends nothing but a word each second, so the phone knows this PC is still there.
+
+**Touch it like a touchscreen:**
+- a tap clicks, a long press right-clicks, and a drag drags
+- two fingers scroll, and pinching zooms in on the phone (not on the PC)
+- the keyboard button types here, with keys for Esc, Tab, the arrows and shortcuts
+
+The phone turns sideways for a wide screen, and a button keeps it upright.
+
+**It's shown only while *My phone can control this PC* is on** (Settings › Privacy & productivity). While it shows, the island says so with a card, "Showing this screen on *your phone*", with **Stop**. The screen's privacy dot stays lit until it ends.
+
+## Your phone's screen in a window here
+**In the phone app, open Remote › This phone there.** Android asks first. A notification with Stop shows on the phone for as long as it's shared.
+- **A window of its own:** rounded, with a shadow, keeping the phone's shape as you resize it. Drag it by its top. It stays on top while pinned (the dot); × closes it.
+- **Turn the phone and the window turns with it.**
+- **It's decoded by the graphics card.** The phone's picture is sized and paced for the connection, as above.
+- **Use the phone from here:** click to tap, drag to swipe, and the wheel scrolls. The right button is Back and the middle one is Home. Typing goes into the field you're in on the phone, Backspace and Enter included. This needs *Control from your PC* turned on in Android's Accessibility settings, and works only while the screen is shown.
+
+## Checks
+- **Unit suites:** core 11,682; model 2,061; phase 5,731; share 199; provider lifecycle passing.
+- **The phone against this PC's engine (eight tests), over the network and live over the internet.** They cover:
+  - this PC's screen as made-up moving pictures: 92 frames encoded on the graphics card, a key frame when asked, and touches arriving as points and clicks
+  - a phone's screen, upright then turned: 135 frames decoded here, at both shapes
+  - this PC's screen through the relay
+  - everything from 0.23
+- **UI test** on the signed build: all 53 stages. They include the "Showing this screen" card, its Stop button and its name for screen readers.
+- **Settings end-to-end:** 217 checks, 0 failures.
+- **The phone window** drew 122 frames and turned from 425 × 756 to 1056 × 594 with the phone.
+- **This PC's real screen,** captured and encoded with nothing kept or sent (counts only): 90 frames at 1920 × 1080 on the graphics card.
+- **On the Android emulator**, against a made-up PC:
+  - its screen on the phone: taps, drags and the sideways turn
+  - the emulator's screen here: 829 frames with 1,100 inputs sent while it played
+  - "example.com" typed into a field from the PC, then Back, Home and a swipe to scroll
+  - three turns each way
+- **Fixed while testing:**
+  - input sent while a screen was arriving could corrupt the connection, because the island used one encryption key object from two threads; each direction has its own now
+  - a wait that ran out halfway through a picture lost its place in the stream; waits now end only between pictures
 # Arnav Island 0.23.0-preview.1 — your phone, at a glance
 
 ## A Phone page

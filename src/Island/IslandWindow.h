@@ -48,6 +48,8 @@ constexpr UINT ControlStateMessage=WM_APP+40,WallpaperLumaMessage=WM_APP+44;
 constexpr UINT RemoteMessage=WM_APP+46;
 // 0.22: how joining a phone's hotspot went (wParam: 0 joined, 1 not in sight, 2 couldn't connect, 3 no Wi-Fi, 4 not ready).
 constexpr UINT HotspotMessage=WM_APP+47;
+// 0.24: this screen on a phone (wParam 1: started, lParam the phone's name, owned from then on; 0: ended).
+constexpr UINT MirrorMessage=WM_APP+48;
 enum class InteractionState { Rest,Hover,Pressed,Dragging };
 class IslandWindow {
     HWND window_=nullptr,qaMatte_=nullptr;HBRUSH qaBrush_=nullptr;HINSTANCE instance_{};HWINEVENTHOOK foregroundHook_=nullptr,locationHook_=nullptr;
@@ -122,7 +124,7 @@ class IslandWindow {
     // trackpad and keyboard (allowed while "My phone can control this PC" is on, checked from the network thread); the
     // clipboard to phones (the last text a phone gave, so it isn't sent straight back); proximity (each phone near, and since
     // when); find my PC's chimes; a phone's photo on its way to the Shelf; replying from the island.
-    bool relayOn_=false;std::shared_ptr<std::atomic<bool>> inputAllowed_=std::make_shared<std::atomic<bool>>(false);static void phoneInput(const std::vector<uint8_t>& frame);
+    bool relayOn_=false;std::shared_ptr<std::atomic<bool>> inputAllowed_=std::make_shared<std::atomic<bool>>(false);static void phoneInput(const std::vector<uint8_t>& frame);static RECT mirrorArea(const RECT* set);
     void pushClipboardToPhones();std::wstring lastPhoneClip_;double lastClipPush_=0;
     struct Nearness{bool here=false;double since=0;};std::map<std::string,Nearness> phoneNear_;void proximity();void proximityCheck();
     static constexpr UINT_PTR ProximityTimer=85,RingPCTimer=86;int ringChimes_=0;std::wstring continuityPath_;
@@ -148,6 +150,8 @@ class IslandWindow {
     std::wstring focusKey_;std::set<std::string> focusTold_;bool focusShared_=false;void syncPhoneFocus();
     // 0.22.1: the hotspot this PC last joined (its card isn't shown again while that phone comes and goes).
     std::wstring hotspotJoined_;
+    // 0.24: this screen on a phone: which phone (while it shows), and the flag that stops it.
+    std::wstring mirroring_;std::shared_ptr<std::atomic<bool>> mirrorStop_=std::make_shared<std::atomic<bool>>(false);void mirrorMessage(WPARAM,LPARAM);
     std::shared_ptr<const WallpaperLuma> wallLuma_;bool wallLoading_=false,qaBackdrop_=false;void loadWallpaperLuma();void adaptBackdrop();bool backdropCovered()const;
     // The body's top-left in the canvas (DIPs), including how far a notification pill has dropped (drop: 0..1).
     // Phase 5H: spread side by side with a waiting alert, the pill sits further left.

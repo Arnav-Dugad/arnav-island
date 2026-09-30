@@ -523,6 +523,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
     case ShareMessage:shareEvents();return 0;
     case RemoteMessage:remoteCall(l);return 0;
     case HotspotMessage:hotspotMessage(w,l);return 0;
+    case MirrorMessage:mirrorMessage(w,l);return 0;
     case WallpaperLumaMessage:{std::unique_ptr<std::shared_ptr<WallpaperLuma>> map(reinterpret_cast<std::shared_ptr<WallpaperLuma>*>(l));wallLoading_=false;if(map&&*map)wallLuma_=*map;adaptBackdrop();return 0;}
     case FullscreenMessage:adaptBackdrop();if(w){SetTimer(window_,17,120,nullptr);}else{DWORD pid=0;auto fg=GetForegroundWindow();if(fg)GetWindowThreadProcessId(fg,&pid);if(!testing_&&pid&&pid!=GetCurrentProcessId())yieldToApp();fullscreen();}return 0;
     case WM_DISPLAYCHANGE:if(renderer_)applySettings(true);return 0;
@@ -722,6 +723,12 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                         hotspots_["uitest"]={L"UI test hotspot",L"nothing-real",seconds()};content_.hotspots["uitest"]=L"UI test hotspot";hotspotCard("uitest",L"Test phone");
                         pass=pass&&state_==IslandState::Notification&&content_.notice.kind==21&&decisionShowing()&&accessAlert(content_.notice).find(L"UI test hotspot")!=std::wstring::npos&&accessibleName(Action::HotspotJoin)==L"Join the hotspot";
                         phoneHotspot("uitest",L"Test phone",false,{},{});pass=pass&&state_!=IslandState::Notification&&hotspots_.empty()&&content_.hotspots.empty();
+                        // 0.24: this screen on a phone: its card with Stop (Stop sets the flag the session watches), and a word when it ends.
+                        mirrorStop_->store(false);mirrorMessage(1,LPARAM(new std::wstring(L"Test phone")));
+                        pass=pass&&state_==IslandState::Notification&&content_.notice.kind==22&&mirroring_==L"Test phone"&&accessibleName(Action::MirrorStop)==L"Stop showing this screen"
+                            &&std::any_of(renderer_->targets.begin(),renderer_->targets.end(),[](auto& t){return t.action==Action::MirrorStop;});
+                        perform(Action::MirrorStop);pass=pass&&mirrorStop_->load();mirrorMessage(0,0);pass=pass&&mirroring_.empty();mirrorStop_->store(false);
+                        events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);
                         settings_.sharing=wasSharing;settings_.relay=wasRelay;content_.settings=settings_;content_.shelfTab=0;perform(Action::Close);}
                     events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);}
                 content_.pinned=false;phoneCard(L"UI test message",L"Nothing real",L"Messages  \u00b7  Test phone",nullptr,3);

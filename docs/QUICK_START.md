@@ -235,3 +235,9 @@ Click a paired PC in Nearby to make it where Send goes. **Forget** unpairs it.
 ## v0.23 Your phone, at a glance
 
 **Open the Phone page** (the phone in the bar, after Focus). It shows your phone live while it's open. With the phone app 1.5 its readings refresh every two seconds. The arrow at the top moves between phones. Ring it, ask it for a photo, send it your clipboard, or join its hotspot from its buttons.
+
+## v0.24 Screens, both ways
+
+**To see this PC on your phone:** turn on *My phone can control this PC* (Settings › Privacy & productivity). Then, in the phone app, open **Remote › *your PC*'s screen**. Tap to click, drag to drag, and scroll with two fingers.
+
+**To see your phone here:** in the phone app, open **Remote › This phone there** and allow it. To use the phone from this PC too, turn on **Control from your PC** in the phone's Accessibility settings.

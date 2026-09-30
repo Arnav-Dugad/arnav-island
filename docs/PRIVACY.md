@@ -215,3 +215,12 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
   They come sealed end to end, only from your paired phones, and are kept in memory only.
 - **The focus clock** goes to your paired phones when it starts, pauses or stops, so their lock screens can show it.
 - **This PC's battery details** (capacity, cycles, the last day of its history) go to your phones only while their Island tab shows it, with *My phone can control this PC* on.
+
+## v0.24 screens, both ways
+
+- **This PC's screen goes to a phone** only when that phone asks for it, and only while *My phone can control this PC* is on.
+  - While it's shown, the island shows a card with Stop and lights the screen's privacy dot.
+  - It goes only to that paired phone, sealed end to end (AES-256-GCM), directly or through the relay.
+  - Nothing is recorded or kept on either side.
+- **A phone's screen** comes only after Android asks on the phone, each time. It's shown in a window here and never recorded.
+- **Clicks and typing in that window** go to the phone only while it's shown, and only with *Control from your PC* on in the phone's Accessibility settings.

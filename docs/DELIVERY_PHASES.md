@@ -416,3 +416,17 @@ Next, in this order:
 - sharing from any app to the Shelf with a live preview
 - the photo just taken
 - web pages handed over at the same scroll position
+
+## Status after v0.24.0-preview.1 — screens, both ways — 2026-09-30
+
+Shipped, as asked (Phase 4):
+- **This PC's screen on the phone,** with touch control, at the best quality the connection allows, on the same Wi-Fi or anywhere.
+- **The phone's screen in a floating window** on the PC, with click, scroll and typing back to the phone.
+
+Waiting for your go-ahead:
+- **Unlocking this PC with the phone's fingerprint.** It needs a Windows sign-in component installed with administrator rights, and your Windows password kept on this PC, encrypted with a key only your phone holds.
+
+Next (Phase 3):
+- sharing from any app to the Shelf, with a live preview
+- the photo just taken, straight to the island
+- web pages handed over both ways at the same scroll position

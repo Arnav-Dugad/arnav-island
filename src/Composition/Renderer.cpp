@@ -405,6 +405,9 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             if(n.actions.size()==1)button(Action::NoticeActionBase,n.actions[0].first,256,14,76,28,true);
             else if(n.actions.size()>=2){button(Action::NoticeActionBase,n.actions[0].first,256,4,76,26,true);button(Action(int(Action::NoticeActionBase)+1),n.actions[1].first,256,34,76,22);}
             return;}
+        // 0.24: this screen on a phone, with Stop.
+        if(s.card&&s.notice.kind==22){const auto& n=s.notice;text(rt,n.app,72,6,176,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,176,11,muted);
+            button(Action::MirrorStop,L"Stop",256,14,76,28,true);return;}
         // 0.22: a phone's hotspot, to join in one tap.
         if(s.card&&s.notice.kind==21){const auto& n=s.notice;text(rt,n.app,72,6,176,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,176,11,muted);
             button(Action::HotspotJoin,L"Join",256,4,76,26,true);button(Action::HotspotLater,L"Not now",256,34,76,22);return;}

@@ -31,7 +31,9 @@ enum class Action { None,Overview,Media,System,Focus,Settings,Pin,Close,Play,Pre
     // the actions on a phone's notification card.
     PairAnywhere=563,PairingStop=564,PhoneBack=565,PhoneRing=566,PhonePhoto=567,PhoneClipboard=568,NoticeActionBase=569,NoticeActionEnd=571,PairingShow=572,PairTypeCode=573,HotspotJoin=574,HotspotLater=575,PhoneHotspot=576,
     // 0.23 (577-580): the Phone page, the next paired phone on it, and pairing one from it.
-    PhonePage=577,PhoneNext=578,PhonePair=579,ActionEnd=580 };
+    PhonePage=577,PhoneNext=578,PhonePair=579,
+    // 0.24 (580): stop showing this screen on a phone.
+    MirrorStop=580,ActionEnd=581 };
 inline bool inRange(Action a,Action base,Action end){return int(a)>=int(base)&&int(a)<int(end);}
 // Command bar layout: input 42, then 40 per row, then the key hints.
 inline float commandFooterY(int rows){return 52+40.f*float(rows)+2;}

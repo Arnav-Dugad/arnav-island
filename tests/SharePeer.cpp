@@ -12,7 +12,10 @@
 // With a cover (screenshots of the phone app), the remote reports a made-up song that plays on, under that PC name, and
 // keeps the volume it is given; each shelf command adds to the Shelf (a "<path>.preview" JPEG beside a file is its preview).
 #include "Productivity/ShareService.h"
+#include "Mirror/MirrorHost.h"
+#include "Mirror/MirrorWindow.h"
 #include <cstring>
+#include <exception>
 #include <ctime>
 #include <atomic>
 #include <chrono>
@@ -31,10 +34,20 @@ using namespace nexus;
 namespace {
 std::mutex out;
 void say(const std::string& line){std::lock_guard lock(out);std::cout<<line<<std::endl;}
+// Revision 7: the phone screen showing now (its window's input, as the island's window sends it), for mtap/mkey/mtext.
+std::mutex shownLock;nexus::mirror::FrameSink* shown=nullptr;
 std::string narrow(const std::wstring& w){if(w.empty())return {};const int n=WideCharToMultiByte(CP_UTF8,0,w.data(),int(w.size()),nullptr,0,nullptr,nullptr);std::string s(size_t(n),'\0');WideCharToMultiByte(CP_UTF8,0,w.data(),int(w.size()),s.data(),n,nullptr,nullptr);return s;}
 std::wstring widen(const std::string& s){if(s.empty())return {};const int n=MultiByteToWideChar(CP_UTF8,0,s.data(),int(s.size()),nullptr,0);std::wstring w(size_t(n),L'\0');MultiByteToWideChar(CP_UTF8,0,s.data(),int(s.size()),w.data(),n);return w;}
 }
+// A crash says what and where (tests), so a failure on another thread is never silent.
+LONG WINAPI crashed(EXCEPTION_POINTERS* e){
+    char line[160];HMODULE m=nullptr;GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,reinterpret_cast<LPCSTR>(e->ExceptionRecord->ExceptionAddress),&m);
+    char name[MAX_PATH]{};if(m)GetModuleFileNameA(m,name,MAX_PATH);
+    std::snprintf(line,sizeof(line),"CRASH %08lx at +0x%llx in %s",e->ExceptionRecord->ExceptionCode,static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(e->ExceptionRecord->ExceptionAddress)-reinterpret_cast<uintptr_t>(m)),name);
+    say(line);std::fflush(stdout);return EXCEPTION_CONTINUE_SEARCH;
+}
 int main(int argc,char** argv){
+    SetUnhandledExceptionFilter(crashed);std::set_terminate([]{say("CRASH terminate");std::fflush(stdout);std::abort();});
     // --relay: reach devices through the public brokers too. --relay-only=N: through that broker alone (0 HiveMQ, 1 EMQX,
     // 2 Mosquitto), as a device that can't reach the others would (the interop tests pair such a PC with a phone on all).
     bool relay=false,directLoopback=false,direct=false;int only=-1,lose=0;std::vector<std::string> extra;
@@ -49,6 +62,23 @@ int main(int argc,char** argv){
     if(only>=0&&only<=2){const std::pair<std::wstring,uint16_t> all[]={{L"broker.hivemq.com",8884},{L"broker.emqx.io",8084},{L"test.mosquitto.org",8081}};o.relayBrokers={all[only]};}
     const auto began=std::chrono::steady_clock::now();auto volume=std::make_shared<std::atomic<int>>(42);auto muted=std::make_shared<std::atomic<bool>>(false);auto playing=std::make_shared<std::atomic<bool>>(true);
     o.input=[](const std::string&,const std::vector<uint8_t>& f){std::string h;static const char* d="0123456789abcdef";for(uint8_t b:f){h+=d[b>>4];h+=d[b&15];}say("INPUT "+h);};
+    // Revision 7: screens. This PC's screen is a made-up moving picture (never the real screen); a phone's screen is
+    // decoded and its frames counted.
+    o.mirror=[](const std::string&,const std::wstring& phone,const std::vector<uint8_t>& request,mirror::MirrorIo& io){
+        mirror::MirrorRequest r;if(!mirror::readRequest(request,r)){io.send(mirror::refusal(2));say("MIRROR refused");return;}
+        std::atomic<bool> stop{false};
+        if(r.kind==1){auto source=mirror::patternSource(1280,720);
+            const auto rep=mirror::sendScreen(io,r,*source,[](const std::vector<uint8_t>& f){std::string h;static const char* d="0123456789abcdef";for(uint8_t b:f){h+=d[b>>4];h+=d[b&15];}say("MIRROR input "+h);},[](RECT){},stop);
+            say("MIRROR sent "+std::to_string(rep.frames)+" "+std::to_string(rep.keys)+" "+std::to_string(rep.width)+"x"+std::to_string(rep.height)+" "+(rep.hardware?"gpu":"software"));say(std::string("MIRROR ended ")+rep.ended);}
+        else{struct Counting:mirror::FrameSink{ComPtr<ID3D11Device> d;int frames=0;
+                ID3D11Device* device()override{if(!d&&SUCCEEDED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,D3D11_CREATE_DEVICE_VIDEO_SUPPORT|D3D11_CREATE_DEVICE_BGRA_SUPPORT,nullptr,0,D3D11_SDK_VERSION,d.GetAddressOf(),nullptr,nullptr))){
+                    // The decoder uses it from its own threads too (as the island's window does).
+                    ComPtr<ID3D10Multithread> threads;if(SUCCEEDED(d.As(&threads)))threads->SetMultithreadProtected(TRUE);}return d.Get();}
+                bool begin(int w,int h,const std::wstring& n)override{say("MIRROR showing "+std::to_string(w)+"x"+std::to_string(h)+" "+narrow(n));std::lock_guard held(shownLock);shown=this;return true;}
+                void frame(ID3D11Texture2D*,UINT,int wd,int ht)override{if(++frames==1||wd!=lastW){say("MIRROR frame "+std::to_string(wd)+"x"+std::to_string(ht));lastW=wd;}}
+                void end()override{std::lock_guard held(shownLock);shown=nullptr;}int lastW=0;} sink;
+            const auto rep=mirror::receiveScreen(io,r,sink,stop);say("MIRROR shown "+std::to_string(rep.frames)+" "+std::to_string(rep.keys));say(std::string("MIRROR ended ")+rep.ended);}
+    };
     // Revision 5: a made-up PC to control (its settings and controls remember what they're set to).
     struct Made{std::mutex m;double focusAt=0;std::map<std::string,int> settings{{"hoverOpen",1},{"autoHide",0},{"hoverDelay",180},{"uiMode",1},{"theme",0},{"accent",0},{"sounds",1},{"weather",1},{"sharing",1},{"phoneControl",1}};
         PcControls controls;std::wstring output=L"speakers";};
@@ -175,6 +205,40 @@ int main(int argc,char** argv){
         else if(cmd=="photo"){std::string id;in>>id;share.askPhoto(id);}
         // Revision 6: ask a phone for its readings; tell it the focus clock (focus <id> <mode> <running> <shown> <duration>).
         else if(cmd=="query"){std::string id;in>>id;share.queryPhone(id);}
+        // Revision 7: input for the phone screen showing, as the island's window sends it: a tap or a swipe (0-65535 across
+        // its screen), a key (1 back, 2 home, 3 recent apps, 4 notifications), typing.
+        else if(cmd=="mtap"||cmd=="mswipe"||cmd=="mkey"||cmd=="mtext"){std::lock_guard held(shownLock);
+            auto touch=[&](int a,int x,int y){std::vector<uint8_t> b{0xA6,uint8_t(a),uint8_t(x),uint8_t(x>>8),uint8_t(y),uint8_t(y>>8)};if(shown&&shown->send)shown->send(b);};
+            if(!shown||!shown->send)say("MIRROR none");
+            else if(cmd=="mtap"){int x=0,y=0;in>>x>>y;touch(0,x,y);touch(2,x,y);say("OK mtap");}
+            else if(cmd=="mswipe"){int x0=0,y0=0,x1=0,y1=0;in>>x0>>y0>>x1>>y1;touch(0,x0,y0);for(int i=1;i<=10;++i){std::this_thread::sleep_for(std::chrono::milliseconds(25));touch(1,x0+(x1-x0)*i/10,y0+(y1-y0)*i/10);}touch(2,x1,y1);say("OK mswipe");}
+            else if(cmd=="mkey"){int k=0;in>>k;shown->send({0xA7,uint8_t(k)});say("OK mkey");}
+            else{std::string t;std::getline(in>>std::ws,t);if(t=="\\n")t="\n";if(t=="\\b")t="\b";std::vector<uint8_t> b{0xA8};b.insert(b.end(),t.begin(),t.end());shown->send(b);say("OK mtext");}}
+        // Revision 7 (tests): n frames of the made-up picture, encoded as a phone would send them, into a file: for each,
+        // u32 size, u8 key, then its Annex B.
+        else if(cmd=="encode"){std::string path;int n=0,w=0,h=0;in>>path>>n>>w>>h;auto source=mirror::patternSource(w,h);mirror::VideoEncoder enc;int wrote=0;
+            if(source->open()&&enc.open(source->device(),w,h,30,1'500'000)){std::ofstream f(path,std::ios::binary);std::vector<mirror::VideoEncoder::Frame> out;
+                for(int i=0;i<n*3&&wrote<n;++i){ComPtr<ID3D11Texture2D> t;if(source->next(1000,t)!=mirror::ScreenCapture::Result::Frame)continue;out.clear();enc.encode(t.Get(),DXGI_MODE_ROTATION_IDENTITY,int64_t(i)*333333,out);
+                    for(auto& fr:out){const uint32_t sz=uint32_t(fr.data.size());f.write(reinterpret_cast<const char*>(&sz),4);const char k=fr.key?1:0;f.write(&k,1);f.write(reinterpret_cast<const char*>(fr.data.data()),std::streamsize(sz));++wrote;}}}
+            say("ENCODED "+std::to_string(wrote)+" "+(enc.hardware()?"gpu":"software"));}
+        // Revision 7 (tests): the island's phone window, fed in-process by the made-up picture at a phone's shape, then
+        // turned: whether it opened, frames fed and drawn, and its size before and after the turn.
+        else if(cmd=="mwindow"){mirror::MirrorWindow win;int fed=0;const bool ok=win.begin(720,1280,L"Test phone");RECT a{},b{};
+            if(ok){mirror::VideoDecoder dec;dec.open(win.device());
+                auto play=[&](int w,int h,int n){auto src=mirror::patternSource(w,h);mirror::VideoEncoder enc;if(!src->open()||!enc.open(src->device(),w,h,30,2'000'000))return;std::vector<mirror::VideoEncoder::Frame> out;
+                    for(int i=0;i<n;++i){ComPtr<ID3D11Texture2D> t;if(src->next(1000,t)!=mirror::ScreenCapture::Result::Frame)continue;out.clear();enc.encode(t.Get(),DXGI_MODE_ROTATION_IDENTITY,int64_t(i)*333333,out);
+                        for(auto& f:out)dec.decode(f.data.data(),f.data.size(),f.pts,[&](ID3D11Texture2D* tx,UINT slice,int fw,int fh){win.frame(tx,slice,fw,fh);++fed;});}};
+                play(720,1280,60);std::this_thread::sleep_for(std::chrono::milliseconds(400));GetWindowRect(win.window(),&a);
+                play(1280,720,60);std::this_thread::sleep_for(std::chrono::milliseconds(600));GetWindowRect(win.window(),&b);}
+            say("MWINDOW "+std::to_string(ok)+" "+std::to_string(fed)+" "+std::to_string(win.presented.load())+" "+std::to_string(a.right-a.left)+"x"+std::to_string(a.bottom-a.top)+" "+std::to_string(b.right-b.left)+"x"+std::to_string(b.bottom-b.top));win.end();}
+        // Revision 7 (tests): this PC's real screen, captured and encoded for n frames with nothing kept or sent: counts only
+        // (frames captured, encoded, key frames, bytes, the size, the encoder).
+        else if(cmd=="capture"){int n=0;in>>n;auto src=mirror::monitorSource({0,0});mirror::VideoEncoder enc;int got=0,encoded=0,keys=0;uint64_t bytes=0;
+            if(src->open()&&enc.open(src->device(),src->width()&~1,src->height()&~1,30,6'000'000)){std::vector<mirror::VideoEncoder::Frame> out;const auto began=std::chrono::steady_clock::now();ComPtr<ID3D11Texture2D> last;
+                while(encoded<n&&std::chrono::steady_clock::now()-began<std::chrono::seconds(20)){ComPtr<ID3D11Texture2D> t;const auto r=src->next(100,t);if(r==mirror::ScreenCapture::Result::Frame){last=t;++got;}
+                    // A still screen gives no new frames: the last one again (as the key frames a phone asks for are).
+                    if(!last)continue;out.clear();enc.encode(last.Get(),src->rotation(),int64_t(encoded)*333333,out);for(auto& f:out){++encoded;keys+=f.key;bytes+=f.data.size();}}}
+            say("CAPTURE "+std::to_string(got)+" "+std::to_string(encoded)+" "+std::to_string(keys)+" "+std::to_string(bytes)+" "+std::to_string(src->width())+"x"+std::to_string(src->height())+" "+(enc.hardware()?"gpu":"software"));}
         else if(cmd=="focus"){std::string id;int mode=0,running=0;double shown=0,duration=0;in>>id>>mode>>running>>shown>>duration;std::vector<uint8_t> st{uint8_t(mode),uint8_t(running),0};
             auto f64=[&](double v){uint64_t u=0;std::memcpy(&u,&v,8);for(int i=0;i<8;++i)st.push_back(uint8_t(u>>(8*i)));};f64(shown);f64(duration);
             const std::string pc=narrow(name);for(int i=0;i<4;++i)st.push_back(uint8_t(pc.size()>>(8*i)));st.insert(st.end(),pc.begin(),pc.end());share.tellPhoneFocus(id,st);say("OK focus");}
