@@ -1,3 +1,39 @@
+# Arnav Island 0.25.0-preview.1 — handed over
+
+## Send to the Shelf, as AirDrop does it
+**With the phone app 1.7, share anything to your PC.** Your PCs appear in Android's own share sheet, and the app's sheet shows each as a glass bubble: one tap sends it to that PC's Shelf.
+- **The island shows it while it arrives:** a card with its picture in a ring that fills as the bytes come.
+- **When it's there,** the card says "On your Shelf", still with its picture.
+- **Offers you're asked about** (from other PCs, or with the Shelf's auto-accept off) show their picture too.
+
+## The photo you just took
+**With the phone app's *Photos you take* on, a photo or screenshot you've just taken shows on the island** with two buttons:
+- **Paste:** the photo comes over and goes into the window you were in (Ctrl+V for you). If you've moved to another window, it waits on the clipboard: paste it anywhere.
+- **Shelf:** onto your Shelf.
+
+At first only a small picture of it comes. The photo itself comes only when you choose, and only for photos the phone told this PC about in the last ten minutes.
+
+## Web pages, where you were
+- **From this PC:** the Phone page's **Page** button, or type "send page" in the command bar. The page in your browser (Chrome, Edge, Firefox, Brave, Opera, Vivaldi) opens on your phone, scrolled to where you are here.
+- **From the phone:** its reader's **Continue on your PC** opens the page here and scrolls it to where you were on the phone.
+
+It's read through Windows' accessibility interface: the browser's own address field and the page's scroll. Nothing else on the page is read.
+
+## Also
+- **The UI test starts from the island in view** (auto-hide off), so a maximized window no longer hides the island from its first hover. When a higher-privileged app holds the foreground and the test can't move the pointer, it now says so instead of failing.
+
+## Checks
+- **Unit suites:** core 11,682; model 2,061; phase 5,731; share 199; provider lifecycle passing.
+- **The phone against this PC's engine (nine tests), over the network and live over the internet.** They cover:
+  - an offer with its picture, into the Shelf
+  - a photo just taken, told here, asked for to paste, and sent with this PC's ask
+  - pages both ways, with where they were scrolled to
+  - everything from 0.24
+- **UI test** on the signed build: all 53 stages. They include the photo card, its Paste and Shelf buttons, their names for screen readers, and the arriving card's ring.
+- **Settings end-to-end:** 217 checks, 0 failures.
+- **The page reader** on a made-up page in an isolated Edge profile (never your browser): the page's address and scroll read exactly (0, 0.5, 0.25).
+- **Captured and checked:** the photo card and the arriving card.
+- **On the Android emulator,** against a made-up PC: a picture shared with its preview, onto the Shelf; a photo just taken, announced here; a page handed back from the reader with its scroll.
 # Arnav Island 0.24.0-preview.1 — screens, both ways
 
 ## Your PC's screen on your phone

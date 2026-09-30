@@ -241,3 +241,11 @@ Click a paired PC in Nearby to make it where Send goes. **Forget** unpairs it.
 **To see this PC on your phone:** turn on *My phone can control this PC* (Settings › Privacy & productivity). Then, in the phone app, open **Remote › *your PC*'s screen**. Tap to click, drag to drag, and scroll with two fingers.
 
 **To see your phone here:** in the phone app, open **Remote › This phone there** and allow it. To use the phone from this PC too, turn on **Control from your PC** in the phone's Accessibility settings.
+
+## v0.25 Handed over
+
+**Share to your Shelf:** on your phone, share anything and choose your PC (it's in Android's share sheet too). It lands on your Shelf, and the island shows it as it arrives.
+
+**The photo you just took:** turn on **Devices › Photos you take** in the phone app. A new photo or screenshot shows on the island: choose **Paste** or **Shelf**.
+
+**A page, where you were:** on the Phone page choose **Page**, or type "send page" in the command bar. From the phone, open a link in the app's reader and choose **Continue on your PC**.

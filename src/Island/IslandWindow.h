@@ -50,6 +50,9 @@ constexpr UINT RemoteMessage=WM_APP+46;
 constexpr UINT HotspotMessage=WM_APP+47;
 // 0.24: this screen on a phone (wParam 1: started, lParam the phone's name, owned from then on; 0: ended).
 constexpr UINT MirrorMessage=WM_APP+48;
+// 0.25: the page in the browser, read on a thread of its own (lParam a BrowserPage, owned from then on; wParam its phone's
+// index in pageAsks_).
+constexpr UINT PageMessage=WM_APP+49;
 enum class InteractionState { Rest,Hover,Pressed,Dragging };
 class IslandWindow {
     HWND window_=nullptr,qaMatte_=nullptr;HBRUSH qaBrush_=nullptr;HINSTANCE instance_{};HWINEVENTHOOK foregroundHook_=nullptr,locationHook_=nullptr;
@@ -152,6 +155,16 @@ class IslandWindow {
     std::wstring hotspotJoined_;
     // 0.24: this screen on a phone: which phone (while it shows), and the flag that stops it.
     std::wstring mirroring_;std::shared_ptr<std::atomic<bool>> mirrorStop_=std::make_shared<std::atomic<bool>>(false);void mirrorMessage(WPARAM,LPARAM);
+    // 0.25: a photo just taken on a phone (its card's phone and id), the photos asked for (by ask: what for, the window to
+    // paste into), an arriving transfer's card and picture, and pages being read for a phone.
+    // UI test: where the first hover went and which window was there.
+    POINT qaHoverPoint_{};HWND qaHoverUnder_=nullptr;int qaLeaves_=0;
+    std::string photoPeer_;uint64_t photoId_=0;std::shared_ptr<const Artwork> photoPicture_;
+    struct PhotoAsk{std::string peer;int purpose=0;HWND target=nullptr;double at=0;std::shared_ptr<const Artwork> picture;};std::map<uint32_t,PhotoAsk> photoAsks_;uint32_t nextAsk_=1;
+    uint32_t arriving_=0;std::shared_ptr<const Artwork> arrivingPicture_;std::vector<std::string> pageAsks_;
+    void photoCard(const std::string& peer,const std::wstring& phone,uint64_t id,const std::wstring& name,uint32_t size,std::shared_ptr<const Artwork> picture);
+    void arrivingCard(uint32_t transfer,const std::wstring& title,const std::wstring& detail,std::shared_ptr<const Artwork> picture);
+    bool copyPhoto(const std::wstring& path);void pageMessage(WPARAM,LPARAM);void sendPageTo(const std::string& peer,HWND from);
     std::shared_ptr<const WallpaperLuma> wallLuma_;bool wallLoading_=false,qaBackdrop_=false;void loadWallpaperLuma();void adaptBackdrop();bool backdropCovered()const;
     // The body's top-left in the canvas (DIPs), including how far a notification pill has dropped (drop: 0..1).
     // Phase 5H: spread side by side with a waiting alert, the pill sits further left.

@@ -171,7 +171,7 @@ std::wstring IslandWindow::accessibleName(Action a)const{
     auto peer=[&](Action base)->std::wstring{const size_t i=row(base);return i<content_.nearby.size()?content_.nearby[i].name:std::wstring(L"that PC");};
     switch(a){
     // Navigation.
-    case Action::Overview:return L"Home";case Action::Media:return L"Media";case Action::System:return L"Stats";case Action::Focus:return L"Focus";case Action::Settings:return L"Settings";case Action::Shelf:return L"Shelf";case Action::Audio:return L"Audio";case Action::Control:return L"Controls";case Action::PhonePage:return L"Phone";case Action::PhoneNext:return L"Next phone";case Action::PhonePair:return L"Pair a phone";case Action::MirrorStop:return L"Stop showing this screen";
+    case Action::Overview:return L"Home";case Action::Media:return L"Media";case Action::System:return L"Stats";case Action::Focus:return L"Focus";case Action::Settings:return L"Settings";case Action::Shelf:return L"Shelf";case Action::Audio:return L"Audio";case Action::Control:return L"Controls";case Action::PhonePage:return L"Phone";case Action::PhoneNext:return L"Next phone";case Action::PhonePair:return L"Pair a phone";case Action::MirrorStop:return L"Stop showing this screen";case Action::PhotoPaste:return L"Paste the photo";case Action::PhotoShelf:return L"Put the photo on the Shelf";case Action::PagePhone:return L"Open this page on the phone";
     case Action::Close:return L"Close";case Action::Pin:return content_.pinned?L"Unpin":L"Keep open";case Action::CommandOpen:return L"Search and commands";
     // Media.
     case Action::Play:return p.playing?L"Pause "+p.title:L"Play "+p.title;case Action::Previous:return L"Previous track";case Action::Next:return L"Next track";
@@ -244,6 +244,8 @@ std::wstring IslandWindow::accessAlert(const ContentSnapshot::Notice& n)const{
     case 20:return spoken(L"Pair from anywhere. The code is "+n.app+L". Scan its QR code in Arnav Island on your phone, Devices, Scan the QR code; or type it there");
     case 21:return spoken(n.app+L" is on: "+n.detail+L". Join, or not now");
     case 22:return spoken(n.app+L". "+n.detail+L". Stop");
+    case 23:return spoken(n.app+L". "+n.detail);
+    case 24:return spoken(n.app+L". "+n.detail+L". Paste, or put it on the Shelf");
     default:return spoken(budTitle(n)+(n.detail.empty()?L"":L". "+n.detail));}
 }
 // The island in a sentence, for the pane's status.

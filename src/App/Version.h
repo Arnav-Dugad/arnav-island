@@ -1,4 +1,4 @@
 #pragma once
 namespace nexus {
-inline constexpr wchar_t appVersion[]=L"0.24.0-preview.1";
+inline constexpr wchar_t appVersion[]=L"0.25.0-preview.1";
 }

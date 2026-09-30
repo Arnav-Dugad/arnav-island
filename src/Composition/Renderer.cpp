@@ -405,6 +405,12 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             if(n.actions.size()==1)button(Action::NoticeActionBase,n.actions[0].first,256,14,76,28,true);
             else if(n.actions.size()>=2){button(Action::NoticeActionBase,n.actions[0].first,256,4,76,26,true);button(Action(int(Action::NoticeActionBase)+1),n.actions[1].first,256,34,76,22);}
             return;}
+        // 0.25: a photo just taken on a phone: Paste (where you are) or the Shelf.
+        if(s.card&&s.notice.kind==24){const auto& n=s.notice;text(rt,n.app,72,6,176,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,176,11,muted);
+            button(Action::PhotoPaste,L"Paste",256,4,76,26,true);button(Action::PhotoShelf,L"Shelf",256,34,76,22);return;}
+        // 0.25: something arriving: its picture fills a ring as it comes (the ring is the icon's).
+        if(s.card&&s.notice.kind==23){const auto& n=s.notice;text(rt,n.app,72,6,258,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+            text(rt,n.detail+(n.progress>=0?L"  \u00b7  "+std::to_wstring(int(n.progress*100+.5))+L"%":std::wstring()),72,30,258,11,muted);return;}
         // 0.24: this screen on a phone, with Stop.
         if(s.card&&s.notice.kind==22){const auto& n=s.notice;text(rt,n.app,72,6,176,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,176,11,muted);
             button(Action::MirrorStop,L"Stop",256,14,76,28,true);return;}
@@ -814,6 +820,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 float x=0;const bool hot=here&&s.hotspots.count(phone.id)>0;
                 if(hot){const std::wstring join=L"Join "+s.hotspots.at(phone.id);const float w=std::min(150.f,measure(join,11.5f)+28);button(Action::PhoneHotspot,join,x,202,w,25,true);x+=w+6;}
                 button(Action::PhoneRing,L"Ring",x,202,58,25,false,here);x+=64;button(Action::PhonePhoto,L"Photo",x,202,62,25,false,here);x+=68;
+                // 0.25: the page in the browser, opened on the phone where you were.
+                if(phone.revision>=8){button(Action::PagePhone,L"Page",x,202,58,25,false,here);x+=64;}
                 button(Action::PhoneClipboard,hot?L"Clipboard":L"Send clipboard",x,202,std::min(hot?92.f:124.f,380-x),25,false,here);
             }
         }else if(s.page==Page::Focus){

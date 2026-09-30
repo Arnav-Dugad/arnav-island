@@ -261,3 +261,10 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Touch from the phone | Absolute points (input 0x65) mapped to the part of the desktop shown, with the phone's clicks, scrolling and keys | — |
 | A phone's screen here | A floating window: rounded, shadowed, aspect-locked, draggable, pinned; DXVA decoding; reshapes when the phone turns; click/drag/wheel/right/middle/typing to the phone | Control needs the phone app's accessibility service |
 | Mirror mode (revision 7) | Mode V, opened by the phone: request, reply, frames in 128 KB chunks, feedback twice a second, key-frame requests, limits, input both ways, stop | Needs the phone app 1.6 |
+
+| v0.25.0-preview.1 feature | Implemented | Limits |
+|---|---|---|
+| Offers with pictures | Offer flags 4 (a JPEG of up to 96 KB) and 8 (the ask it answers), with length-prefixed parts; the arriving card (kind 23) fills a ring round the picture | Needs the phone app 1.7 |
+| Photo just taken | Notice 6 (id, name, size, shape, picture); card 24 with Paste (the photo asked for with query 3, accepted without asking, then CF_HDROP and CF_DIB on the clipboard, and Ctrl+V into the window you were in) and Shelf | Only photos announced in the last ten minutes |
+| Pages, both ways | Query 4 (to a phone) and remote command 19 (from one): address, title and scroll; the browser's page read through UI Automation (the document's own address, else the address field; ScrollPattern) and scrolled there after it loads | Browsers with UI Automation support |
+| Command bar | "send page", "send this page", "page to phone", "open on phone" | A paired phone with the app 1.7 |

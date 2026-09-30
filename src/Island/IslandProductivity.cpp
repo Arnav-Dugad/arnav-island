@@ -214,6 +214,11 @@ void IslandWindow::commandResults(){
         if(settings_.sharing&&settings_.handoff&&content_.playback.available&&(typed==L"handoff"||typed.starts_with(L"continue on")||typed.starts_with(L"play on"))){
             const std::wstring who=typed.starts_with(L"continue on")?trimmed(typed.substr(11)):typed.starts_with(L"play on")?trimmed(typed.substr(7)):L"";
             for(auto& p:content_.nearby)if(p.paired&&p.online&&p.version>=shareProtocol&&(who.empty()||lowered(p.name).find(who)!=std::wstring::npos)){CommandResult r;r.kind=CommandKind::ContinueOn;r.title=L"Continue on "+p.name;r.detail=content_.playback.title+L"  \u00b7  plays there from where it is";r.target=std::wstring(p.id.begin(),p.id.end());extra.push_back(std::move(r));}}
+        // 0.25: the page in the browser, on a phone ("send page", "send this page", "page to phone", "open on phone").
+        if(settings_.sharing&&(typed==L"send page"||typed==L"send this page"||typed.starts_with(L"send page to")||typed.starts_with(L"page to")||typed==L"open on phone"||typed==L"open on my phone"||typed==L"continue on phone"||typed==L"continue on my phone")){
+            const std::wstring who=typed.starts_with(L"send page to")?trimmed(typed.substr(12)):typed.starts_with(L"page to")?trimmed(typed.substr(7)):L"";
+            for(auto& p:content_.nearby)if(p.paired&&p.online&&p.phone&&p.revision>=8&&(who.empty()||who==L"phone"||who==L"my phone"||lowered(p.name).find(who)!=std::wstring::npos)){
+                CommandResult r;r.kind=CommandKind::PageToPhone;r.title=L"Send this page to "+p.name;r.detail=L"From your browser, where you are on it";r.target=std::wstring(p.id.begin(),p.id.end());extra.push_back(std::move(r));}}
         if(!extra.empty()){icons.insert(icons.begin(),extra.size(),nullptr);results.insert(results.begin(),std::make_move_iterator(extra.begin()),std::make_move_iterator(extra.end()));}}
     auto& c=content_.command;bool same=results.size()==c.results.size();for(size_t i=0;same&&i<results.size();++i)same=results[i].title==c.results[i].title;
     c.results=std::move(results);c.icons=std::move(icons);if(!same){c.selected=0;if(c.armed){c.armed=false;c.status.clear();}}c.selected=std::clamp(c.selected,0,std::max(0,int(std::min<size_t>(5,c.results.size()))-1));
@@ -337,6 +342,7 @@ void IslandWindow::runCommand(size_t index){
     case CommandKind::PlaySong:{auto tracks=library_?library_->tracks():nullptr;if(tracks)for(size_t i=0;i<tracks->size();++i)if((*tracks)[i].path==r.target){std::vector<size_t> order(tracks->size());for(size_t k=0;k<order.size();++k)order[k]=k;playLibrary(order,i);break;}done();return;}
     case CommandKind::ShuffleMusic:shuffleLibrary();done();return;
     case CommandKind::ContinueOn:{for(size_t i=0;i<content_.nearby.size();++i)if(content_.nearby[i].id==std::string(r.target.begin(),r.target.end())){handoffTo(i);break;}closeCommand(false);return;}
+    case CommandKind::PageToPhone:{const HWND from=commandReturn_;closeCommand(false);sendPageTo(std::string(r.target.begin(),r.target.end()),from);return;}
     case CommandKind::Timer:content_.focus.select(r.target==L"break"?FocusClock::Mode::Break:FocusClock::Mode::Focus,now);content_.focus.duration=r.value;content_.focus.toggle(now);clockTimer();done();return;
     case CommandKind::Stopwatch:content_.focus.select(FocusClock::Mode::Stopwatch,now);content_.focus.toggle(now);clockTimer();done();return;
     case CommandKind::StopTimer:content_.focus.reset(now);clockTimer();done();return;

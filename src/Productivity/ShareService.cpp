@@ -129,6 +129,7 @@ fs::path uniquePath(const fs::path& dir,const std::wstring& name){fs::path p=dir
 void putF64(Bytes& b,double v){uint64_t u=0;std::memcpy(&u,&v,8);put64(b,u);}
 double getF64(const uint8_t* p){const uint64_t u=get64(p);double v=0;std::memcpy(&v,&u,8);return std::isfinite(v)?v:0;}
 void put32(Bytes& b,uint32_t v){for(int i=0;i<4;++i)b.push_back(uint8_t(v>>(8*i)));}
+unsigned get16(const uint8_t* p){return unsigned(p[0])|unsigned(p[1])<<8;}
 uint32_t get32(const uint8_t* p){return uint32_t(p[0])|uint32_t(p[1])<<8|uint32_t(p[2])<<16|uint32_t(p[3])<<24;}
 // Frames inside a transfer (all sealed): the offer, then per file its header, data and end, then the batch end.
 constexpr uint8_t frameData=1,frameEnd=2,frameHeader=3,frameBatchEnd=4,frameOffer=1,frameMusic=5,frameShelf=6,frameTake=7;
@@ -382,11 +383,18 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
     void receive(SOCKET s,Session& ss){
         const std::string peer=hex(ss.peerId);const std::wstring from=nameOf(peer,ss.peerName);
         Bytes offer;if(!opened(s,ss.channel,offer)||offer.size()<1+4+8+1+1||offer[0]!=frameOffer)return;
-        // The flags byte: 1 a folder, 2 (revision 3) photos for the Shelf.
-        const uint32_t count=get32(offer.data()+1);const uint64_t total=get64(offer.data()+5);const bool folder=(offer[13]&1)!=0,toShelf=(offer[13]&2)!=0;
-        const std::wstring title=cleanName(wide(std::string(offer.begin()+14,offer.end())));if(!count||count>maxFiles||total>maxTotal)return;
+        // The flags byte: 1 a folder, 2 (revision 3) photos for the Shelf, 4 (revision 8) with a picture, 8 (revision 8) the
+        // photo this PC asked for. Without 4 or 8 the title runs to the end; with either, each part has its length.
+        const uint32_t count=get32(offer.data()+1);const uint64_t total=get64(offer.data()+5);const uint8_t flags=offer[13];const bool folder=(flags&1)!=0,toShelf=(flags&2)!=0;
+        std::wstring title;Bytes preview;uint32_t ask=0;
+        if(flags&12){size_t at=14;auto part=[&](size_t limit,Bytes& out){if(at+4>offer.size())return false;const uint32_t n=get32(offer.data()+at);at+=4;if(n>limit||at+n>offer.size())return false;out.assign(offer.begin()+long(at),offer.begin()+long(at+n));at+=n;return true;};
+            Bytes t;if(!part(4096,t))return;title=cleanName(wide(std::string(t.begin(),t.end())));
+            if((flags&4)&&!part(96*1024,preview))return;
+            if(flags&8){if(at+4>offer.size())return;ask=get32(offer.data()+at);}}
+        else title=cleanName(wide(std::string(offer.begin()+14,offer.end())));
+        if(!count||count>maxFiles||total>maxTotal)return;
         auto d=std::make_shared<Decision>();const uint32_t transfer=newTransfer();{std::lock_guard lock(m);offers[transfer]=d;}attach(transfer,s);
-        {ShareEvent e;e.kind=ShareEvent::Kind::Offer;e.peer=peer;e.name=from;e.file=title;e.size=total;e.count=count;e.folder=folder;e.toShelf=toShelf;e.transfer=transfer;post(e);}
+        {ShareEvent e;e.kind=ShareEvent::Kind::Offer;e.peer=peer;e.name=from;e.file=title;e.size=total;e.count=count;e.folder=folder;e.toShelf=toShelf;e.transfer=transfer;e.icon=std::move(preview);e.ask=ask;post(e);}
         timeout(s,90000);bool gone=false;int yes=decide(s,d,60,gone);{std::lock_guard lock(m);offers.erase(transfer);}
         // The other PC stopped before this one answered: the offer goes away.
         if(gone){finish(transfer);fail(ShareEvent::Kind::Failed,peer,from,title,from+L" stopped sending it",transfer);return;}
@@ -395,11 +403,11 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         if(!told||yes!=1){const bool mine=stopped(transfer);finish(transfer);
             if(yes==2)fail(ShareEvent::Kind::Failed,peer,from,title,L"There isn't room in Downloads for "+sizeText(total),transfer);
             else if(yes==1)fail(ShareEvent::Kind::Failed,peer,from,title,mine?L"You stopped it":from+L" stopped sending it",transfer);return;}
-        takeBatch(s,ss,peer,from,title,count,total,folder,transfer,0,toShelf);
+        takeBatch(s,ss,peer,from,title,count,total,folder,transfer,0,toShelf,ask);
     }
     // The files of an accepted offer, into Downloads, then the answer that they all arrived. code: the Received event's
     // (1: taken from the other PC's Shelf).
-    void takeBatch(SOCKET s,Session& ss,const std::string& peer,const std::wstring& from,const std::wstring& title,uint32_t count,uint64_t total,bool folder,uint32_t transfer,uint32_t code,bool toShelf=false){
+    void takeBatch(SOCKET s,Session& ss,const std::string& peer,const std::wstring& from,const std::wstring& title,uint32_t count,uint64_t total,bool folder,uint32_t transfer,uint32_t code,bool toShelf=false,uint32_t ask=0){
         const fs::path dir=o.downloads;
         timeout(s,30000);Progress progress{*this,{}};progress.base.peer=peer;progress.base.name=from;progress.base.file=title;progress.base.transfer=transfer;progress.base.count=count;progress.total=total;
         // Top-level folders get a free name in Downloads once ("Photos (2)"); files inside keep their paths.
@@ -417,7 +425,7 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         if(whole)sealed(s,ss.channel,Bytes{1});
         finish(transfer);
         if(!whole){fail(ShareEvent::Kind::Failed,peer,from,title,stoppedHere?L"You stopped it":files?std::to_wstring(files)+L" of "+std::to_wstring(count)+L" files arrived from "+from:L"It didn't arrive whole from "+from,transfer);return;}
-        ShareEvent e;e.kind=ShareEvent::Kind::Received;e.peer=peer;e.name=from;e.count=count;e.size=total;e.transfer=transfer;e.folder=folder;e.toShelf=toShelf;e.code=code;
+        ShareEvent e;e.kind=ShareEvent::Kind::Received;e.peer=peer;e.name=from;e.count=count;e.size=total;e.transfer=transfer;e.folder=folder;e.toShelf=toShelf;e.code=code;e.ask=ask;
         e.file=shown.size()==1?shown[0].filename().wstring():title;e.detail=shown.empty()?dir.wstring():shown[0].wstring();for(auto& p:shown)e.paths.push_back(p.wstring());post(e);
     }
     // A sender connection: reached, greeted, and checked against the pairing. False (with why) otherwise.
@@ -600,6 +608,11 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
             auto text=[&](size_t limit,std::wstring& out){if(at+4>f.size())return false;const uint32_t n=get32(f.data()+at);at+=4;if(n>limit||at+n>f.size())return false;
                 out=wide(std::string(f.begin()+long(at),f.begin()+long(at+n)));at+=n;return true;};
             if(e.code&&(!text(32,e.file)||!text(64,e.detail)||e.file.empty()))return false;}
+        // Revision 8: a photo just taken on the phone: u64 its id, its name, u64 its size, u16 width, u16 height, its picture.
+        else if(f[1]==6&&f.size()>=2+8+4){e.kind=ShareEvent::Kind::PhonePhoto;size_t at=2;e.key=std::to_string(get64(f.data()+at));at+=8;
+            const uint32_t n=get32(f.data()+at);at+=4;if(n>512||at+n+8+4+4>f.size())return false;e.file=cleanName(wide(std::string(f.begin()+long(at),f.begin()+long(at+n))));at+=n;
+            e.size=get64(f.data()+at);at+=8;e.code=uint32_t(get16(f.data()+at))<<16|get16(f.data()+at+2);at+=4;
+            const uint32_t p=get32(f.data()+at);at+=4;if(p>96*1024||at+p>f.size())return false;e.icon.assign(f.begin()+long(at),f.begin()+long(at+p));if(e.icon.empty())return false;}
         else return false;
         const bool acked=sealed(s,ss.channel,Bytes{frameNoticeAck});post(std::move(e));return acked;
     }
@@ -733,6 +746,15 @@ void ShareService::queryPhone(const std::string& peer){
 void ShareService::tellPhoneFocus(const std::string& peer,const std::vector<uint8_t>& state){
     // Told again, a few seconds apart, if the phone didn't hear it (it may be changing networks).
     if(!core_->ok)return;std::thread([core=core_,peer,state]{for(int k=0;k<3;++k){Bytes a;if(core->askQuery(peer,2,state,a))return;std::this_thread::sleep_for(std::chrono::seconds(4));}}).detach();}
+void ShareService::askPhonePhoto(const std::string& peer,uint64_t id,int purpose,uint32_t ask){
+    if(!core_->ok)return;
+    std::thread([core=core_,peer,id,purpose,ask]{Bytes p;put64(p,id);p.push_back(uint8_t(purpose));put32(p,ask);Bytes a;
+        if(!core->askQuery(peer,3,p,a))core->fail(ShareEvent::Kind::Failed,peer,core->nameOf(peer,L""),{},core->nameOf(peer,L"Your phone")+L" didn\u2019t send the photo",0,true);}).detach();}
+void ShareService::tellPhonePage(const std::string& peer,const std::wstring& url,const std::wstring& title,double scroll){
+    if(!core_->ok)return;
+    std::thread([core=core_,peer,url,title,scroll]{Bytes p;const float f=float(scroll);uint32_t bits=0;std::memcpy(&bits,&f,4);put32(p,bits);
+        std::string u=utf8(url),t=utf8(title);if(u.size()>4096)return;if(t.size()>400)t.resize(400);put32(p,uint32_t(u.size()));append(p,u);put32(p,uint32_t(t.size()));append(p,t);Bytes a;
+        if(!core->askQuery(peer,4,p,a))core->fail(ShareEvent::Kind::Failed,peer,core->nameOf(peer,L""),{},L"The page didn\u2019t reach "+core->nameOf(peer,L"your phone"),0,true);}).detach();}
 void ShareService::hostPairing(){
     if(!core_->ok)return;std::thread([core=core_]{ShareEvent e;e.kind=ShareEvent::Kind::PairingCode;e.detail=core->relay?core->wideCode(core->relay->host()):std::wstring();core->post(e);}).detach();}
 void ShareService::stopPairing(){if(core_->relay)core_->relay->stopHosting();}

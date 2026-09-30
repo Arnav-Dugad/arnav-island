@@ -68,6 +68,10 @@ void Renderer::updateRings(const ContentSnapshot& s,UINT32 accent,UINT32 muted,U
 }
 }
 namespace nexus {
+void Renderer::drawPreviewFilled(ID2D1RenderTarget* rt,const Artwork& art,float x,float y,float w,float h){if(!art.width||!art.height||art.pixels.size()<size_t(art.width)*art.height*4)return;ComPtr<ID2D1Bitmap> b;auto p=D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED));if(FAILED(rt->CreateBitmap({art.width,art.height},art.pixels.data(),art.width*4,p,&b)))return;
+    // The middle of the picture, as much as fills the box.
+    const float factor=std::max(w/art.width,h/art.height),sw=w/factor,sh=h/factor;const float sx=(art.width-sw)/2,sy=(art.height-sh)/2;
+    rt->DrawBitmap(b.Get(),{x,y,x+w,y+h},1,D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,D2D1::RectF(sx,sy,sx+sw,sy+sh));}
 void Renderer::drawPreview(ID2D1RenderTarget* rt,const Artwork& art,float x,float y,float w,float h){if(!art.width||!art.height||art.pixels.size()<size_t(art.width)*art.height*4)return;ComPtr<ID2D1Bitmap> b;auto p=D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED));if(FAILED(rt->CreateBitmap({art.width,art.height},art.pixels.data(),art.width*4,p,&b)))return;float factor=std::min(w/art.width,h/art.height),dw=art.width*factor,dh=art.height*factor;rt->DrawBitmap(b.Get(),{x+(w-dw)/2,y+(h-dh)/2,x+(w+dw)/2,y+(h+dh)/2},1,D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);}
 void Renderer::ensureWave(){
     if(wave_)return;

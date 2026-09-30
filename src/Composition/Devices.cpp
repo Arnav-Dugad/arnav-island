@@ -53,6 +53,8 @@ void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UI
     if(!shown){cardKey_=-1;return;}
     // The icon is part of the key: a cover that arrives after the card (read from this PC's library) is drawn too.
     int key=s.notice.kind*1000+int(std::hash<std::wstring>{}(s.notice.device.name+s.notice.app+s.notice.detail)%997)+int((reinterpret_cast<uintptr_t>(s.notice.icon.get())>>4)%2000)*20000;
+    // 0.25: an arriving picture's ring is drawn again as it fills (in 60 steps).
+    if(s.notice.kind==23)key+=int(std::clamp(s.notice.progress,-.02,1.)*60+2)*7919;
     if(key!=cardKey_){cardKey_=key;
         surface(cardIconSurface_,56,56,[&](auto* rt){
             if(s.notice.kind==9){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(s.notice.colour),&b);rt->FillEllipse(D2D1::Ellipse({28,28},23,23),b.Get());b->SetColor(D2D1::ColorF(ink,.22f));rt->DrawEllipse(D2D1::Ellipse({28,28},23.5f,23.5f),b.Get(),1.5f);return;}
@@ -63,6 +65,14 @@ void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UI
                     ComPtr<ID2D1Layer> layer;rt->CreateLayer(&layer);rt->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),g.Get()),layer.Get());drawPreview(rt,*s.notice.icon,7,7,42,42);rt->PopLayer();}
                 else{rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),Icon::Phone,16,16,24,accent);}return;}
             // 0.20: pairing from anywhere.
+            // 0.25: a photo: just taken (rounded), arriving (in a ring that fills), or offered (the offer card's picture).
+            if(s.notice.kind==24||s.notice.kind==23||(s.notice.kind==15&&s.notice.icon)){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);
+                const bool ring=s.notice.kind==23;const float in=ring?9.f:4.f,round=ring?19.f:12.f;
+                if(s.notice.icon){ComPtr<ID2D1RoundedRectangleGeometry> g;d2d_->CreateRoundedRectangleGeometry(D2D1::RoundedRect({in,in,56-in,56-in},round,round),&g);ComPtr<ID2D1Layer> layer;rt->CreateLayer(&layer);
+                    rt->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),g.Get()),layer.Get());drawPreviewFilled(rt,*s.notice.icon,in,in,56-2*in,56-2*in);rt->PopLayer();}
+                else{rt->FillEllipse(D2D1::Ellipse({28,28},ring?18.f:24.f,ring?18.f:24.f),b.Get());drawIcon(rt,d2d_.Get(),Icon::Camera,ring?19.f:16.f,ring?19.f:16.f,ring?18.f:24.f,accent);}
+                if(ring)drawRing(rt,d2d_.Get(),28,28,25.5f,2.6f,s.notice.progress>=0?s.notice.progress:.12,accent,track);
+                return;}
             if(s.notice.kind==22){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(0xbf5af2,.9f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),Icon::Phone,16,16,24,0xffffff);return;}
             if(s.notice.kind==20||s.notice.kind==21){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),s.notice.kind==21?Icon::Wifi:Icon::Link,16,16,24,accent);return;}
             // 0.18: the island has updated itself.

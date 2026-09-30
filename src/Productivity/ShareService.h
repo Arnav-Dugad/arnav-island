@@ -35,14 +35,17 @@ constexpr UINT ShareMessage=WM_APP+45;
 // battery in full and each core's load for the phone; this PC asks a phone for its readings (mode Q, kept open) while
 // the Phone page shows, and tells it about the focus clock. Revision 7 (0.24): screens either way (mode V, a phone opens
 // it: see Mirror/MirrorHost.h).
-constexpr int shareProtocol=2,shareRevision=7;
+constexpr int shareProtocol=2,shareRevision=8;
 // Remote commands (mode R) and their answers.
 // Revision 3: RingPC (find this PC), Lyrics (the song's lines and word times, when the island has them).
 enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,ClipboardGet=6,ClipboardSet=7,Seek=8,Open=9,RingPC=10,Lyrics=11,
     // Revision 5 (0.22): a phone controls the whole island (see the answers below for each one's payloads).
     Stats=12,Settings=13,Controls=14,Command=15,Audio=16,Island=17,
     // Revision 6 (0.23): the battery in full.
-    Battery=18};
+    Battery=18,
+    // Revision 8 (0.25): a web page to open here, where the phone had scrolled to (f32 how far down, 0..1, below 0
+    // unknown; u32 n, its address; u32 n, its title).
+    Page=19};
 constexpr uint8_t remoteOk=0,remoteNotAllowed=1,remoteUnsupported=2,remoteFailed=3;
 // What the island reports to a phone's remote. cover: a small JPEG (at most shareCoverLimit bytes), or empty.
 // clipboard (0.20): the island's universal clipboard is on, so the phone sends its own copies over as it opens.
@@ -78,10 +81,13 @@ struct ShareEvent{
     // readings, one "name<TAB>value" a line); PhoneNoticeGone (key: a notification the phone no longer shows). A
     // PhoneNotice carries its key and actions (their titles, and whether each takes a reply). An Offer or Received with
     // toShelf: photos a phone took for this PC's Shelf.
-    enum class Kind{Peers,PairCode,Paired,PairFailed,Offer,Progress,Received,Sent,Failed,Handoff,HandoffAnswered,HandoffFile,ShelfList,ShelfTaken,PhoneStatus,PhoneNotice,Rang,PairingCode,PhoneDetails,PhoneNoticeGone,PhoneHotspot,PhoneLive} kind=Kind::Peers;
+    enum class Kind{Peers,PairCode,Paired,PairFailed,Offer,Progress,Received,Sent,Failed,Handoff,HandoffAnswered,HandoffFile,ShelfList,ShelfTaken,PhoneStatus,PhoneNotice,Rang,PairingCode,PhoneDetails,PhoneNoticeGone,PhoneHotspot,PhoneLive,PhonePhoto} kind=Kind::Peers;
     std::string peer;std::wstring name,file,detail;uint64_t size=0,done=0;uint32_t code=0,transfer=0,count=0;bool folder=false,outgoing=false;ShareHandoff handoff;std::vector<ShareShelfItem> shelf;
     std::wstring app;std::vector<uint8_t> icon;int battery=-1;bool charging=false,urgent=false;
     std::string key;std::vector<std::pair<std::wstring,bool>> actions;bool toShelf=false;std::vector<std::wstring> paths;
+    // Revision 8: an offer's picture (a small JPEG: icon), and the ask it answers (a photo this PC asked a phone for).
+    // A PhonePhoto: a photo just taken on a phone (key its id, file its name, size, icon its picture, code width<<16|height).
+    uint32_t ask=0;
 };
 // loopback: listen on 127.0.0.1 only (tests; no firewall prompt). handoff: where a handed-off song's file is kept.
 // remote: answers a phone's remote command (called on a network thread): its answer byte, then its payload. Unset: the
@@ -146,6 +152,11 @@ public:
     // this PC's name). A phone that can't answer (older, away) posts nothing.
     void queryPhone(const std::string& peer);
     void tellPhoneFocus(const std::string& peer,const std::vector<uint8_t>& state);
+    // Revision 8: 3 a photo just taken, sent over (payload u64 its id, u8 what for: 1 to paste, 2 for the Shelf, u32 the
+    // ask its offer carries); answered at once, the photo follows as an offer. 4 a web page to open there (payload f32 how
+    // far down, u32 n its address, u32 n its title). False (on the network thread's word) is posted as a Failed event.
+    void askPhonePhoto(const std::string& peer,uint64_t id,int purpose,uint32_t ask);
+    void tellPhonePage(const std::string& peer,const std::wstring& url,const std::wstring& title,double scroll);
     // Tests: the relay's direct path goes quiet, as when a network drops it.
     void stopDirect();
     // Connected to the relay (and through which broker).

@@ -1,10 +1,12 @@
-# Arnav Island 0.24 — screens, both ways
+# Arnav Island 0.25 — handed over
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.24.0-preview.1) · [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.6
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.25.0-preview.1) · [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.7
 
 **Your phone, anywhere.** Your phone and your PCs now reach each other on any network: another Wi-Fi, mobile data, anywhere. It’s free and end-to-end encrypted. To pair from far away, open **Shelf › Nearby › Pair with a code** and scan its QR code with the phone app (or type the code).
+
+**Handed over (0.25).** Share from your phone to your PC's Shelf in one tap, and watch it arrive on the island. A photo you just took appears on the island, ready to paste. Web pages go from browser to phone and back at the same scroll position.
 
 **Screens, both ways (0.24).** See this PC's screen on your phone and use it by touch: up to 1440p at 60 frames a second on the same Wi-Fi, and still smooth over the internet. Your phone's screen opens in a floating window here; click, type and scroll on it.
 

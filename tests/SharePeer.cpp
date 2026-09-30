@@ -99,6 +99,9 @@ int main(int argc,char** argv){
         case RemoteCommand::ClipboardSet:say("CLIP "+std::string(payload.begin(),payload.end()));return {remoteOk};
         case RemoteCommand::Lock:say("REMOTE lock");return {remoteNotAllowed};
         case RemoteCommand::RingPC:say("RINGPC");return {remoteOk};
+        // Revision 8: a page to open here, where the phone had scrolled to.
+        case RemoteCommand::Page:{if(payload.size()<8)return {remoteFailed};float f=0;std::memcpy(&f,payload.data(),4);uint32_t n=0;std::memcpy(&n,payload.data()+4,4);if(8+size_t(n)>payload.size())return {remoteFailed};
+            char pct[16];std::snprintf(pct,16,"%.3f",double(f));say(std::string("PAGE ")+pct+" "+std::string(payload.begin()+8,payload.begin()+8+n));return {remoteOk};}
         case RemoteCommand::Stats:{const double t=std::chrono::duration<double>(std::chrono::steady_clock::now()-began).count();PcStats st;
             auto wave=[&](double base,double spread,double speed,double phase){return std::clamp(base+spread*std::sin(t*speed+phase)+spread*.4*std::sin(t*speed*2.3+phase*1.7),0.,100.);};
             st.cpu=wave(23,12,.9,0);st.gpu=wave(41,18,.6,1);st.ramTotalGiB=15.7;st.ramUsedGiB=11.3+.3*std::sin(t*.2);st.ramPercent=st.ramUsedGiB/st.ramTotalGiB*100;st.diskUsedPercent=63.8;st.diskFreeGiB=345.2;st.diskTotalGiB=953.9;
@@ -168,8 +171,13 @@ int main(int argc,char** argv){
                 case K::PairCode:{say("PAIRCODE "+std::to_string(ev.code));say("PEERID "+ev.peer);const char* wait=std::getenv("ARNAV_QA_CONFIRM_DELAY");
                     if(wait){const int s=std::atoi(wait);std::thread([&share,s]{std::this_thread::sleep_for(std::chrono::seconds(s));share.confirmPair(true);}).detach();}else share.confirmPair(true);break;}
                 case K::Paired:say("PAIRED ok");break;case K::PairFailed:say("PAIRED no "+narrow(ev.detail));break;
-                case K::Offer:say("OFFER "+std::to_string(ev.count)+" "+std::to_string(ev.size)+(ev.toShelf?" shelf":""));share.answer(ev.transfer,true);break;
-                case K::Received:say("RECEIVED "+narrow(ev.detail)+"|"+std::to_string(ev.code));break;
+                case K::Offer:say("OFFER "+std::to_string(ev.count)+" "+std::to_string(ev.size)+(ev.toShelf?" shelf":""));
+                    // Revision 8: the offer's picture (its bytes, whether it's a JPEG) and the ask it answers.
+                    if(!ev.icon.empty()||ev.ask)say("OFFERPIC "+std::to_string(ev.icon.size())+" "+std::to_string(ev.icon.size()>3&&ev.icon[0]==0xFF&&ev.icon[1]==0xD8?1:0)+" "+std::to_string(ev.ask)+" "+narrow(ev.file));
+                    share.answer(ev.transfer,true);break;
+                case K::Received:say("RECEIVED "+narrow(ev.detail)+"|"+std::to_string(ev.code)+(ev.ask?"|ask "+std::to_string(ev.ask):""));break;
+                // Revision 8: a photo just taken on the phone.
+                case K::PhonePhoto:say("PHONEPHOTO "+ev.key+" "+narrow(ev.file)+" "+std::to_string(ev.size)+" "+std::to_string(ev.code>>16)+"x"+std::to_string(ev.code&0xffff)+" "+std::to_string(ev.icon.size()));break;
                 case K::Sent:say("SENT "+narrow(ev.file));break;
                 case K::Failed:say("FAILED "+narrow(ev.file)+"|"+narrow(ev.detail));break;
                 case K::Handoff:say("HANDOFF "+narrow(ev.handoff.title)+"|"+std::to_string(ev.handoff.position));share.answerHandoff(ev.transfer,1);break;
@@ -205,6 +213,10 @@ int main(int argc,char** argv){
         else if(cmd=="photo"){std::string id;in>>id;share.askPhoto(id);}
         // Revision 6: ask a phone for its readings; tell it the focus clock (focus <id> <mode> <running> <shown> <duration>).
         else if(cmd=="query"){std::string id;in>>id;share.queryPhone(id);}
+        // Revision 8: ask a phone for a photo just taken (photo-ask <id> <photo id> <1 paste|2 shelf> <ask>); send it a page
+        // (page <id> <scroll> <url> <title...>).
+        else if(cmd=="photo-ask"){std::string id;unsigned long long photo=0;int purpose=0;unsigned ask=0;in>>id>>photo>>purpose>>ask;share.askPhonePhoto(id,photo,purpose,ask);say("OK photo-ask");}
+        else if(cmd=="page"){std::string id,url,title;double scroll=0;in>>id>>scroll>>url;std::getline(in>>std::ws,title);share.tellPhonePage(id,widen(url),widen(title),scroll);say("OK page");}
         // Revision 7: input for the phone screen showing, as the island's window sends it: a tap or a swipe (0-65535 across
         // its screen), a key (1 back, 2 home, 3 recent apps, 4 notifications), typing.
         else if(cmd=="mtap"||cmd=="mswipe"||cmd=="mkey"||cmd=="mtext"){std::lock_guard held(shownLock);

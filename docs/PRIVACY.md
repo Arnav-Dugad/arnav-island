@@ -224,3 +224,11 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
   - Nothing is recorded or kept on either side.
 - **A phone's screen** comes only after Android asks on the phone, each time. It's shown in a window here and never recorded.
 - **Clicks and typing in that window** go to the phone only while it's shown, and only with *Control from your PC* on in the phone's Accessibility settings.
+
+## v0.25 handed over
+
+- **Pictures with offers:** a phone sending to your Shelf sends a small picture of the first item with it, shown on the island while it arrives. It's kept in memory only.
+- **Photos you take** (off unless you turn it on in the phone app, which asks for Android's photo access):
+  - a small picture of each new camera photo or screenshot, its name, size and shape come to your paired PCs
+  - the photo itself comes only when you choose Paste or Shelf, and only for photos announced in the last ten minutes
+- **Pages:** handing a page over reads only the browser's address field and the page's scroll position, through Windows' accessibility interface, and only when you ask.

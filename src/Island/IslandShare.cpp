@@ -2,6 +2,11 @@
 #include "IslandWindow.h"
 #include "Mirror/MirrorHost.h"
 #include "Mirror/MirrorWindow.h"
+#include "Media/BrowserPage.h"
+#include <wincodec.h>
+#include <shlobj.h>
+#include <cmath>
+#include <thread>
 #include "Media/CoverCodec.h"
 #include <shlobj.h>
 #include <cmath>
@@ -113,21 +118,42 @@ void IslandWindow::shareEvents(){
             shareCard(16,L"Paired with "+e.name,phone?std::wstring(L"Files go both ways, and it can control this PC"):e.detail,{},4);break;}
         case K::PairFailed:shareCard(16,L"Not paired with "+(e.name.empty()?std::wstring(L"that PC"):e.name),e.detail,{},4.5);break;
         // 0.20: photos a phone took for the Shelf come in without asking (while that's on).
-        case K::Offer:if(e.toShelf&&settings_.continuity&&std::any_of(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==e.peer&&p.phone&&p.paired;})){share_->answer(e.transfer,true);store_.log("Info","continuity_accepted");break;}
-            shareOffer_=e.transfer;shareCard(15,e.name,e.file+(e.count>1?L"  ·  "+filesText(e.count):L"")+L"  ·  "+bytesText(e.size),{},60);break;
+        case K::Offer:{
+            // 0.25: a photo asked for here (to paste, or for the Shelf) comes in without asking again.
+            if(e.ask){auto a=photoAsks_.find(e.ask);if(a!=photoAsks_.end()&&a->second.peer==e.peer){share_->answer(e.transfer,true);arriving_=e.transfer;
+                arrivingPicture_=a->second.picture;arrivingCard(e.transfer,a->second.purpose==1?L"Pasting the photo":L"Putting it on your Shelf",L"From "+e.name+L"  \u00b7  "+bytesText(e.size),arrivingPicture_);break;}}
+            auto picture=e.icon.empty()?nullptr:decodeCover(e.icon,160);
+            if(e.toShelf&&settings_.continuity&&std::any_of(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==e.peer&&p.phone&&p.paired;})){share_->answer(e.transfer,true);store_.log("Info","continuity_accepted");
+                // 0.25: with its picture, it shows as it arrives.
+                if(picture){arriving_=e.transfer;arrivingPicture_=picture;arrivingCard(e.transfer,e.count>1?std::to_wstring(e.count)+L" coming from "+e.name:L"Coming from "+e.name,e.file+L"  \u00b7  "+bytesText(e.size),picture);}break;}
+            shareOffer_=e.transfer;shareCard(15,e.name,e.file+(e.count>1?L"  ·  "+filesText(e.count):L"")+L"  ·  "+bytesText(e.size),{},60);
+            if(picture&&state_==IslandState::Notification&&content_.notice.kind==15){content_.notice.icon=picture;refresh();}break;}
+        // 0.25: a photo just taken on a phone, to paste here or put on the Shelf.
+        case K::PhonePhoto:{if(!settings_.continuity)break;uint64_t id=0;try{id=std::stoull(e.key);}catch(...){break;}
+            photoCard(e.peer,e.name,id,e.file,e.code,decodeCover(e.icon,160));break;}
         // Progress: the transfer's row and chip fill (redrawn at most about five times a second, and at the end).
         case K::Progress:{auto it=std::find_if(content_.transfers.begin(),content_.transfers.end(),[&](auto& t){return t.id==e.transfer;});
             if(it==content_.transfers.end()){ContentSnapshot::Transfer t;t.id=e.transfer;t.peer=e.peer;t.name=e.name;t.title=e.file;t.outgoing=e.outgoing;content_.transfers.push_back(t);it=content_.transfers.end()-1;}
             it->done=e.done;it->total=e.size;it->count=e.count;if(!e.file.empty())it->title=e.file;
             // Its speed: bytes over the last quarter second or more, eased (so the ring and the time left don't jitter).
             if(it->rateAt<=0){it->rateAt=now;it->rateDone=e.done;}else if(now-it->rateAt>=.25&&e.done>=it->rateDone){const double speed=double(e.done-it->rateDone)/(now-it->rateAt);it->rate=it->rate>0?it->rate*.7+speed*.3:speed;it->rateAt=now;it->rateDone=e.done;}
-            if(now-transferDrawn_>=.2||e.done==e.size){transferDrawn_=now;redraw=true;}break;}
+            if(now-transferDrawn_>=.2||e.done==e.size){transferDrawn_=now;redraw=true;}
+            // 0.25: the arriving card's ring.
+            if(e.transfer==arriving_&&state_==IslandState::Notification&&content_.notice.kind==23&&e.size>0){content_.notice.progress=std::clamp(double(e.done)/double(e.size),0.,1.);redraw=true;}break;}
         // Show opens Downloads with the arrival selected (a folder, or the first file).
         case K::Received:drop(e.transfer);
+            // 0.25: a photo asked for: pasted where you were (or on the clipboard), or on the Shelf (below).
+            if(e.ask){auto a=photoAsks_.find(e.ask);if(a!=photoAsks_.end()&&a->second.peer==e.peer){const auto ask=a->second;photoAsks_.erase(a);if(arriving_==e.transfer)arriving_=0;
+                if(ask.purpose==1&&!e.paths.empty()){const bool copied=copyPhoto(e.paths[0]);HWND fg=GetForegroundWindow();
+                    const bool paste=copied&&ask.target&&IsWindow(ask.target)&&fg==ask.target;
+                    if(paste){INPUT in[4]{};for(auto& i:in)i.type=INPUT_KEYBOARD;in[0].ki.wVk=VK_CONTROL;in[1].ki.wVk='V';in[2].ki.wVk='V';in[2].ki.dwFlags=KEYEVENTF_KEYUP;in[3].ki.wVk=VK_CONTROL;in[3].ki.dwFlags=KEYEVENTF_KEYUP;SendInput(4,in,sizeof(INPUT));}
+                    phoneCard(paste?L"Pasted":copied?L"On your clipboard":L"Saved to Downloads",paste?L"The photo from "+e.name:copied?std::wstring(L"Paste it anywhere with Ctrl+V"):e.file,e.name,ask.picture,3.5);store_.log("Info",paste?"photo_pasted":"photo_copied");break;}}}
             if(e.toShelf){std::wstring first;for(auto& path:e.paths)if(content_.shelf.size()<32&&std::none_of(content_.shelf.begin(),content_.shelf.end(),[&](auto& i){return i.value==path;})){
                     content_.shelf.push_back({ShelfItem::Kind::File,path,std::filesystem::path(path).filename().wstring()});if(first.empty())first=path;}
                 requestPreviews();continuityPath_=first;
-                phoneCard(e.count==1?L"Photo from "+e.name:std::to_wstring(e.count)+L" photos from "+e.name,L"On your Shelf",e.name,nullptr,6);store_.log("Info","continuity_arrived");break;}
+                // 0.25: with the picture it came with.
+                std::shared_ptr<const Artwork> picture;if(arriving_==e.transfer){picture=arrivingPicture_;arriving_=0;}
+                phoneCard(e.count==1?L"Photo from "+e.name:std::to_wstring(e.count)+L" photos from "+e.name,L"On your Shelf",e.name,picture,6);store_.log("Info","continuity_arrived");break;}
             if(e.code==1){if(!e.detail.empty()&&std::none_of(content_.shelf.begin(),content_.shelf.end(),[&](auto& i){return i.value==e.detail;})&&content_.shelf.size()<32){content_.shelf.push_back({ShelfItem::Kind::File,e.detail,std::filesystem::path(e.detail).filename().wstring()});requestPreviews();}
                 shareCard(16,L"Taken from "+e.name+L"\u2019s Shelf",e.file+(e.count>1?L"  ·  "+filesText(e.count):L"")+L"  ·  now on your Shelf",e.detail,6);store_.log("Info","share_shelf_taken_here");break;}
             shareCard(16,L"Received from "+e.name,e.file+(e.count>1?L"  ·  "+filesText(e.count):L""),e.detail,8);break;
@@ -265,6 +291,16 @@ bool IslandWindow::shareAction(Action a){
     if(a==Action::HotspotLater){close();return true;}
     // 0.24: stop showing this screen on the phone.
     if(a==Action::MirrorStop){mirrorStop_->store(true);close();return true;}
+    // 0.25: the photo just taken: pasted into the window you were in (asked for now, pasted when it's here), or to the Shelf.
+    if(a==Action::PhotoPaste||a==Action::PhotoShelf){if(!share_||photoPeer_.empty())return true;
+        HWND target=GetForegroundWindow();if(target==window_)target=nullptr;
+        const uint32_t ask=nextAsk_++;photoAsks_[ask]={photoPeer_,a==Action::PhotoPaste?1:2,target,now,photoPicture_};
+        std::erase_if(photoAsks_,[&](auto& p){return now-p.second.at>120;});
+        share_->askPhonePhoto(photoPeer_,photoId_,a==Action::PhotoPaste?1:2,ask);
+        arrivingCard(0,a==Action::PhotoPaste?L"Getting the photo\u2026":L"Putting it on your Shelf\u2026",L"From "+peerName(photoPeer_),photoPicture_);store_.log("Info","photo_asked");return true;}
+    // 0.25: the page in the browser, on the phone (read on a thread of its own: UI Automation can take a moment).
+    if(a==Action::PagePhone){const std::string peer=content_.page==Page::Phone?content_.phonePage:content_.phoneView.peer;if(!share_||peer.empty())return true;
+        HWND fg=GetForegroundWindow();if(fg==window_)fg=nullptr;note(L"Reading the page\u2026");sendPageTo(peer,fg);return true;}
     if(a==Action::PhoneHotspot){joinHotspot(content_.page==Page::Phone?content_.phonePage:content_.phoneView.peer);return true;}
     if(a==Action::PhoneBack){content_.phoneView={};if(!motion_.reduced){motion_.swipe.reset(-22,now);motion_.swipe.retarget(0,now,MotionTokens::content);}refresh();animate();return true;}
     if(a==Action::PhoneRing||a==Action::PhonePhoto||a==Action::PhoneClipboard){const std::string peer=content_.page==Page::Phone?content_.phonePage:content_.phoneView.peer;auto it=std::find_if(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==peer;});
@@ -343,6 +379,13 @@ std::vector<uint8_t> IslandWindow::remoteAnswer(const std::string& peer,RemoteCo
         if(!(low.starts_with(L"https://")||low.starts_with(L"http://"))||url.size()<10||url.find_first_of(L"\r\n\t \"")!=std::wstring::npos)return {remoteNotAllowed};
         if(reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr,L"open",url.c_str(),nullptr,nullptr,SW_SHOWNORMAL))<=32)return {remoteFailed};
         phoneCard(L"Opened from "+from,cardLine(url),from,nullptr,3);store_.log("Info","phone_open");return {remoteOk};}
+    // 0.25: a page from the phone, opened where it had scrolled to (links only, as above).
+    case RemoteCommand::Page:{if(payload.size()<8)return {remoteFailed};float f=-1;std::memcpy(&f,payload.data(),4);size_t at=4;
+        auto part=[&](size_t limit,std::wstring& out){if(at+4>payload.size())return false;uint32_t n=0;std::memcpy(&n,payload.data()+at,4);at+=4;if(n>limit||at+n>payload.size())return false;out=fromUtf8Bytes(std::vector<uint8_t>(payload.begin()+long(at),payload.begin()+long(at+n)),size_t(limit));at+=n;return true;};
+        std::wstring url,title;if(!part(4096,url))return {remoteFailed};part(400,title);std::wstring low=url;std::transform(low.begin(),low.end(),low.begin(),::towlower);
+        if(!(low.starts_with(L"https://")||low.starts_with(L"http://"))||url.size()<10||url.find_first_of(L"\r\n\t \"")!=std::wstring::npos)return {remoteNotAllowed};
+        if(!openPageAt(url,std::isfinite(f)?double(f):-1))return {remoteFailed};
+        phoneCard(L"Continued from "+from,title.empty()?cardLine(url):title,from,nullptr,3);store_.log("Info","phone_page");return {remoteOk};}
     // Find my PC: a chime, again and again, and the edge lighting up, until the card is closed (or after twelve seconds).
     // 0.22 (revision 5): everything else on the island (IslandRemote.cpp).
     case RemoteCommand::Stats:return remoteStats();
@@ -475,6 +518,52 @@ void IslandWindow::mirrorMessage(WPARAM w,LPARAM l){
     if(w==0){const std::wstring was=mirroring_;mirroring_.clear();updatePrivacy();
         if(state_==IslandState::Notification&&content_.notice.kind==22){events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);}
         if(!was.empty())shareCard(16,L"Stopped showing this screen",was,{},3);store_.log("Info","mirror_screen_ended");}
+}
+// 0.25: a photo just taken on a phone: its picture, with Paste and Shelf, for twenty seconds.
+void IslandWindow::photoCard(const std::string& peer,const std::wstring& phone,uint64_t id,const std::wstring& name,uint32_t size,std::shared_ptr<const Artwork> picture){
+    if(!renderer_||!picture)return;photoPeer_=peer;photoId_=id;photoPicture_=picture;
+    std::wstring low=name;std::transform(low.begin(),low.end(),low.begin(),::towlower);const bool screenshot=low.find(L"screenshot")!=std::wstring::npos;
+    content_.notice={};content_.notice.kind=24;content_.notice.phone=true;content_.notice.peer=peer;content_.notice.icon=std::move(picture);
+    content_.notice.app=screenshot?L"Screenshot just taken":L"Photo just taken";
+    content_.notice.detail=phone+(size?L"  \u00b7  "+std::to_wstring(size>>16)+L" \u00d7 "+std::to_wstring(size&0xffff):std::wstring());
+    content_.pinned=false;{const Activity a{ActivityKind::Notification,"photo",73,24.,2.4,20.};if(holdCard(a))return;events_.publish(a,seconds());}
+    transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info","photo_card_shown");
+}
+// 0.25: something arriving, its picture in a ring that fills as it comes (transfer 0: asked for, not started yet).
+void IslandWindow::arrivingCard(uint32_t transfer,const std::wstring& title,const std::wstring& detail,std::shared_ptr<const Artwork> picture){
+    if(!renderer_)return;if(transfer)arriving_=transfer;
+    content_.notice={};content_.notice.kind=23;content_.notice.phone=true;content_.notice.app=title;content_.notice.detail=detail;content_.notice.icon=std::move(picture);content_.notice.progress=transfer?0.:-1.;
+    content_.pinned=false;{const Activity a{ActivityKind::Notification,"arriving",73,23.,2.4,45.};events_.publish(a,seconds());}
+    transition(IslandState::Notification);presentActivity();
+}
+// 0.25: a photo on the clipboard, as a file (for chats and folders) and as a picture (for documents and editors).
+bool IslandWindow::copyPhoto(const std::wstring& path){
+    ComPtr<IWICImagingFactory> wic;ComPtr<IWICBitmapDecoder> decoder;ComPtr<IWICBitmapFrameDecode> frame;ComPtr<IWICFormatConverter> bgra;UINT w=0,h=0;std::vector<uint8_t> pixels;
+    if(SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&wic)))&&SUCCEEDED(wic->CreateDecoderFromFilename(path.c_str(),nullptr,GENERIC_READ,WICDecodeMetadataCacheOnDemand,&decoder))&&
+        SUCCEEDED(decoder->GetFrame(0,&frame))&&SUCCEEDED(wic->CreateFormatConverter(&bgra))&&SUCCEEDED(bgra->Initialize(frame.Get(),GUID_WICPixelFormat32bppBGRA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom))&&
+        SUCCEEDED(bgra->GetSize(&w,&h))&&w>0&&h>0&&uint64_t(w)*h<=100'000'000ull){pixels.resize(size_t(w)*h*4);if(FAILED(bgra->CopyPixels(nullptr,w*4,UINT(pixels.size()),pixels.data())))pixels.clear();}
+    if(!OpenClipboard(window_))return false;EmptyClipboard();bool any=false;
+    {const size_t bytes=sizeof(DROPFILES)+(path.size()+2)*sizeof(wchar_t);if(HGLOBAL g=GlobalAlloc(GMEM_MOVEABLE|GMEM_ZEROINIT,bytes)){auto* d=static_cast<DROPFILES*>(GlobalLock(g));d->pFiles=sizeof(DROPFILES);d->fWide=TRUE;
+        std::memcpy(reinterpret_cast<char*>(d)+sizeof(DROPFILES),path.c_str(),path.size()*sizeof(wchar_t));GlobalUnlock(g);if(SetClipboardData(CF_HDROP,g))any=true;else GlobalFree(g);}}
+    if(!pixels.empty()){const size_t stride=size_t(w)*4,bytes=sizeof(BITMAPINFOHEADER)+stride*h;
+        if(HGLOBAL g=GlobalAlloc(GMEM_MOVEABLE,bytes)){auto* b=static_cast<uint8_t*>(GlobalLock(g));BITMAPINFOHEADER hd{};hd.biSize=sizeof(hd);hd.biWidth=LONG(w);hd.biHeight=LONG(h);hd.biPlanes=1;hd.biBitCount=32;hd.biCompression=BI_RGB;hd.biSizeImage=DWORD(stride*h);
+            std::memcpy(b,&hd,sizeof(hd));for(UINT y=0;y<h;++y)std::memcpy(b+sizeof(hd)+size_t(h-1-y)*stride,pixels.data()+size_t(y)*stride,stride);GlobalUnlock(g);if(SetClipboardData(CF_DIB,g))any=true;else GlobalFree(g);}}
+    CloseClipboard();return any;
+}
+// 0.25: the page in a browser window (the frontmost one when `from` isn't a browser's), read on a thread of its own, for
+// a phone.
+void IslandWindow::sendPageTo(const std::string& peer,HWND from){
+    if(!share_||peer.empty())return;pageAsks_.push_back(peer);const WPARAM index=pageAsks_.size()-1;
+    std::thread([window=window_,from,index]{CoInitializeEx(nullptr,COINIT_MULTITHREADED);auto* page=new BrowserPage;if(!currentBrowserPage(from,*page)){delete page;page=nullptr;}CoUninitialize();
+        if(!PostMessageW(window,PageMessage,index,LPARAM(page)))delete page;}).detach();
+}
+// 0.25: the page read from the browser goes to the phone it was asked for (or says there was none).
+void IslandWindow::pageMessage(WPARAM w,LPARAM l){
+    std::unique_ptr<BrowserPage> page(reinterpret_cast<BrowserPage*>(l));const std::string peer=w<pageAsks_.size()?pageAsks_[w]:std::string();
+    if(!share_||peer.empty())return;
+    if(!page||page->url.empty()){phoneCard(L"No page to send",L"Open one in your browser first",peerName(peer),nullptr,3);return;}
+    share_->tellPhonePage(peer,page->url,page->title,page->scroll);
+    phoneCard(L"On "+peerName(peer)+(page->scroll>0.02?L", where you were":L""),page->title.empty()?cardLine(page->url):page->title,peerName(peer),nullptr,3);store_.log("Info","page_to_phone");
 }
 // Whether the card showing waits for someone's answer: pairing (14), files offered (15), music handed off (17), the
 // pairing code (20), a phone's message with actions or a call (19). Such a card isn't folded away by the pointer.

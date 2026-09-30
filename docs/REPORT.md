@@ -367,3 +367,26 @@ The answer is `[0xA1, status, u16 w, u16 h, u8 fps, u32 bps, encoder name]`.
 - **End:** `[0xAF]`, from either side.
 
 **Concurrency.** `Channel` now holds a key object per direction. A screen seals on one thread (input, feedback) while it opens on another, and a CNG key object isn't safe to use from two threads at once. Waits for a screen's frames end only between frames: `select` for readability, then the whole frame with the normal 15 s limit.
+
+## 0.25.0-preview.1
+
+**Revision 8.** Announced as `2.8`.
+
+**Offers.** Flag 4 carries a picture and flag 8 an ask. With either flag set, the parts after the flags byte are length-prefixed:
+- `[u32 n, title]`
+- then with 4: `[u32 n, JPEG]` (96 KB at most)
+- then with 8: `[u32 ask]`
+
+Without them the title still runs to the end.
+
+**Notice 6** (a photo just taken): `[u64 id][u32 n, name][u64 size][u16 w][u16 h][u32 n, JPEG]`.
+
+**Queries:**
+- **3:** `[u64 id][u8 purpose: 1 paste, 2 Shelf][u32 ask]`, answered at once. The photo follows as an offer with flag 8 (and flag 2 for the Shelf).
+- **4:** `[f32 scroll][u32 n, url][u32 n, title]`.
+
+**Remote command 19:** `[f32 scroll][u32 n, url][u32 n, title]`. Links only; the page opens, then is scrolled through UI Automation once its window shows the page's host (twice, 1.4 s apart, for pages that grow).
+
+**Browser page.** The URL comes from the document element's ValuePattern (exact, with its scheme), else the first edit control outside the page whose text is an address. Scroll comes from the document's ScrollPattern. The first read retries three times, 350 ms apart, while the browser builds its page's accessibility.
+
+**UI test.** Stage 0 sets auto-hide off. A failed SetCursorPos (a higher-integrity foreground window, as GameInputSvc's was once) writes `SKIP` instead of a failure.

@@ -430,3 +430,17 @@ Next (Phase 3):
 - sharing from any app to the Shelf, with a live preview
 - the photo just taken, straight to the island
 - web pages handed over both ways at the same scroll position
+
+## Status after v0.25.0-preview.1 — handed over — 2026-09-30
+
+Shipped, as asked (Phase 3):
+- **Sharing to the Shelf, AirDrop-style,** with a live preview as it arrives.
+- **The photo just taken:** a card on the island, pasted where you are or put on the Shelf.
+- **Web pages handed over both ways** at the same scroll position.
+
+Also in the phone app 1.7:
+- **Liquid glass that costs about half as much to draw,** and looks the same.
+- **Quick Settings tiles** for screens, either way.
+
+Still waiting for your go-ahead:
+- **Unlocking this PC with the phone's fingerprint** (a Windows sign-in component, installed with administrator rights).

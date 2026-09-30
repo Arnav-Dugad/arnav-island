@@ -199,6 +199,8 @@ public:bool queueGliding()const{return queueGliding_;}private:
     void updateTabs(const ContentSnapshot&,float x,float y,int count,int selected,bool visible,UINT32 fill);void updateCard(const ContentSnapshot&,UINT32 track,UINT32 accent,UINT32 raised,UINT32 ink);
     void identity(ID2D1RenderTarget*,const MediaSnapshot&,float x,float y,float size,UINT32 plate);void deviceBadge(ID2D1RenderTarget*,const BluetoothDevice&,float x,float y,float size,UINT32 plate,UINT32 ink);
     void drawPreview(ID2D1RenderTarget*,const Artwork&,float,float,float,float);
+    // 0.25: the picture filling the box (cropped to it), for photos in a card.
+    void drawPreviewFilled(ID2D1RenderTarget*,const Artwork&,float,float,float,float);
     // Phase 5D: the lyrics scroller. Neighbouring lines share one layer that springs a line
     // at a time; the sung line has its own layer that grows into place while a
     // compositor-timed fill sweeps its rows; the line it replaces fades out as a ghost;

@@ -20,7 +20,9 @@ enum class CommandKind { None,Volume,VolumeStep,Mute,Unmute,Play,Pause,Next,Prev
     // Phase 5F: "weather <town>" chooses the weather's place (and turns weather on); target is the town.
     Weather,
     // Phase 5G: a song from the Music folder (target its path), shuffling that music, continuing the music on a paired PC (target its id).
-    PlaySong,ShuffleMusic,ContinueOn };
+    PlaySong,ShuffleMusic,ContinueOn,
+    // 0.25: the page in the browser, opened on a phone where you were (target its id).
+    PageToPhone };
 struct InstalledApp {std::wstring name,id;};
 struct CommandResult {
     CommandKind kind=CommandKind::None;std::wstring title,detail,target;int value=0;

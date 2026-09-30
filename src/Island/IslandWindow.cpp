@@ -96,7 +96,9 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     if(cmd.find(L"--qa-handoff")!=std::wstring::npos&&testing_)SetTimer(window_,15,180,nullptr);
     if(cmd.find(L"--lab")!=std::wstring::npos)openSettings(3);
     if(cmd.find(L"--benchmark")!=std::wstring::npos){benchmark_=true;benchmarkStart_=seconds();FILETIME c,e;GetProcessTimes(GetCurrentProcess(),&c,&e,&initialKernel_,&initialUser_);SetTimer(window_,ScenarioTimer,73,nullptr);}
-    if(cmd.find(L"--ui-test")!=std::wstring::npos){settings_.hoverOpen=true;settings_.hoverDelay=100;SetTimer(window_,13,200,nullptr);}
+    // The UI test starts from the island in view: auto-hide (off unless its own stage turns it on) would tuck it away under a
+    // maximized window, and the first hover would find nothing to open.
+    if(cmd.find(L"--ui-test")!=std::wstring::npos){settings_.hoverOpen=true;settings_.hoverDelay=100;settings_.autoHide=false;content_.settings=settings_;SetTimer(window_,13,200,nullptr);}
     if(testing_&&cmd.find(L"--qa-live")!=std::wstring::npos){settings_.uiMode=1;content_.pinned=true;transition(IslandState::LiveActivity);refresh();}
     if(testing_&&cmd.find(L"--qa-mini")!=std::wstring::npos){settings_.uiMode=0;applySettings();transition(IslandState::Compact);}
     if(testing_&&cmd.find(L"--qa-wide")!=std::wstring::npos){settings_.uiMode=1;settings_.compactWidth=560;settings_.compactClock=true;applySettings();transition(IslandState::Compact);}
@@ -124,6 +126,16 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     // --qa-hotspot: a made-up phone's hotspot card (a made-up network: Join says it can't be seen from here).
     if(testing_&&cmd.find(L"--qa-hotspot")!=std::wstring::npos){hotspots_["qa"]={L"QA hotspot 7F3K",L"not-a-real-password",seconds()};content_.hotspots["qa"]=L"QA hotspot 7F3K";hotspotCard("qa",L"Pixel 9");}
     // --qa-phone: the Phone page with a made-up phone (its readings, a painted cover, its hotspot on); --qa-phone=away: gone.
+    // --qa-photo: a photo just taken on a made-up phone (a painted picture), with Paste and Shelf; --qa-photo=arriving: it
+    // arriving, its ring 62% full.
+    if(testing_&&cmd.find(L"--qa-photo")!=std::wstring::npos){auto art=std::make_shared<Artwork>();art->width=160;art->height=120;art->pixels.resize(160*120*4);art->accent=0xe0a060;
+        // A beach at dusk: a warm sky over deep water, a low sun.
+        for(uint32_t y=0;y<120;++y)for(uint32_t x=0;x<160;++x){auto* px=&art->pixels[(y*160+x)*4];const double v=y/119.,d=std::hypot(x/159.-.62,v-.52);const bool sea=v>.58;
+            px[2]=uint8_t(std::clamp(sea?40+60*(1-v):240-90*v-80*d,0.,255.));px[1]=uint8_t(std::clamp(sea?70+40*(1-v):150-70*v-60*d,0.,255.));px[0]=uint8_t(std::clamp(sea?120+50*(1-v):110+60*v,0.,255.));px[3]=255;
+            if(d<.06){px[2]=255;px[1]=226;px[0]=170;}}
+        if(cmd.find(L"--qa-photo=arriving")!=std::wstring::npos){arrivingCard(9001,L"Coming from Galaxy S24 Ultra",L"PXL_20260930_184512.jpg  \u00b7  4.8 MB",art);content_.notice.progress=.62;refresh();}
+        else photoCard("qa-phone",L"Galaxy S24 Ultra",42,L"PXL_20260930_184512.jpg",(4032u<<16)|3024u,art);
+        content_.pinned=true;}
     if(testing_&&cmd.find(L"--qa-phone")!=std::wstring::npos){const bool away=cmd.find(L"--qa-phone=away")!=std::wstring::npos;settings_.sharing=true;settings_.relay=true;content_.settings=settings_;content_.shareName=L"Desk PC";content_.internet=true;
         SharePeer p;p.id="qa-phone";p.name=L"Galaxy S24 Ultra";p.paired=true;p.online=!away;p.revision=shareRevision;p.phone=true;p.battery=64;p.charging=false;p.viaInternet=true;p.path=2;p.rtt=38;p.relays=3;p.v6=true;
         SharePeer q=p;q.id="qa-phone-2";q.name=L"Pixel 9";q.online=false;content_.nearby={p,q};
@@ -458,7 +470,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                 // Leaving the compact controls for the rest of the island starts the hover delay again.
                 if(state_==IslandState::Compact&&settings_.hoverOpen&&interaction_==InteractionState::Hover&&target==Action::None&&was!=Action::None){GetCursorPos(&hoverSample_);hoverSampleTime_=seconds();SetTimer(window_,7,settings_.hoverDelay,nullptr);}KillTimer(window_,19);if(content_.live&&target==Action::Overview)SetTimer(window_,19,420,nullptr);}feedback(target,GET_X_LPARAM(l),GET_Y_LPARAM(l));
         }return 0;}
-    case WM_MOUSELEAVE:KillTimer(window_,7);if(motion_.spread.target()>0)SetTimer(window_,SpreadTimer,380,nullptr);edgeHold_=false;if(content_.seekHover>=0){content_.seekHover=-1;renderer_->seekPreview(content_);}renderer_->pointer(0,0,false,motion_.reduced);KillTimer(window_,19);if(interaction_==InteractionState::Hover){interaction_=InteractionState::Rest;content_.hovered=Action::None;feedback(Action::None);refresh();animate();if(!content_.pinned)SetTimer(window_,8,settings_.collapseDelay,nullptr);}return 0;
+    case WM_MOUSELEAVE:++qaLeaves_;KillTimer(window_,7);if(motion_.spread.target()>0)SetTimer(window_,SpreadTimer,380,nullptr);edgeHold_=false;if(content_.seekHover>=0){content_.seekHover=-1;renderer_->seekPreview(content_);}renderer_->pointer(0,0,false,motion_.reduced);KillTimer(window_,19);if(interaction_==InteractionState::Hover){interaction_=InteractionState::Rest;content_.hovered=Action::None;feedback(Action::None);refresh();animate();if(!content_.pinned)SetTimer(window_,8,settings_.collapseDelay,nullptr);}return 0;
     case WM_LBUTTONDOWN:pressedAction_=hit(l);downY_=pointerContentY(l);
         if(pressedAction_==Action::SkipBack||pressedAction_==Action::SkipForward){const double t=seconds();POINT c{};GetCursorPos(&c);
             const bool again=skipClickAction_==pressedAction_&&t-skipClickTime_<=GetDoubleClickTime()/1000.&&std::abs(c.x-skipClickPoint_.x)<=GetSystemMetrics(SM_CXDOUBLECLK)&&std::abs(c.y-skipClickPoint_.y)<=GetSystemMetrics(SM_CYDOUBLECLK);
@@ -524,6 +536,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
     case RemoteMessage:remoteCall(l);return 0;
     case HotspotMessage:hotspotMessage(w,l);return 0;
     case MirrorMessage:mirrorMessage(w,l);return 0;
+    case PageMessage:pageMessage(w,l);return 0;
     case WallpaperLumaMessage:{std::unique_ptr<std::shared_ptr<WallpaperLuma>> map(reinterpret_cast<std::shared_ptr<WallpaperLuma>*>(l));wallLoading_=false;if(map&&*map)wallLuma_=*map;adaptBackdrop();return 0;}
     case FullscreenMessage:adaptBackdrop();if(w){SetTimer(window_,17,120,nullptr);}else{DWORD pid=0;auto fg=GetForegroundWindow();if(fg)GetWindowThreadProcessId(fg,&pid);if(!testing_&&pid&&pid!=GetCurrentProcessId())yieldToApp();fullscreen();}return 0;
     case WM_DISPLAYCHANGE:if(renderer_)applySettings(true);return 0;
@@ -565,7 +578,11 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
         if(w==13){
             KillTimer(window_,13);bool pass=true;
             switch(scenarioStep_++){
-            case 0:{GetCursorPos(&qaCursor_);POINT p{int(Renderer::canvasWidth/2*dpi_/96),int(18*dpi_/96)};ClientToScreen(window_,&p);SetCursorPos(p.x,p.y);}SendMessageW(window_,WM_MOUSEMOVE,0,MAKELPARAM(int(Renderer::canvasWidth/2*dpi_/96),int(18*dpi_/96)));SetTimer(window_,13,600,nullptr);return 0;
+            case 0:{GetCursorPos(&qaCursor_);POINT p{int(Renderer::canvasWidth/2*dpi_/96),int(18*dpi_/96)};ClientToScreen(window_,&p);
+                // A window of a higher-privileged process in front (a system service's, an administrator's) keeps the pointer
+                // from being moved: the test can't drive the island then, and says so rather than failing.
+                if(!SetCursorPos(p.x,p.y)){store_.submit([dir=store_.directory]{std::ofstream(dir/L"ui-test.txt")<<"SKIP the pointer can't be moved: a higher-privileged app has the foreground\n";});PostMessageW(window_,WM_CLOSE,0,0);return 0;}
+                qaHoverPoint_=p;qaHoverUnder_=WindowFromPoint(p);}SendMessageW(window_,WM_MOUSEMOVE,0,MAKELPARAM(int(Renderer::canvasWidth/2*dpi_/96),int(18*dpi_/96)));SetTimer(window_,13,600,nullptr);return 0;
             case 1:pass=state_==IslandState::Expanded&&motion_.width.sample(seconds()).position>400;SetCursorPos(qaCursor_.x,qaCursor_.y+100);SendMessageW(window_,WM_MOUSELEAVE,0,0);SetTimer(window_,13,900,nullptr);break;
             case 2:pass=state_==IslandState::Compact;settings_.hoverOpen=false;{POINT p{int(Renderer::canvasWidth/2*dpi_/96),int(18*dpi_/96)};ClientToScreen(window_,&p);SetCursorPos(p.x,p.y);}SendMessageW(window_,WM_MOUSEMOVE,0,MAKELPARAM(int(Renderer::canvasWidth/2*dpi_/96),int(18*dpi_/96)));SetTimer(window_,13,500,nullptr);break;
             case 3:pass=state_==IslandState::Compact;perform(Action::Focus);perform(Action::Timer5);perform(Action::TimerToggle);pass=pass&&content_.page==Page::Focus&&content_.focus.running;perform(Action::TimerReset);perform(Action::System);pass=pass&&content_.page==Page::System;perform(Action::Settings);pass=pass&&settingsWindow_&&settingsWindow_->open();settingsWindow_.reset();perform(Action::Close);pass=pass&&state_==IslandState::Compact;SetTimer(window_,13,100,nullptr);break;
@@ -723,6 +740,15 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                         hotspots_["uitest"]={L"UI test hotspot",L"nothing-real",seconds()};content_.hotspots["uitest"]=L"UI test hotspot";hotspotCard("uitest",L"Test phone");
                         pass=pass&&state_==IslandState::Notification&&content_.notice.kind==21&&decisionShowing()&&accessAlert(content_.notice).find(L"UI test hotspot")!=std::wstring::npos&&accessibleName(Action::HotspotJoin)==L"Join the hotspot";
                         phoneHotspot("uitest",L"Test phone",false,{},{});pass=pass&&state_!=IslandState::Notification&&hotspots_.empty()&&content_.hotspots.empty();
+                        // 0.25: a photo just taken: its card with Paste and Shelf (and their names); then arriving, its ring filling.
+                        {auto pic=std::make_shared<Artwork>();pic->width=pic->height=8;pic->pixels.assign(8*8*4,200);
+                            photoCard("uitest-phone",L"Test phone",42,L"PXL_1.jpg",(4032u<<16)|3024u,pic);
+                            pass=pass&&state_==IslandState::Notification&&content_.notice.kind==24&&photoId_==42&&accessibleName(Action::PhotoPaste)==L"Paste the photo"&&accessibleName(Action::PhotoShelf)==L"Put the photo on the Shelf"
+                                &&std::any_of(renderer_->targets.begin(),renderer_->targets.end(),[](auto& t){return t.action==Action::PhotoPaste;})&&std::any_of(renderer_->targets.begin(),renderer_->targets.end(),[](auto& t){return t.action==Action::PhotoShelf;})
+                                &&accessAlert(content_.notice).find(L"Photo just taken")!=std::wstring::npos;
+                            arrivingCard(9001,L"Coming from Test phone",L"PXL_1.jpg",pic);pass=pass&&content_.notice.kind==23&&arriving_==9001&&content_.notice.progress==0;
+                            content_.notice.progress=.5;refresh();pass=pass&&content_.notice.progress==.5;
+                            arriving_=0;photoPeer_.clear();photoId_=0;photoPicture_.reset();events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);}
                         // 0.24: this screen on a phone: its card with Stop (Stop sets the flag the session watches), and a word when it ends.
                         mirrorStop_->store(false);mirrorMessage(1,LPARAM(new std::wstring(L"Test phone")));
                         pass=pass&&state_==IslandState::Notification&&content_.notice.kind==22&&mirroring_==L"Test phone"&&accessibleName(Action::MirrorStop)==L"Stop showing this screen"
@@ -829,7 +855,10 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
             // The glass must never have failed to follow the island (every stage above animates it).
             if(pass&&!renderer_->glassError().empty())pass=false;
             if(!pass||scenarioStep_==53){SetCursorPos(qaCursor_.x,qaCursor_.y);auto result=pass?"PASS native hover open, leave close, disabled hover, navigation, timer actions, hit targets, edge/scale/theme, OLE drop and shelf clear, navigation reorder, metric choices, detail toggles, app-switch collapse, pin and drag protection, precision seeking and cancel, hover-only surface, mini/live modes, wide compact settings, auto-hide tucks away (click-through region) and reveals only at its edge (visible region), double-click and arrow-key skips and seek detents, Shelf item view and clipboard search with pins, attached glass with shoulders, lyric tap-to-seek, ghost completion with Tab, live system rows, a second Enter before locking and Space between words, compact media controls, Controls page, drop pill region, Nearby tab, fullscreen peek, Live Island drag skips, drop zones for paired PCs, two alerts at once, Library and Continue on, the two alerts side by side, Up next, another PC's Shelf and spoken names, Clear and Frosted glass through every shape, alerts that wait while the island is open, battery details and the weather view":"FAIL native interaction regression";// A failure in the command bar says what it held (typed text and the first result).
-                std::string why;if(!pass&&!renderer_->glassError().empty())why=" (glass: "+renderer_->glassError()+")";else if(!pass&&content_.command.active){const auto& c=content_.command;why=" (command \""+toUtf8(c.text)+"\""+(c.results.empty()?std::string(", no results"):", first \""+toUtf8(c.results[0].title)+"\" kind "+std::to_string(int(c.results[0].kind))+" completion \""+toUtf8(c.results[0].completion)+"\"")+")";}
+                std::string why;if(!pass&&!renderer_->glassError().empty())why=" (glass: "+renderer_->glassError()+")";
+                // Where the island was and what was under the pointer (a window over the island makes hovering it leave at once).
+                else if(!pass&&scenarioStep_<=3){RECT r{};GetWindowRect(window_,&r);const HWND under=qaHoverUnder_;wchar_t cls[64]{};if(under)GetClassNameW(under,cls,64);
+                    why=" (island "+std::to_string(r.left)+","+std::to_string(r.top)+"-"+std::to_string(r.right)+","+std::to_string(r.bottom)+" hovered at "+std::to_string(qaHoverPoint_.x)+","+std::to_string(qaHoverPoint_.y)+" over "+(under==window_?std::string("the island"):toUtf8(cls))+" hidden "+std::to_string(autoHide_.hidden?1:0)+" playing "+std::to_string(content_.playback.available?1:0)+" hit "+std::to_string(int(SendMessageW(window_,WM_NCHITTEST,0,MAKELPARAM(qaHoverPoint_.x,qaHoverPoint_.y))))+" leaves "+std::to_string(qaLeaves_)+" uiMode "+std::to_string(settings_.uiMode)+")";}else if(!pass&&content_.command.active){const auto& c=content_.command;why=" (command \""+toUtf8(c.text)+"\""+(c.results.empty()?std::string(", no results"):", first \""+toUtf8(c.results[0].title)+"\" kind "+std::to_string(int(c.results[0].kind))+" completion \""+toUtf8(c.results[0].completion)+"\"")+")";}
                 store_.submit([dir=store_.directory,result,why,step=scenarioStep_,state=int(state_),interaction=int(interaction_),width=motion_.width.sample(seconds()).position]{std::ofstream(dir/L"ui-test.txt")<<"stage "<<step<<" state "<<state<<" interaction "<<interaction<<" width "<<width<<": "<<result<<why<<'\n';});PostMessageW(window_,WM_CLOSE,0,0);}return 0;
         }
         if(w==34){KillTimer(window_,34);perform(Action::Media);}// QA: page change 100 ms before the capture
