@@ -1,10 +1,12 @@
-# Arnav Island 0.20 — your phone, anywhere
+# Arnav Island 0.21 — straight there
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
 [Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.20.0-preview.1) · [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.1
 
 **Your phone, anywhere.** Your phone and your PCs now reach each other on any network: another Wi-Fi, mobile data, anywhere. It’s free and end-to-end encrypted. To pair from far away, open **Shelf › Nearby › Pair with a code** and scan its QR code with the phone app (or type the code).
+
+**Straight there (0.21).** On different networks, your phone and your PC now try a direct path first (over IPv6, or through your router by hole punching), and fall back to the relay. A remote command then takes milliseconds instead of a third of a second. A ring round each device in Nearby shows how it's reached.
 
 **On the island:**
 - reply to your phone’s messages from the keyboard

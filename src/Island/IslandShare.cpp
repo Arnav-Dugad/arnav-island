@@ -223,6 +223,7 @@ bool IslandWindow::shareAction(Action a){
     // A code already on offer is shown again rather than replaced.
     if(a==Action::PairAnywhere&&!content_.pairing.code.empty()&&now<content_.pairing.until){content_.phoneView={};refresh();return true;}
     if(a==Action::PairAnywhere){if(!share_)return true;if(!share_->internet()){note(L"This PC isn\u2019t connected to the internet");return true;}share_->hostPairing();note(L"Making a code\u2026");store_.log("Info","pair_anywhere");return true;}
+    if(a==Action::PairTypeCode){if(!share_)return true;if(!share_->internet()){note(L"This PC isn\u2019t connected to the internet");return true;}openPairCode();return true;}
     if(a==Action::PairingStop){const bool card=state_==IslandState::Notification&&content_.notice.kind==20;content_.pairing={};if(share_)share_->stopPairing();
         if(card)close();else refresh();return true;}
     // The pairing card's QR code: Nearby opens with it, large enough for a phone's camera.
@@ -373,6 +374,18 @@ bool IslandWindow::shareTimer(UINT_PTR id){
     if(id==RingPCTimer){const bool showing=state_==IslandState::Notification&&content_.notice.kind==19&&content_.notice.app==L"Here I am";
         if(--ringChimes_<=0||!showing){KillTimer(window_,RingPCTimer);ringChimes_=0;return true;}playSound(Sound::Chime);alertSplash();return true;}
     return false;
+}
+// Whether the card showing waits for someone's answer: pairing (14), files offered (15), music handed off (17), the
+// pairing code (20), a phone's message with actions or a call (19). Such a card isn't folded away by the pointer.
+bool IslandWindow::decisionShowing()const{
+    if(state_!=IslandState::Notification||!events_.active())return false;const auto& n=content_.notice;
+    return n.kind==14||n.kind==15||n.kind==17||n.kind==20||(n.kind==19&&!n.actions.empty());
+}
+// 0.21: pairing with another PC's code (it shows on that PC's island: Shelf › Nearby › Pair with a code). The bar takes
+// the eight letters and digits in glass cells; the last one pairs at once, and both PCs then show the same six digits.
+void IslandWindow::openPairCode(){
+    openCommand();auto& c=content_.command;c.pairCode=true;c.results.clear();c.icons.clear();
+    motion_.commandHeight=commandIslandHeight(0);animate();refresh();store_.log("Info","pair_code_opened");
 }
 // Replying to a phone's notification from the island: the command bar, as a reply box.
 void IslandWindow::openReply(const std::string& peer,const std::string& key,int action,const std::wstring& to){

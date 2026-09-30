@@ -28,7 +28,9 @@ namespace nexus {
 // (notices), its notifications' actions and replies, the clipboard both ways, input from a phone, finding this PC, the
 // song's lyrics, photos for the Shelf.
 constexpr UINT ShareMessage=WM_APP+45;
-constexpr int shareProtocol=2,shareRevision=3;
+// Revision 4 (0.21): a remote connection stays open for more commands, and so does a notices one (one round trip each,
+// with no new handshake); the relay has a direct path.
+constexpr int shareProtocol=2,shareRevision=4;
 // Remote commands (mode R) and their answers.
 // Revision 3: RingPC (find this PC), Lyrics (the song's lines and word times, when the island has them).
 enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,ClipboardGet=6,ClipboardSet=7,Seek=8,Open=9,RingPC=10,Lyrics=11};
@@ -41,7 +43,10 @@ struct RemoteStatus{bool available=false,playing=false,canPrevious=false,canNext
 // revision within it (0 before Phase 5H).
 // phone: Arnav Island for Android; battery (-1 unknown) and charging: as the phone last said.
 // viaInternet: here only through the relay (not on this network).
-struct SharePeer{std::string id;std::wstring name;bool paired=false,online=false;int version=shareProtocol,revision=0;bool phone=false;int battery=-1;bool charging=false;bool viaInternet=false;};
+// 0.21: path (reached over the internet): 1 through the relay, 2 directly; rtt its round trip (ms, 0 unknown); relays how
+// many brokers it's heard on; v6 a direct path over IPv6.
+struct SharePeer{std::string id;std::wstring name;bool paired=false,online=false;int version=shareProtocol,revision=0;bool phone=false;int battery=-1;bool charging=false;bool viaInternet=false;
+    int path=0;double rtt=0;int relays=0;bool v6=false;};
 // Music on its way to another PC. file: the song's own file when the island plays it (sent only if asked for).
 // cover: the song's cover as a small JPEG (at most shareCoverLimit bytes; revision 1).
 constexpr size_t shareCoverLimit=96*1024;
@@ -74,7 +79,9 @@ struct ShareEvent{
 // commands are unsupported.
 // relay: reach paired devices on other networks through the public relay (relayBrokers, relayLoseEvery: tests; empty and
 // 0 for the usual ones).
+// directLoopback, directExtra (tests): the relay's direct path on the loopback only, and addresses to offer as well.
 struct ShareOptions{uint16_t tcpPort=47820,udpPort=47821;bool discovery=true,loopback=false,relay=false;std::wstring folder,downloads,name,handoff;std::vector<std::pair<std::wstring,uint16_t>> relayBrokers;int relayLoseEvery=0;
+    bool direct=true,directLoopback=false;std::vector<std::string> directExtra;
     std::function<std::vector<uint8_t>(const std::string& peer,RemoteCommand command,const std::vector<uint8_t>& payload)> remote;
     // Revision 3: a phone's trackpad and keyboard, one frame at a time (0x60 move, 0x61 button, 0x62 scroll, 0x63 text,
     // 0x64 key), called on a network thread.
@@ -121,6 +128,8 @@ public:
     void noticeAction(const std::string& peer,const std::string& key,int action,const std::wstring& reply);
     void pushClipboard(const std::string& peer,const std::wstring& text,bool sensitive);
     void askPhoto(const std::string& peer);
+    // Tests: the relay's direct path goes quiet, as when a network drops it.
+    void stopDirect();
     // Connected to the relay (and through which broker).
     bool internet()const;std::wstring relayBroker()const;
     std::vector<ShareEvent> take();

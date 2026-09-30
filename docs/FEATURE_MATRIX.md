@@ -229,3 +229,12 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Retransmission | Unacknowledged messages sent again after 1.5 s (doubling to 8 s); gaps reported at once (at most every 300 ms) and filled from what came early; ends after 45 s without progress | Older versions on the other side: as before |
 | Pairing QR code | `arnavisland://pair/<code>?k=<fingerprint>`, byte mode, level M, version 4 (33 x 33), drawn on white in Nearby | The phone app 1.2 scans it |
 | Key fingerprint | First 10 bytes of the SHA-256 of this PC's public key; the phone refuses another key and confirms by itself | Typed codes still confirm on both |
+
+| v0.21.0-preview.1 feature | Implemented | Limits |
+|---|---|---|
+| Direct path | UDP per family; candidates (global IPv6, LAN IPv4, STUN-mapped, by hand) in the sealed hellos; sealed probes to all at once every 200 ms for 8 s; the fastest answered path kept, alive every 15 s, dropped after 35 s silent; new tunnels go there, and its tunnels fall back to a broker | Two "hard" (endpoint-dependent) IPv4 NATs can't punch through; the relay carries on |
+| Datagram tunnels | 1,100-byte messages; congestion window 16 to 1,024 (slow start, halved on loss); resends after 3 round trips (150 ms to 2 s) | — |
+| Kept connections | Revision 4: remote and notices connections serve more than one request, a minute apart at most | Older phones ask once, as before |
+| Quality ring | Nearby: whole green (here or direct), amber (relay), short red (600 ms or more, or one broker); round trip, relay count on hover | Round trips measured every 15–20 s |
+| Pair with a typed code | Shelf › Nearby › Type a code; the command bar in eight glass cells, its alphabet only | Needs *Reach my devices anywhere* |
+| Answer-waiting cards | Pairing, offers, handoffs, the code card and messages with actions stay until answered; other alerts wait behind them | — |

@@ -86,7 +86,10 @@ bool IslandWindow::holdCard(const Activity& a){
     const auto& n=content_.notice;const auto& s=shownNotice_;
     const bool stacking=settings_.stackAlerts&&settings_.notifyStyle==1&&settings_.edge==0&&!settings_.floating()&&state_==IslandState::Notification&&content_.card&&events_.active().has_value()&&s.kind!=0;
     const bool same=n.kind==s.kind&&n.app==s.app&&n.device.name==s.device.name;
-    if(!stacking||same){shownNotice_=content_.notice;return false;}
+    // 0.21: a card still waiting for an answer (pairing, files, music, a message to reply to) keeps its place whatever the
+    // style: anything else waits behind it, except its own answer (a share result, kind 16).
+    const bool deciding=decisionShowing()&&!same&&n.kind!=16;
+    if(!deciding&&(!stacking||same)){shownNotice_=content_.notice;cardShownAt_=seconds();return false;}
     if(heldCards_.size()>=4)heldCards_.pop_back();
     heldCards_.push_back({content_.notice,a});content_.notice=shownNotice_;
     if(settings_.sounds&&!fullscreenHidden_)playSound(Sound::Chime);

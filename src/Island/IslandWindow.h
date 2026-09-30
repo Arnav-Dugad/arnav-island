@@ -125,6 +125,8 @@ class IslandWindow {
     struct Nearness{bool here=false;double since=0;};std::map<std::string,Nearness> phoneNear_;void proximity();void proximityCheck();
     static constexpr UINT_PTR ProximityTimer=85,RingPCTimer=86;int ringChimes_=0;std::wstring continuityPath_;
     void openReply(const std::string& peer,const std::string& key,int action,const std::wstring& to);bool shareTimer(UINT_PTR id);
+    // 0.21: another PC's pairing code, typed in the command bar; and whether the card showing still waits for an answer.
+    void openPairCode();bool decisionShowing()const;double cardShownAt_=-10;
     std::shared_ptr<const WallpaperLuma> wallLuma_;bool wallLoading_=false,qaBackdrop_=false;void loadWallpaperLuma();void adaptBackdrop();bool backdropCovered()const;
     // The body's top-left in the canvas (DIPs), including how far a notification pill has dropped (drop: 0..1).
     // Phase 5H: spread side by side with a waiting alert, the pill sits further left.

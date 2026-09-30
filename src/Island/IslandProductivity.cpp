@@ -179,7 +179,7 @@ void IslandWindow::closeCommand(bool restoreFocus){
     transition(IslandState::Compact);feedback(Action::None);
     HWND back=commandReturn_;commandReturn_=nullptr;if(restoreFocus&&back&&IsWindow(back))SetForegroundWindow(back);
 }
-void IslandWindow::commandQuery(bool refreshState){if(content_.command.reply)return;if(content_.command.clips){clipResults();return;}if(commands_)commands_->query(content_.command.text,workspaces_.names(),commandContext(),commandMemory_.items(),settings_.currency,refreshState);}
+void IslandWindow::commandQuery(bool refreshState){if(content_.command.reply||content_.command.pairCode)return;if(content_.command.clips){clipResults();return;}if(commands_)commands_->query(content_.command.text,workspaces_.names(),commandContext(),commandMemory_.items(),settings_.currency,refreshState);}
 // What the island is doing, so an empty bar can suggest the obvious next step.
 CommandContext IslandWindow::commandContext(){
     CommandContext c;const auto& p=content_.playback;c.media=p.available&&p.canToggle;c.playing=c.media&&p.playing;c.track=p.title.empty()?L"":p.title+(p.artist.empty()?L"":L"  \u00b7  "+p.artist);
@@ -200,7 +200,7 @@ void IslandWindow::revealResult(size_t index){
     commandStatus(L"Windows could not show that file",true);
 }
 void IslandWindow::commandResults(){
-    if(!commands_||!content_.command.active||content_.command.clips||content_.command.reply)return;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;
+    if(!commands_||!content_.command.active||content_.command.clips||content_.command.reply||content_.command.pairCode)return;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;
     auto seq=commands_->results(results,icons);if(seq<commandSeq_)return;commandSeq_=seq;
     // Phase 5G: "play" and a song finds it in your Music folder; "shuffle" plays it all; "continue on" offers the music to a paired PC.
     {const std::wstring typed=lowered(trimmed(content_.command.text));std::vector<CommandResult> extra;
@@ -224,7 +224,12 @@ void IslandWindow::commandSelect(int index){
 // A short horizontal shake: nothing to run.
 void IslandWindow::commandShake(){if(motion_.reduced)return;double now=seconds();motion_.dragX.reset(0,now,-420);motion_.dragX.retarget(0,now,{1,900,16});animate();}
 void IslandWindow::commandChar(wchar_t ch){
-    auto& c=content_.command;if(!c.active||ch<0x20||ch==0x7f||c.text.size()>=(c.reply?600u:160u))return;
+    auto& c=content_.command;
+    // A pairing code: its alphabet only (no 0, 1, I, L or O), in capitals; the eighth pairs at once.
+    if(c.active&&c.pairCode){if(ch==L' '||ch==L'-')return;if(ch>=L'a'&&ch<=L'z')ch=wchar_t(ch-L'a'+L'A');
+        if(c.text.size()>=8||std::wstring_view(L"23456789ABCDEFGHJKMNPQRSTUVWXYZ").find(ch)==std::wstring_view::npos){commandShake();return;}
+        c.text.push_back(ch);c.caret=c.text.size();c.status.clear();refresh();if(c.text.size()==8)commandKey(VK_RETURN);return;}
+    if(!c.active||ch<0x20||ch==0x7f||c.text.size()>=(c.reply?600u:160u))return;
     c.text.insert(c.caret,1,ch);++c.caret;c.armed=false;c.status.clear();
     // "clip " switches to searching the clipboard history.
     if(!c.clips&&!c.reply&&c.text==L"clip "){c.clips=true;c.paste=true;c.text.clear();c.caret=0;c.selected=0;}
@@ -236,15 +241,19 @@ bool IslandWindow::commandKey(WPARAM key){
     auto wordLeft=[&](size_t at){while(at>0&&c.text[at-1]==L' ')--at;while(at>0&&c.text[at-1]!=L' ')--at;return at;};
     auto wordRight=[&](size_t at){while(at<c.text.size()&&c.text[at]==L' ')++at;while(at<c.text.size()&&c.text[at]!=L' ')++at;return at;};
     bool edited=false;
+    // A pairing code is edited only from its end: Backspace takes the last cell back.
+    if(c.pairCode&&(key==VK_LEFT||key==VK_RIGHT||key==VK_HOME||key==VK_END||key==VK_DELETE))return true;
     switch(key){
     case VK_ESCAPE:closeCommand();return true;
     // Space is typed (it arrives as WM_CHAR); the island's own "Space activates the highlight" must not run a result.
     case VK_SPACE:return true;
     // 0.20: a reply goes back to the phone's notification.
     case VK_RETURN:if(c.reply){if(trimmed(c.text).empty()){commandShake();return true;}if(share_)share_->noticeAction(c.replyPeer,c.replyKey,c.replyAction,c.text);store_.log("Info","phone_reply");closeCommand();return true;}
+        if(c.pairCode){if(c.text.size()!=8||!share_){commandShake();return true;}const std::string code(c.text.begin(),c.text.end());share_->pairWithCode(code);store_.log("Info","pair_code_typed");
+            closeCommand();content_.shelfStatus=L"Finding the PC with that code\u2026";content_.shelfStatusUntil=seconds()+6;refresh();return true;}
         if(ctrl&&!c.clips){revealResult(size_t(c.selected));return true;}runCommand(size_t(c.selected));return true;
     // Tab takes the ghost completion (the rest of an app, command or file name).
-    case VK_TAB:{if(c.clips||c.reply||c.results.empty())return true;const auto ghost=ghostSuffix(c.text,c.results[0].completion);if(ghost.empty()||c.caret!=c.text.size()){commandShake();return true;}
+    case VK_TAB:{if(c.clips||c.reply||c.pairCode||c.results.empty())return true;const auto ghost=ghostSuffix(c.text,c.results[0].completion);if(ghost.empty()||c.caret!=c.text.size()){commandShake();return true;}
         c.text=c.results[0].completion.substr(0,160);c.caret=c.text.size();edited=true;break;}
     case 'C':{if(!ctrl)return false;if(size_t(c.selected)<c.results.size()){const auto& r=c.results[size_t(c.selected)];
         if(r.kind==CommandKind::OpenFile){copyText(r.target);commandStatus(L"Path copied",false,false);}else if(r.kind==CommandKind::Currency){copyText(r.target);commandStatus(L"Copied "+r.answer,false,false);}}return true;}
@@ -262,6 +271,7 @@ bool IslandWindow::commandKey(WPARAM key){
     case VK_BACK:if(c.clips&&c.text.empty()){c.clips=false;c.paste=false;c.selected=0;commandQuery();refresh();return true;}if(c.caret){size_t from=ctrl?wordLeft(c.caret):c.caret-1;c.text.erase(from,c.caret-from);c.caret=from;edited=true;}break;
     case VK_DELETE:if(c.caret<c.text.size()){size_t to=ctrl?wordRight(c.caret):c.caret+1;c.text.erase(c.caret,to-c.caret);edited=true;}break;
     case 'V':if(!ctrl)return false;{std::wstring pasted;if(OpenClipboard(window_)){if(HANDLE h=GetClipboardData(CF_UNICODETEXT))if(auto* t=static_cast<const wchar_t*>(GlobalLock(h))){pasted=t;GlobalUnlock(h);}CloseClipboard();}
+        if(c.pairCode){for(wchar_t ch:pasted){if(c.text.size()>=8||!c.active||!c.pairCode)break;if(ch!=L' '&&ch!=L'-')commandChar(ch);}return true;}
         auto end=pasted.find_first_of(L"\r\n");if(end!=std::wstring::npos)pasted.resize(end);for(auto& ch:pasted)if(ch==L'\t')ch=L' ';pasted=pasted.substr(0,160-std::min<size_t>(160,c.text.size()));
         c.text.insert(c.caret,pasted);c.caret+=pasted.size();edited=true;}break;
     case 'A':if(!ctrl)return false;c.caret=c.text.size();break;

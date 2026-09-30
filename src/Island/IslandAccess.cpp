@@ -221,7 +221,7 @@ std::wstring IslandWindow::accessibleName(Action a)const{
     if(inRange(a,Action::NearbyBrowseBase,Action::NearbyBrowseEnd))return peer(Action::NearbyBrowseBase)+L"’s Shelf";
     if(inRange(a,Action::NearbyRingBase,Action::NearbyRingEnd))return L"Ring "+peer(Action::NearbyRingBase);
     if(inRange(a,Action::NoticeActionBase,Action::NoticeActionEnd)){const size_t i=size_t(int(a)-int(Action::NoticeActionBase));return i<content_.notice.actions.size()?content_.notice.actions[i].first:std::wstring(L"Action");}
-    switch(a){case Action::PairAnywhere:return L"Pair with a code";case Action::PairingStop:return L"Stop offering the code";case Action::PairingShow:return L"Show the QR code";case Action::PhoneBack:return L"Back to Nearby";
+    switch(a){case Action::PairAnywhere:return L"Pair with a code";case Action::PairingStop:return L"Stop offering the code";case Action::PairingShow:return L"Show the QR code";case Action::PairTypeCode:return L"Type another PC\u2019s pairing code";case Action::PhoneBack:return L"Back to Nearby";
         case Action::PhoneRing:return L"Ring the phone";case Action::PhonePhoto:return L"Ask the phone for a photo";case Action::PhoneClipboard:return L"Give the phone this clipboard";default:break;}
     if(inRange(a,Action::HandoffPeerBase,Action::HandoffPeerEnd))return L"Continue on "+peer(Action::HandoffPeerBase);
     if(inRange(a,Action::LibraryItemBase,Action::LibraryItemEnd)){const size_t i=size_t(content_.libraryOffset)+row(Action::LibraryItemBase);if(content_.libraryTracks&&i<content_.libraryTracks->size()){const auto& t=(*content_.libraryTracks)[i];return L"Play "+t.title+(t.artist.empty()?L"":L" by "+t.artist);}return L"Song";}

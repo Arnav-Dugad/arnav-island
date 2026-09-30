@@ -217,3 +217,9 @@ Click a paired PC in Nearby to make it where Send goes. **Forget** unpairs it.
 **Proximity.** Settings › Privacy & productivity:
 - *Welcome my phone back* shows its battery when it comes home.
 - *Lock when my phone leaves* locks this PC once your phone has gone and nobody is using the PC.
+
+## v0.21 Straight there
+
+**Nothing to set up.** On different networks, your phone and your PC find a direct path by themselves when they can. Nearby's ring shows how each device is reached: green directly or here, amber through the relay, red when it's slow. Hover a row for its round trip and how many relays carry it.
+
+**Two PCs, anywhere.** On one PC: Shelf › Nearby › **Pair with a code**. On the other: Shelf › Nearby › **Type a code**, type it, then check both show the same six digits.

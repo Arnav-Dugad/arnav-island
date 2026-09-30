@@ -1,3 +1,43 @@
+# Arnav Island 0.21.0-preview.1 — straight there
+
+## Faster on any network
+- **A direct path.** When your phone and this PC are on different networks, they now try to reach each other directly first:
+  - over IPv6, which most networks in India now have (Jio's mobile network is all IPv6)
+  - through most home routers over IPv4, by UDP hole punching with free STUN servers
+- **How much faster:** measured between the phone app and this PC's engine, a remote command takes 1–2 ms on a direct path, against about 340–500 ms through the relay (the brokers are in Europe).
+- It's found within a few seconds of both being online, and kept alive every 15 s. If it goes quiet, everything carries on through the relay, even connections already open.
+- It's still free, and sealed end to end with the pair's own key, exactly like the relay.
+- **One round trip a command.** The phone keeps its remote connection open, so each command is one round trip with no new handshake. Before, every command opened a connection and a handshake: two round trips. Your phone's notifications and battery reach the island the same way.
+- **The connection's quality ring.** Nearby shows a thin ring round each device:
+  - whole and green on this network or directly
+  - amber through the relay
+  - a short red arc when it's slow
+
+  Its row says how it's reached and its round trip. Hover the row to see how many relays carry it. The phone app shows the same ring.
+
+## Pairing
+- **Fixed: the pairing card hid itself.** After you scanned the QR code, the island shrank from the QR view to the "Pair with …?" card. The pointer was no longer over it, and the card folded away before you could press Pair.
+  - A card that needs an answer now stays until it's answered or runs out: pairing, files offered, music handed over, the pairing code, a message to reply to.
+  - Other alerts wait behind it.
+- **Type a code on a PC too.** **Shelf › Nearby › Type a code** takes another PC's pairing code, in glass cells, so two PCs pair from anywhere.
+- Pairing through the relay now takes about a second.
+- Fixed: the command bar's suggestions showed under a reply you were typing.
+
+## Checks
+- **Unit suites:** core 11,682; model 2,061; phase 5,724; share 199; provider lifecycle passing.
+- **The phone against this PC's engine, live over the internet (six tests):**
+  - a direct path found within seconds of pairing through the relay; the remote in 1–2 ms a command; 3 MB each way over it
+  - the path gone quiet on the PC's side: back on the relay within the minute, with the open remote connection carried over
+  - through the relay on one broker (either side), a scanned code with another PC's key refused, and messages dropped on purpose both ways
+  - the full relay test: files, the remote, notices, ring and music
+- **Two of this PC's engines on the relay:** paired with a code in 1.0 s, and direct a second later.
+- **UI test** on the signed build: all 53 stages, including:
+  - the pairing card staying when the pointer leaves
+  - another alert waiting behind it
+  - typing a code in cells (its alphabet only)
+- **Settings end-to-end:** 216 checks, 0 failures.
+- **Captured and checked** in dark and light: Nearby's quality rings (here, direct over IPv6, relay, slow) and the code bar.
+
 # Arnav Island 0.20.1-preview.1 — scan to pair, from anywhere
 
 ## Fixed: the phone couldn’t find this PC with a code

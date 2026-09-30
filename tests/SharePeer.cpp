@@ -6,6 +6,9 @@
 //   then: peer <id> <port> | send <id> <path> | shelf <path> | handoff <id> <file|-> | ring <id> | host | code <code> | peers | quit
 // --relay: also through the public relay (as on other networks); host offers a pairing code (CODE, then the LINK its QR
 // code carries), code pairs with one. --relay-lose=N: every Nth data message is sent only the second time (as if dropped).
+// The relay's direct path is off unless asked for (so a test never opens a socket on every interface): --direct-loopback
+// on the loopback only, --direct on every interface (by hand); --direct-candidate=<address> offers that address too
+// (10.0.2.2 for an emulator). `peers` also prints PATH <id> <kind> <rtt ms> <relays> <v6>.
 // With a cover (screenshots of the phone app), the remote reports a made-up song that plays on, under that PC name, and
 // keeps the volume it is given; each shelf command adds to the Shelf (a "<path>.preview" JPEG beside a file is its preview).
 #include "Productivity/ShareService.h"
@@ -31,13 +34,15 @@ std::wstring widen(const std::string& s){if(s.empty())return {};const int n=Mult
 int main(int argc,char** argv){
     // --relay: reach devices through the public brokers too. --relay-only=N: through that broker alone (0 HiveMQ, 1 EMQX,
     // 2 Mosquitto), as a device that can't reach the others would (the interop tests pair such a PC with a phone on all).
-    bool relay=false;int only=-1,lose=0;{int kept=0;for(int i=0;i<argc;++i){const std::string a=argv[i];if(a=="--relay")relay=true;else if(a.rfind("--relay-only=",0)==0){relay=true;only=std::atoi(a.c_str()+13);}
-        else if(a.rfind("--relay-lose=",0)==0)lose=std::atoi(a.c_str()+13);else argv[kept++]=argv[i];}argc=kept;}
+    bool relay=false,directLoopback=false,direct=false;int only=-1,lose=0;std::vector<std::string> extra;
+    {int kept=0;for(int i=0;i<argc;++i){const std::string a=argv[i];if(a=="--relay")relay=true;else if(a.rfind("--relay-only=",0)==0){relay=true;only=std::atoi(a.c_str()+13);}
+        else if(a.rfind("--relay-lose=",0)==0)lose=std::atoi(a.c_str()+13);else if(a=="--direct-loopback")direct=directLoopback=true;else if(a=="--direct")direct=true;
+        else if(a.rfind("--direct-candidate=",0)==0)extra.push_back(a.substr(19));else argv[kept++]=argv[i];}argc=kept;}
     if(argc<3){std::cerr<<"share_peer <port> <folder>\n";return 2;}
     const uint16_t port=uint16_t(std::atoi(argv[1]));const std::filesystem::path folder=widen(argv[2]);std::error_code e;std::filesystem::create_directories(folder/L"dl",e);
     std::vector<uint8_t> qaCover;std::wstring name=L"Interop PC";const bool qa=argc>=5;
     if(qa){std::ifstream in(argv[3],std::ios::binary);qaCover.assign(std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>());name=widen(argv[4]);}
-    ShareOptions o;o.tcpPort=port;o.discovery=false;o.loopback=true;o.folder=folder.wstring();o.downloads=(folder/L"dl").wstring();o.handoff=(folder/L"handoff").wstring();o.name=name;o.relay=relay;o.relayLoseEvery=lose;
+    ShareOptions o;o.tcpPort=port;o.discovery=false;o.loopback=true;o.folder=folder.wstring();o.downloads=(folder/L"dl").wstring();o.handoff=(folder/L"handoff").wstring();o.name=name;o.relay=relay;o.relayLoseEvery=lose;o.direct=direct;o.directLoopback=directLoopback;o.directExtra=extra;
     if(only>=0&&only<=2){const std::pair<std::wstring,uint16_t> all[]={{L"broker.hivemq.com",8884},{L"broker.emqx.io",8084},{L"test.mosquitto.org",8081}};o.relayBrokers={all[only]};}
     const auto began=std::chrono::steady_clock::now();auto volume=std::make_shared<std::atomic<int>>(42);auto muted=std::make_shared<std::atomic<bool>>(false);auto playing=std::make_shared<std::atomic<bool>>(true);
     o.input=[](const std::string&,const std::vector<uint8_t>& f){std::string h;static const char* d="0123456789abcdef";for(uint8_t b:f){h+=d[b>>4];h+=d[b&15];}say("INPUT "+h);};
@@ -99,11 +104,14 @@ int main(int argc,char** argv){
         else if(cmd=="handoff"){std::string id,file;in>>id>>file;ShareHandoff h;h.title=L"PC Song";h.artist=L"PC Artist";h.position=12.5;h.duration=180;h.cover.assign(700,0x33);if(qa){h.title=L"Glass Horizons";h.artist=L"Aurora Fields";h.app=L"Spotify";h.position=8;h.duration=30;h.cover=qaCover;}share.handoff(id,h,file=="-"?L"":widen(file));}
         else if(cmd=="ring"){std::string id;in>>id;share.ring(id);}
         else if(cmd=="host")share.hostPairing();
+        else if(cmd=="direct"){std::string what;in>>what;if(what=="off"){share.stopDirect();say("OK direct off");}}
         else if(cmd=="action"){std::string id,key,reply;int index=0;in>>id>>key>>index;std::getline(in>>std::ws,reply);share.noticeAction(id,key,index,widen(reply));}
         else if(cmd=="clip"){std::string id,text;in>>id;std::getline(in>>std::ws,text);share.pushClipboard(id,widen(text),false);}
         else if(cmd=="photo"){std::string id;in>>id;share.askPhoto(id);}
         else if(cmd=="code"){std::string code;std::getline(in>>std::ws,code);share.pairWithCode(code);}
-        else if(cmd=="peers"){for(auto& p:share.peers())say("PEER "+p.id+" "+std::to_string(p.paired)+" "+std::to_string(p.online)+" "+std::to_string(p.viaInternet)+" "+narrow(p.name));say("INTERNET "+std::to_string(share.internet())+" "+narrow(share.relayBroker()));}
+        else if(cmd=="peers"){for(auto& p:share.peers()){say("PEER "+p.id+" "+std::to_string(p.paired)+" "+std::to_string(p.online)+" "+std::to_string(p.viaInternet)+" "+narrow(p.name));
+                if(p.paired)say("PATH "+p.id+" "+std::to_string(p.path)+" "+std::to_string(int(p.rtt))+" "+std::to_string(p.relays)+" "+std::to_string(p.v6?1:0));}
+            say("INTERNET "+std::to_string(share.internet())+" "+narrow(share.relayBroker()));}
     }
     done=true;events.join();return 0;
 }

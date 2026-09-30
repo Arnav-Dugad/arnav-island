@@ -114,6 +114,15 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     if(testing_&&cmd.find(L"--qa-pairing")!=std::wstring::npos){settings_.sharing=true;settings_.relay=true;content_.settings=settings_;content_.shareName=L"Desk PC";
         const auto qr=qrEncode("arnavisland://pair/7K2PMX4Q?k=4f1c9a07d2b8e63a5c10");content_.pairing={L"7K2P-MX4Q",seconds()+600,qr.size,qr.modules};
         content_.page=Page::Shelf;content_.shelfTab=2;content_.pinned=true;transition(IslandState::Expanded);refresh();}
+    // --qa-nearby: Nearby with made-up devices, one reached each way (connection quality rings): here, directly over IPv6,
+    // through the relay, and a weak one.
+    if(testing_&&cmd.find(L"--qa-nearby")!=std::wstring::npos){settings_.sharing=true;settings_.relay=true;content_.settings=settings_;content_.shareName=L"Desk PC";content_.internet=true;
+        auto peer=[](const char* id,const wchar_t* name,bool phone,bool internet,int path,double rtt,int relays,bool v6){SharePeer p;p.id=id;p.name=name;p.paired=true;p.online=true;p.revision=shareRevision;p.phone=phone;
+            p.viaInternet=internet;p.path=path;p.rtt=rtt;p.relays=relays;p.v6=v6;if(phone){p.battery=76;p.charging=false;}return p;};
+        content_.nearby={peer("a1",L"Studio PC",false,false,0,0,0,false),peer("b2",L"Travel PC",false,true,2,38,3,true),peer("c3",L"Galaxy S23+",true,true,1,342,3,false),peer("d4",L"Office PC",false,true,1,812,1,false)};
+        content_.page=Page::Shelf;content_.shelfTab=2;content_.pinned=true;transition(IslandState::Expanded);refresh();}
+    // --qa-pair-code: the command bar taking another PC's pairing code, four of eight typed.
+    if(testing_&&cmd.find(L"--qa-pair-code")!=std::wstring::npos){openPairCode();for(wchar_t ch:std::wstring(L"7K2P"))commandChar(ch);}
     // --qa-late (with --qa-share-card): the card comes 5 s after start (so a screen reader client is already listening).
     if(auto at=cmd.find(L"--qa-share-card=");testing_&&at!=std::wstring::npos&&cmd.find(L"--qa-late")!=std::wstring::npos){qaLateCard_=_wtoi(cmd.c_str()+at+16);SetTimer(window_,71,5000,nullptr);}
     else if(auto at=cmd.find(L"--qa-share-card=");testing_&&at!=std::wstring::npos){const int kind=_wtoi(cmd.c_str()+at+16);
@@ -674,6 +683,17 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                         perform(Action::PairingShow);
                         pass=pass&&state_==IslandState::Expanded&&content_.page==Page::Shelf&&content_.shelfTab==2&&has(Action::PairingStop)&&!has(Action::PairAnywhere);
                         perform(Action::PairingStop);pass=pass&&content_.pairing.code.empty()&&has(Action::PairAnywhere);
+                        // 0.21: a pairing card waits for its answer. The pointer leaving (as the island shrinks to the card) doesn't
+                        // fold it away, and another alert waits behind it.
+                        content_.pinned=false;shareCard(14,L"QA Phone",L"123 456",{},60);SendMessageW(window_,WM_TIMER,8,0);
+                        pass=pass&&state_==IslandState::Notification&&content_.notice.kind==14;
+                        phoneCard(L"UI test later",L"Nothing real",L"Messages  ·  Test phone",nullptr,5);pass=pass&&content_.notice.kind==14&&heldCards_.size()==1;
+                        heldCards_.clear();syncBud();events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);
+                        // 0.21: another PC's code, typed: its alphabet only, in capitals, eight at most; Backspace takes one back.
+                        openPairCode();for(wchar_t ch:std::wstring(L"7k0-2p"))commandChar(ch);
+                        pass=pass&&content_.command.active&&content_.command.pairCode&&content_.command.text==L"7K2P"&&accessibleName(Action::PairTypeCode)==L"Type another PC’s pairing code";
+                        commandKey(VK_BACK);pass=pass&&content_.command.text==L"7K2";for(wchar_t ch:std::wstring(L"PMX41O"))commandChar(ch);
+                        pass=pass&&content_.command.active&&content_.command.text==L"7K2PMX4";closeCommand(false);pass=pass&&!content_.command.active;
                         settings_.sharing=wasSharing;settings_.relay=wasRelay;content_.settings=settings_;content_.shelfTab=0;perform(Action::Close);}
                     events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);}
                 content_.pinned=false;phoneCard(L"UI test message",L"Nothing real",L"Messages  \u00b7  Test phone",nullptr,3);
@@ -781,7 +801,11 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
         if(w==19){KillTimer(window_,19);if(content_.live&&content_.hovered==Action::Overview&&interaction_==InteractionState::Hover)perform(Action::Overview);}
         // Over the compact controls the island stays compact, so they can be clicked.
         if(w==7){KillTimer(window_,7);if(state_==IslandState::Compact&&content_.hovered!=Action::None)return 0;if(settings_.autoHide&&!pointerOffEdge()){edgeHold_=true;return 0;}if(settings_.hoverOpen&&interaction_==InteractionState::Hover&&state_==IslandState::Compact)transition(settings_.uiMode==2?IslandState::Expanded:IslandState::LiveActivity);}
-        if(w==8){KillTimer(window_,8);if(interaction_==InteractionState::Rest&&!content_.pinned)transition(IslandState::Compact);}
+        if(w==8){KillTimer(window_,8);
+            // 0.21: a card that waits for an answer stays until it's answered or runs out, and one that has only just
+            // appeared (the island shrinking to it moves the edge away from the pointer) keeps its moment too.
+            if(state_==IslandState::Notification&&(decisionShowing()||seconds()-cardShownAt_<2.4))return 0;
+            if(interaction_==InteractionState::Rest&&!content_.pinned)transition(IslandState::Compact);}
         if(w==DropTimer){syncDropTimer();if(dropTimer_)renderer_->stepDrops();return 0;}
         if(w==UpdateTimer){installUpdate();return 0;}if(w==UpdatedTimer){KillTimer(window_,UpdatedTimer);showUpdated();return 0;}
         if(w==9){if(content_.focus.tick(seconds())){content_.page=Page::Focus;events_.publish({ActivityKind::Timer,"timer",70,0,2,8},seconds());presentActivity();}if(IsWindowVisible(window_))refresh();clockTimer();}

@@ -284,3 +284,38 @@ Older versions still work with this: their acknowledgements and duplicates behav
 - The same key: the phone says yes by itself, and the PC still confirms the six digits.
 
 Someone who sees the QR code and races the PC to answer it can't pass the fingerprint check.
+
+**The direct path (0.21).** Beside the brokers, each side keeps a UDP socket per family, and its hellos carry its candidates:
+- global IPv6 addresses (2000::/3)
+- LAN IPv4 addresses
+- the public addresses STUN binding requests return (stun.l.google.com, stun.cloudflare.com)
+
+Addresses are looked at again every 45 s, and at once after a network change.
+
+On hearing new candidates, both sides send sealed probes (nonce and send time) to every candidate every 200 ms for 8 s. Each side's outgoing probes open its own NAT and firewall for the other's (hole punching). A probe is answered to the address it came from. An address the other side reached us from is probed too (peer-reflexive), which gets through one "hard" NAT.
+- The first answered path is kept, and a later one only if it's 30% faster.
+- It's kept alive every 15 s and dropped after 35 s without a sealed datagram.
+- With no path, it's tried again every minute.
+- A probe over a broker measures the relay's round trip, for the quality ring.
+
+Datagrams carry `A1 01`, the recipient's inbox id (20 bytes), then the message sealed exactly as on a broker, so the rest of the relay treats the path as one more broker (`directPath`). A tunnel on it:
+- carries at most 1,100 bytes a message
+- paces by a congestion window (slow start from 64, a message per round trip after, halved on loss, 16 to 1,024)
+- resends after three round trips (150 ms to 2 s), doubling to 4 s
+- reports gaps at the path's round trip (40 to 300 ms)
+
+When the path goes quiet, its tunnels move to the broker the other side was heard on most lately, and the other side's follow them there (a tunnel on the direct path accepts that broker). Nothing that was acknowledged is sent again.
+
+This machine's IPv4 NAT is endpoint-dependent and its router offers no UPnP or NAT-PMP, but its IPv6 has no NAT and STUN answers there in 25 to 50 ms. Two hard IPv4 NATs can't punch through; the relay carries on.
+
+**Kept connections (revision 4).** A phone's remote and notices connections serve requests until closed or idle for a minute. The phone keeps one per device and mode, replaces it after 45 s idle or when a faster path appears, and tries a fresh one once if the kept one fails. A command is then one round trip.
+
+Measured between the phone's engine and share_peer, per remote command:
+
+| Path | Round trip |
+|---|---|
+| direct (loopback) | 1 to 2 ms |
+| relay, phone on one broker | 337 ms |
+| relay, PC on one broker | 501 ms |
+
+Before 0.21, each command was two round trips plus a handshake.

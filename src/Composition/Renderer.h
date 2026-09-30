@@ -121,7 +121,9 @@ struct ContentSnapshot {
     bool batteryHealthChart=false;std::vector<std::pair<int64_t,float>> healthDays;std::vector<NoteLine> whatsNew;bool whatsNewView=false;int whatsNewOffset=0;
     // 0.20: reply, the bar answers a phone's notification (replyTo: to whom; the peer, key and action it goes back to).
     struct Command{bool clips=false,paste=false;bool active=false,armed=false,error=false;std::wstring text,status;size_t caret=0;int selected=0;std::vector<CommandResult> results;std::vector<std::shared_ptr<const Artwork>> icons;
-        bool reply=false;std::wstring replyTo;std::string replyPeer,replyKey;int replyAction=0;} command;
+        bool reply=false;std::wstring replyTo;std::string replyPeer,replyKey;int replyAction=0;
+        // 0.21: pairCode, the bar takes another PC's pairing code (eight letters and digits, in glass cells).
+        bool pairCode=false;} command;
 };
 
 class Renderer {

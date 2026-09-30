@@ -322,12 +322,19 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         auto iconButton=[&](Action a,Icon glyph,float x,float y,float w=32,float h=32,bool primary=false,bool enabled=true){targets.push_back({a,x,y,w,h,enabled});if(primary)box(x,y,w,h,!enabled?raised:s.light?0x252b33:0xe8ecf2,h/2);icon(a,glyph,x+(w-18)/2,y+(h-18)/2,18,!enabled?muted:primary?(s.light?0xffffff:0x161b22):ink);};
         auto value=[](double v,int precision=0){if(v<0)return std::wstring(L"—");wchar_t buf[48];swprintf(buf,48,precision?L"%.1f":L"%.0f",v);return std::wstring(buf);};
         if(s.card&&s.command.active){
-            const auto& c=s.command;const int rowsMax=5;box(0,0,380,42,raised,14);drawIcon(rt,d2d_.Get(),c.reply?Icon::Phone:c.clips?Icon::Clipboard:Icon::Search,14,12,18,c.text.empty()?muted:ink);
+            const auto& c=s.command;const int rowsMax=5;box(0,0,380,42,raised,14);drawIcon(rt,d2d_.Get(),c.pairCode?Icon::Laptop:c.reply?Icon::Phone:c.clips?Icon::Clipboard:Icon::Search,14,12,18,c.text.empty()?muted:ink);
             // The typed line scrolls left when it is wider than the field, keeping the caret visible.
             const float field=320;float width=measure(c.text,14),before=measure(c.text.substr(0,std::min(c.caret,c.text.size())),14),shift=std::max(0.f,std::min(width-field,before-field+8));
+            // 0.21: another PC's pairing code, eight glass cells in two groups; the caret waits in the next one.
+            if(c.pairCode){const float cw=26,ch=30,gap=4,dash=14;float x=46;
+                for(size_t i=0;i<8;++i){if(i==4){text(rt,L"\u2013",x-2,6,dash,14,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_CENTER,30);x+=dash;}
+                    box(x,6,cw,ch,s.light?0xffffff:0x2c323c,7);
+                    if(i==c.text.size()){b->SetColor(D2D1::ColorF(accent,.85f));rt->DrawRoundedRectangle(D2D1::RoundedRect({x+.75f,6.75f,x+cw-.75f,6+ch-.75f},6.25f,6.25f),b.Get(),1.5f);caretTarget_=x+cw/2-1;}
+                    if(i<c.text.size())label(std::wstring(1,c.text[i]),x,6,cw,ch,15,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);x+=cw+gap;}}
+            else{
             if(c.text.empty())text(rt,c.reply?L"Reply to "+c.replyTo:c.clips?std::wstring(L"Search your copies"):std::wstring(L"Type an app, file, command or setting"),46,0,field,14,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);
             else{rt->PushAxisAlignedClip(D2D1::RectF(42,0,42+field+4,42),D2D1_ANTIALIAS_MODE_ALIASED);text(rt,c.text,42-shift,0,width+40,14,ink,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);rt->PopAxisAlignedClip();}
-            caretTarget_=42+before-shift;
+            caretTarget_=42+before-shift;}
             // Ghost completion: the rest of the top result, faint after the caret, with a Tab keycap.
             const std::wstring ghost=!c.clips&&!c.results.empty()&&c.caret==c.text.size()?ghostSuffix(c.text,c.results[0].completion):std::wstring{};
             if(!ghost.empty()){const float gx=42-shift+width,right=42+field-36;if(right-gx>16){rt->PushAxisAlignedClip(D2D1::RectF(gx,0,right,42),D2D1_ANTIALIAS_MODE_ALIASED);text(rt,ghost,gx,0,right-gx+40,14,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,42);rt->PopAxisAlignedClip();
@@ -339,8 +346,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 case CommandKind::DarkMode:case CommandKind::Sleep:return Icon::Moon;case CommandKind::Bluetooth:return Icon::Bluetooth;case CommandKind::WiFi:return Icon::Wifi;case CommandKind::Airplane:return Icon::Plane;case CommandKind::EmptyBin:return Icon::Trash;
                 case CommandKind::Restart:return Icon::Reset;case CommandKind::ShutDown:return Icon::Power;case CommandKind::OpenFile:return Icon::File;case CommandKind::Currency:return Icon::Exchange;case CommandKind::Weather:return Icon::Cloud;case CommandKind::PlaySong:return Icon::Music;case CommandKind::ShuffleMusic:return Icon::Shuffle;case CommandKind::ContinueOn:return Icon::Handoff;default:return Icon::Info;}};
             if(c.results.empty()&&c.clips){drawIcon(rt,d2d_.Get(),Icon::Clipboard,14,62,16,muted);text(rt,s.settings.clipboardHistory?(c.text.empty()?L"Nothing copied yet":L"No copies match"):L"Turn on clipboard history to search your copies",46,52,330,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,38);}
-            else if(c.results.empty()){
-                // Nothing typed yet: a few things to try.
+            else if(c.results.empty()&&!c.reply&&!c.pairCode){
+                // Nothing typed yet: a few things to try (not for a reply or a pairing code).
                 const std::pair<Icon,const wchar_t*> hints[]={{Icon::Moon,L"dark mode  \u00b7  bluetooth off  \u00b7  volume 40"},{Icon::Focus,L"focus 25  \u00b7  timer 10 min  \u00b7  empty recycle bin"},{Icon::Search,L"spotify  \u00b7  budget pdfs from last month  \u00b7  100 usd to eur"}};
                 for(int i=0;i<3;++i){float y=52+i*40.f;drawIcon(rt,d2d_.Get(),hints[i].first,14,y+10,16,muted);text(rt,hints[i].second,46,y,330,11,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,38);}
             }
@@ -361,8 +368,10 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 else if(!r.marks.empty())markedText(rt,r.title,r.marks,46,y+2,room,12.5f,ink,accent);else text(rt,r.title,46,y+2,room,12.5f,r.kind==CommandKind::None?muted:ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
                 text(rt,r.detail,46,y+21,room,10,muted);if(tag)text(rt,tag,tagRight-tagWidth,y+10,tagWidth,9.5f,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_TRAILING,19);
                 if(keycap){box(372-capWidth,y+10,capWidth,19,s.light?0xffffff:0x2c323c,6);label(cap,372-capWidth,y+10,capWidth,19,9.5f,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);}}
-            const float footer=c.results.empty()?commandFooterY(c.clips?1:3):rowsLaid.footer;
-            if(!c.status.empty()){const bool workspace=size_t(c.selected)<c.results.size()&&c.results[size_t(c.selected)].kind==CommandKind::Workspace;drawIcon(rt,d2d_.Get(),c.error?Icon::Info:c.armed?(workspace?Icon::Workspace:Icon::Info):Icon::Check,2,footer+6,14,c.error?0xe5484d:accent);text(rt,c.status,22,footer,356,10.5f,c.error?0xe5484d:ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,26);}
+            const float footer=c.results.empty()?commandFooterY(c.pairCode||c.reply?0:c.clips?1:3):rowsLaid.footer;
+            // Where the code comes from, under the cells.
+            if(c.pairCode&&c.status.empty()){drawIcon(rt,d2d_.Get(),Icon::Info,2,footer+6,14,muted);text(rt,L"It shows on that PC\u2019s island: Shelf \u203a Nearby \u203a Pair with a code",22,footer,356,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,26);}
+            else if(!c.status.empty()){const bool workspace=size_t(c.selected)<c.results.size()&&c.results[size_t(c.selected)].kind==CommandKind::Workspace;drawIcon(rt,d2d_.Get(),c.error?Icon::Info:c.armed?(workspace?Icon::Workspace:Icon::Info):Icon::Check,2,footer+6,14,c.error?0xe5484d:accent);text(rt,c.status,22,footer,356,10.5f,c.error?0xe5484d:ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,26);}
             else{float x=0;
                 // The footer names what the keys do for the selected row.
                 const CommandResult* chosen=size_t(c.selected)<c.results.size()?&c.results[size_t(c.selected)]:nullptr;std::vector<std::pair<const wchar_t*,const wchar_t*>> hints;
@@ -875,8 +884,21 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                     const bool ring=p.paired&&ready&&p.phone&&p.revision>=2,browse=p.paired&&ready&&!p.phone&&p.revision>=1&&s.settings.sharing;
                     const float room=ring||browse?(shelfFiles?120.f:208.f):182.f;
                     drawIcon(rt,d2d_.Get(),p.phone?Icon::Phone:Icon::Laptop,11,y+8,16,p.online?ink:muted);text(rt,p.name,36,y+1,room,11.5f,p.online?ink:muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,17);
+                    // 0.21: the connection's quality ring round the device: whole and green on this network or directly, most of
+                    // the way and amber through the relay, a short red arc when that's weak (a slow round trip, or one broker left).
+                    if(p.paired&&p.online&&ready){const bool direct=!p.viaInternet||p.path==2,weak=!direct&&(p.rtt>=600||p.relays<=1);const float f=direct?1.f:weak?.3f:.62f;
+                        ComPtr<ID2D1SolidColorBrush> qb;rt->CreateSolidColorBrush(D2D1::ColorF(track),&qb);const D2D1_POINT_2F c{19,y+16};const float r=12.5f;rt->DrawEllipse(D2D1::Ellipse(c,r,r),qb.Get(),1.6f);
+                        qb->SetColor(D2D1::ColorF(direct?0x5fd98a:weak?0xff6b61:0xffb340));
+                        if(f>=1)rt->DrawEllipse(D2D1::Ellipse(c,r,r),qb.Get(),1.6f);
+                        else{ComPtr<ID2D1PathGeometry> arc;d2d_->CreatePathGeometry(&arc);ComPtr<ID2D1GeometrySink> sink;arc->Open(&sink);const float a=f*6.2831853f;
+                            sink->BeginFigure({c.x,c.y-r},D2D1_FIGURE_BEGIN_HOLLOW);sink->AddArc(D2D1::ArcSegment({c.x+r*std::sin(a),c.y-r*std::cos(a)},{r,r},0,D2D1_SWEEP_DIRECTION_CLOCKWISE,a>3.14159f?D2D1_ARC_SIZE_LARGE:D2D1_ARC_SIZE_SMALL));sink->EndFigure(D2D1_FIGURE_END_OPEN);sink->Close();
+                            ComPtr<ID2D1StrokeStyle> round;auto style=D2D1::StrokeStyleProperties();style.startCap=style.endCap=D2D1_CAP_STYLE_ROUND;d2d_->CreateStrokeStyle(style,nullptr,0,&round);rt->DrawGeometry(arc.Get(),qb.Get(),1.6f,round.Get());}}
                     std::wstring status=p.paired?(p.online?(!ready?L"Needs the latest Arnav Island":target?L"Sends go here":L"Paired"):L"Paired \u00b7 away"):L"Not paired";
-                    if(p.paired&&p.viaInternet)status=target?L"Sends go here  \u00b7  over the internet":L"Online  \u00b7  over the internet";
+                    // 0.21: how it's reached, and its round trip; hovered, how many relays carry it (or that it's this network).
+                    if(p.paired&&p.viaInternet){wchar_t ms[32]=L"";if(p.rtt>0)swprintf(ms,32,L"  \u00b7  %d ms",int(std::lround(p.rtt)));
+                        const std::wstring how=p.path==2?(p.v6?std::wstring(L"direct over IPv6"):std::wstring(L"direct")):s.hovered==row&&p.relays>0?L"through "+std::to_wstring(p.relays)+(p.relays==1?L" free relay":L" free relays"):(p.rtt>=600||p.relays<=1)?std::wstring(L"slow, through the relay"):std::wstring(L"through the relay");
+                        status=(target?L"Sends go here  \u00b7  ":L"Online  \u00b7  ")+how+ms;}
+                    else if(p.paired&&p.online&&ready&&s.hovered==row)status+=L"  \u00b7  on this network";
                     if(p.phone&&p.paired&&p.online&&p.battery>=0)status+=L"  \u00b7  "+std::to_wstring(p.battery)+(p.charging?L"%, charging":L"%");
                     if(moving!=s.transfers.end()){const double f=moving->total?double(moving->done)/double(moving->total):0;wchar_t pc[16];swprintf(pc,16,L"  \u00b7  %d%%",int(f*100));status=(moving->outgoing?L"Sending ":L"Receiving ")+moving->title+pc;
                         if(moving->rate>0){status+=L"  \u00b7  "+rateText(moving->rate);const auto left=leftText(double(moving->total-std::min(moving->done,moving->total))/moving->rate);if(!left.empty())status+=L"  \u00b7  "+left;}
@@ -889,8 +911,9 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                         if(ring)button(Action(int(Action::NearbyRingBase)+int(i)),L"Ring",browseX,y+4,60,24);button(forget,L"Forget",316,y+4,58,24);}
                     else button(row,L"Pair",316,y+4,58,24,true,p.online&&ready);}
                 // 0.20: devices on other networks pair with a code shown here.
-                const bool anywhere=s.settings.relay;if(anywhere)button(Action::PairAnywhere,L"Pair with a code",262,202,118,24,false,s.internet);
-                text(rt,shelfNote?s.shelfStatus:(s.shareName.empty()?std::wstring(L"Visible to your PCs on this network"):L"This PC: "+s.shareName+(anywhere&&s.internet?L"  \u00b7  reachable anywhere":L"")),0,203,anywhere?256.f:380.f,10,shelfNote?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
+                // 0.21: and another PC's code is typed here (Type a code), so two PCs pair from anywhere too.
+                const bool anywhere=s.settings.relay;if(anywhere){button(Action::PairTypeCode,L"Type a code",172,202,84,24,false,s.internet);button(Action::PairAnywhere,L"Pair with a code",262,202,118,24,false,s.internet);}
+                text(rt,shelfNote?s.shelfStatus:(s.shareName.empty()?std::wstring(L"Visible to your PCs on this network"):L"This PC: "+s.shareName),0,203,anywhere?166.f:380.f,10,shelfNote?accent:muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,25);
             }else if(!s.settings.clipboardHistory){
                 box(0,62,380,130,raised,18);drawIcon(rt,d2d_.Get(),Icon::Clipboard,176,74,28,accent);label(L"Keep what you copy close",20,106,340,24,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
                 label(L"Your last 24 copies, in memory only. Private copies are skipped.",20,130,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);button(Action::ClipboardEnable,L"Turn on",150,156,80,26,true);

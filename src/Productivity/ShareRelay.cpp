@@ -1,6 +1,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include "ShareRelay.h"
+#include <iphlpapi.h>
 #include <winhttp.h>
 #include <bcrypt.h>
 #include <algorithm>
@@ -36,6 +37,20 @@ const char topicPrefix[]="arnavisland/r1/";
 const char codeAlphabet[]="23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 // WINHTTP_OPTION_IPV6_FAST_FALLBACK (not in MinGW's winhttp.h).
 constexpr DWORD ipv6FastFallback=140;
+// 0.21: the direct path. Datagrams: [0xA1, 1, the recipient's inbox id (20 bytes)] and a message sealed as on a broker.
+// A tunnel that goes this way has directPath for its broker, carries at most directChunk bytes a message (sealed, well
+// under IPv6's 1280-byte minimum MTU), and is paced by a congestion window (slow start, halved on loss).
+constexpr int directPath=100;
+constexpr uint8_t kindProbe=7,kindProbeAck=8,helloDirect=8,datagramMagic=0xA1,datagramVersion=1;
+constexpr size_t directChunk=1100;constexpr double windowLeast=16,windowMost=1024;
+// Probes every 200 ms for 8 s while punching; a path is kept alive every 15 s and dropped after 35 s silent; with no
+// path, it's tried again every minute; addresses are looked at again every 45 s.
+constexpr auto probeEvery=std::chrono::milliseconds(200);constexpr auto punchFor=std::chrono::seconds(8),keepEvery=std::chrono::seconds(15),directGone=std::chrono::seconds(35);
+constexpr auto reprobeEvery=std::chrono::seconds(60),gatherEvery=std::chrono::seconds(45),relayProbeEvery=std::chrono::seconds(20);
+const char* const stunServers[]={"stun.l.google.com:19302","stun.cloudflare.com:3478","stun1.l.google.com:19302"};
+#ifndef SIO_UDP_CONNRESET
+#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR,12)
+#endif
 bool good(LONG s){return s>=0;}
 struct Algorithms{BCRYPT_ALG_HANDLE aes=nullptr,sha=nullptr;bool ready=false;
     Algorithms(){ready=good(BCryptOpenAlgorithmProvider(&aes,BCRYPT_AES_ALGORITHM,nullptr,0))&&
@@ -48,6 +63,31 @@ Bytes cat(std::initializer_list<Bytes> parts){Bytes out;for(auto& p:parts)out.in
 Bytes text(const char* s){return Bytes(s,s+std::strlen(s));}
 Bytes randomBytes(size_t n){Bytes b(n);if(!good(BCryptGenRandom(nullptr,b.data(),ULONG(n),BCRYPT_USE_SYSTEM_PREFERRED_RNG)))return {};return b;}
 std::string hex(const Bytes& b){static const char* d="0123456789abcdef";std::string s;for(uint8_t c:b){s+=d[c>>4];s+=d[c&15];}return s;}
+Bytes unhex(const std::string& s){Bytes b;if(s.size()%2)return b;auto v=[](char c){return c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:-1;};
+    for(size_t i=0;i+1<s.size();i+=2){const int h=v(s[i]),l=v(s[i+1]);if(h<0||l<0)return {};b.push_back(uint8_t(h*16+l));}return b;}
+uint64_t random64(){const Bytes r=randomBytes(8);uint64_t v=0;for(size_t i=0;i<r.size();++i)v|=uint64_t(r[i])<<(8*i);return v;}
+// An address (and port) to send datagrams to, compared by family, address and port only.
+struct Endpoint{sockaddr_storage addr{};int len=0;
+    bool v6()const{return addr.ss_family==AF_INET6;}
+    bool operator==(const Endpoint& e)const{return len==e.len&&std::memcmp(&addr,&e.addr,size_t(len))==0;}};
+Endpoint endpointOf(const sockaddr* a){Endpoint e;
+    if(a->sa_family==AF_INET){auto* in=reinterpret_cast<const sockaddr_in*>(a);auto* out=reinterpret_cast<sockaddr_in*>(&e.addr);out->sin_family=AF_INET;out->sin_port=in->sin_port;out->sin_addr=in->sin_addr;e.len=sizeof(sockaddr_in);}
+    else if(a->sa_family==AF_INET6){auto* in=reinterpret_cast<const sockaddr_in6*>(a);auto* out=reinterpret_cast<sockaddr_in6*>(&e.addr);out->sin6_family=AF_INET6;out->sin6_port=in->sin6_port;out->sin6_addr=in->sin6_addr;e.len=sizeof(sockaddr_in6);}
+    return e;}
+uint16_t portOf(const Endpoint& e){return ntohs(e.v6()?reinterpret_cast<const sockaddr_in6*>(&e.addr)->sin6_port:reinterpret_cast<const sockaddr_in*>(&e.addr)->sin_port);}
+Endpoint withPort(Endpoint e,uint16_t port){if(e.v6())reinterpret_cast<sockaddr_in6*>(&e.addr)->sin6_port=htons(port);else reinterpret_cast<sockaddr_in*>(&e.addr)->sin_port=htons(port);return e;}
+// Candidates as a hello carries them: a count, then each one's family (4 or 6), address, port (big-endian) and kind (0 an
+// interface's own address, 1 as STUN sees it, 2 offered by hand).
+void putCandidate(Bytes& b,const Endpoint& e,uint8_t kind){
+    if(e.v6()){b.push_back(6);auto& a=reinterpret_cast<const sockaddr_in6*>(&e.addr)->sin6_addr;b.insert(b.end(),a.s6_addr,a.s6_addr+16);}
+    else{b.push_back(4);auto& a=reinterpret_cast<const sockaddr_in*>(&e.addr)->sin_addr;const uint8_t* q=reinterpret_cast<const uint8_t*>(&a);b.insert(b.end(),q,q+4);}
+    const uint16_t port=portOf(e);b.push_back(uint8_t(port>>8));b.push_back(uint8_t(port&255));b.push_back(kind);}
+std::vector<Endpoint> readCandidates(const uint8_t* p,size_t n){std::vector<Endpoint> out;if(n<1)return out;const size_t count=std::min<size_t>(p[0],16);size_t at=1;
+    for(size_t i=0;i<count&&at<n;++i){const uint8_t family=p[at++];const size_t size=family==6?16:family==4?4:0;if(!size||at+size+3>n)break;
+        sockaddr_storage s{};if(size==16){auto* a=reinterpret_cast<sockaddr_in6*>(&s);a->sin6_family=AF_INET6;std::memcpy(a->sin6_addr.s6_addr,p+at,16);a->sin6_port=htons(uint16_t(p[at+16]<<8|p[at+17]));}
+        else{auto* a=reinterpret_cast<sockaddr_in*>(&s);a->sin_family=AF_INET;std::memcpy(&a->sin_addr,p+at,4);a->sin_port=htons(uint16_t(p[at+4]<<8|p[at+5]));}
+        at+=size+3;const Endpoint e=endpointOf(reinterpret_cast<sockaddr*>(&s));if(portOf(e)&&std::find(out.begin(),out.end(),e)==out.end())out.push_back(e);}
+    return out;}
 std::string topicOf(const Bytes& hash){return topicPrefix+hex(hash).substr(0,40);}
 void put32(Bytes& b,uint32_t v){for(int i=0;i<4;++i)b.push_back(uint8_t(v>>(8*i)));}
 void put64(Bytes& b,uint64_t v){for(int i=0;i<8;++i)b.push_back(uint8_t(v>>(8*i)));}
@@ -117,9 +157,17 @@ struct Relay::Core:std::enable_shared_from_this<Core>{
     static constexpr size_t maxBrokers=6;
     // Where messages to this device arrive (its inbox topic): whose they are, how they're sealed, where replies go, and on
     // which brokers the other device was last heard.
-    struct Route{std::string peer;std::shared_ptr<Seal> seal;std::string outbox;bool code=false,host=false;std::array<Clock::time_point,maxBrokers> heard{};Clock::time_point helloed{};RelayPresence presence;};
+    struct Route{std::string peer;std::shared_ptr<Seal> seal;std::string outbox;bool code=false,host=false;std::array<Clock::time_point,maxBrokers> heard{};Clock::time_point helloed{};RelayPresence presence;
+        // 0.21: the direct path: the other device's candidates (and addresses it reached this one from), the path kept (at,
+        // up, its round trip and when it was last heard), the relay's round trip, and the clocks for probing.
+        bool directOk=false,up=false;std::vector<Endpoint> theirs;Endpoint at;double rtt=0,relayRtt=0;
+        Clock::time_point lastIn{},punchUntil{},nextProbe{},probedAt{},keptAt{},relayProbedAt{};};
+    // What a message needs of its route (copied out, so the lock isn't held while it's opened).
+    struct RouteView{std::string peer,outbox;std::shared_ptr<Seal> seal;bool code=false;};
     // A tunnel keeps to one broker (-1 until the first message from the other side says which: a code's tunnel opens on all).
-    struct Tunnel{uint64_t conn=0;SOCKET outer=INVALID_SOCKET;std::string outbox;std::shared_ptr<Seal> seal;int broker=-1;
+    struct Tunnel{uint64_t conn=0;SOCKET outer=INVALID_SOCKET;std::string outbox,route;std::shared_ptr<Seal> seal;std::atomic<int> broker{-1};
+        // 0.21, the direct path: a congestion window, and waits to match its round trip.
+        double cwnd=64,ssthresh=1e9;std::chrono::milliseconds rtoFloor=rtoBase,nackGap=nackEvery;
         std::mutex m;std::condition_variable cv;uint32_t sent=0,acked=0,expected=0,acknowledged=0;std::deque<Bytes> inbound;bool inEnd=false,dead=false,closeSent=false;int finished=0;
         // 0.20.1: what was sent and not yet acknowledged (its messages, to send again), what came early, the OPEN this side
         // sent (again while the other side hasn't answered), and the clocks for them.
@@ -133,6 +181,10 @@ struct Relay::Core:std::enable_shared_from_this<Core>{
     std::string code;Clock::time_point codeUntil{};
     // Tunnels that ended lately: an OPEN sent again after one ended starts nothing.
     std::map<uint64_t,Clock::time_point> ended;std::thread resender;std::atomic<int> lost{0};
+    // 0.21: the direct path's sockets, this device's candidates (and what STUN saw), probes asked and not yet answered.
+    SOCKET udp4=INVALID_SOCKET,udp6=INVALID_SOCKET;uint16_t port4=0,port6=0;std::thread receiver;
+    std::vector<std::pair<Endpoint,uint8_t>> mine;std::vector<Endpoint> stunSeen;std::map<std::string,Clock::time_point> stunAsked;Clock::time_point gatheredAt{};
+    struct Asked{std::string inbox;Clock::time_point at;};std::map<uint64_t,Asked> asked;
     uint16_t nextPacket=1;std::map<std::pair<size_t,uint16_t>,bool> subacks;std::condition_variable subacked;
     std::atomic<bool> stopping{false};std::thread ticker;std::mutex sleepMutex;std::condition_variable sleeper;
     static int64_t now(){return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count();}
@@ -145,6 +197,8 @@ struct Relay::Core:std::enable_shared_from_this<Core>{
     // Present on a broker: heard there within the last 150 s (the peer says hello on each once a minute).
     static bool hereOn(const Route& r,size_t b,Clock::time_point clock){return r.heard[b]!=Clock::time_point{}&&clock-r.heard[b]<=helloGone;}
     bool hereAnywhere(const Route& r,Clock::time_point clock)const{for(size_t b=0;b<brokers.size();++b)if(brokers[b]->up&&hereOn(r,b,clock))return true;return false;}
+    // A direct path fresh enough to open a tunnel on.
+    static bool directFresh(const Route& r,Clock::time_point clock){return r.up&&clock-r.lastIn<std::chrono::seconds(20);}
     // The broker to open a tunnel on: the one the other device was heard on most lately (and this one is on).
     int bestBroker(const Route& r)const{int best=-1;Clock::time_point when{};for(size_t b=0;b<brokers.size();++b)if(brokers[b]->up&&r.heard[b]>when){when=r.heard[b];best=int(b);}return best;}
 
@@ -212,8 +266,10 @@ struct Relay::Core:std::enable_shared_from_this<Core>{
     // Once a minute each paired device hears from this one (on every broker); a device not heard from in 150 s is gone;
     // each broker is pinged, and a silent broker (or one that never answered) is left.
     void tick(){
+        const bool direct=udp4!=INVALID_SOCKET||udp6!=INVALID_SOCKET;if(direct)gather(true);
         while(!stopping){
             {std::unique_lock lock(sleepMutex);sleeper.wait_for(lock,std::chrono::seconds(5),[&]{return stopping.load();});}if(stopping)break;
+            if(direct&&Clock::now()-gatheredAt>=gatherEvery)gather(true);
             const int64_t t=now();
             for(auto& k:brokers){HINTERNET h;{std::lock_guard lock(k->wsMutex);h=k->ws;}
                 if(h&&t-k->lastIn>(k->up?100000:15000)){abortSocket(*k);continue;}
@@ -250,35 +306,46 @@ struct Relay::Core:std::enable_shared_from_this<Core>{
     }
     // ---- messages ----
     Bytes envelope(uint8_t kind)const{Bytes b{envelopeVersion,kind};b.insert(b.end(),o.id.begin(),o.id.end());return b;}
-    bool publish(const std::string& topic,const Seal& seal,const Bytes& plain,int broker){const Bytes sealed=seal.seal(plain,topic);return !sealed.empty()&&writeTo(broker,mqttPublish(topic,sealed));}
+    bool publish(const std::string& topic,const Seal& seal,const Bytes& plain,int broker){
+        if(broker==directPath){Endpoint at;{std::lock_guard lock(m);for(auto& [inbox,r]:routes)if(r.outbox==topic&&r.up){at=r.at;break;}}return at.len&&sendDatagram(at,topic,seal,plain);}
+        const Bytes sealed=seal.seal(plain,topic);return !sealed.empty()&&writeTo(broker,mqttPublish(topic,sealed));}
     void sayHello(const std::string& inbox,bool reply,bool leaving,int broker){
         std::string outbox;std::shared_ptr<Seal> seal;{std::lock_guard lock(m);auto it=routes.find(inbox);if(it==routes.end())return;outbox=it->second.outbox;seal=it->second.seal;if(broker<0)it->second.helloed=Clock::now();}
         Bytes b=envelope(kindHello);b.push_back(uint8_t((reply?helloReply:0)|(o.phone?helloPhone:0)|(leaving?helloLeaving:0)));b.push_back(uint8_t(o.revision));
         std::string name=utf8(o.name);if(name.size()>120)name.resize(120);b.push_back(uint8_t(name.size()));b.insert(b.end(),name.begin(),name.end());
+        // 0.21: this device's addresses, for a direct path (older devices read no further than the name).
+        if(udp4!=INVALID_SOCKET||udp6!=INVALID_SOCKET){b[18]|=helloDirect;std::lock_guard lock(m);b.push_back(uint8_t(std::min<size_t>(mine.size(),12)));for(size_t i=0;i<mine.size()&&i<12;++i)putCandidate(b,mine[i].first,mine[i].second);}
         publish(outbox,*seal,b,broker);
     }
-    void onPublish(size_t from,const std::string& topic,const uint8_t* payload,size_t n){
-        Route r;{std::lock_guard lock(m);auto it=routes.find(topic);if(it==routes.end())return;r=it->second;}
+    void onPublish(size_t from,const std::string& topic,const uint8_t* payload,size_t n,const Endpoint* source=nullptr){
+        RouteView r;{std::lock_guard lock(m);auto it=routes.find(topic);if(it==routes.end())return;r={it->second.peer,it->second.outbox,it->second.seal,it->second.code};}
         Bytes plain;if(!r.seal->open(payload,n,topic,plain)||plain.size()<18||plain[0]!=envelopeVersion)return;
         const Bytes sender(plain.begin()+2,plain.begin()+18);if(sender==o.id)return;if(!r.code&&hex(sender)!=r.peer)return;
         const uint8_t* p=plain.data()+18;const size_t left=plain.size()-18;
-        // A tunnel's messages count only on its own broker (the first to carry one from the other side, when it had none).
-        auto tunnelFor=[&](uint64_t conn)->std::shared_ptr<Tunnel>{std::lock_guard lock(m);auto it=tunnels.find(conn);if(it==tunnels.end())return nullptr;
-            if(it->second->broker<0)it->second->broker=int(from);return it->second->broker==int(from)?it->second:nullptr;};
+        // Anything sealed that comes by the path kept keeps it alive.
+        if(from==size_t(directPath)&&source){std::lock_guard lock(m);auto it=routes.find(topic);if(it!=routes.end()&&it->second.up&&it->second.at==*source)it->second.lastIn=Clock::now();}
+        // A tunnel's messages count only on its own broker (the first to carry one from the other side, when it had none),
+        // except that one on the direct path follows the other side back to a broker (the path went quiet over there).
+        auto tunnelFor=[&](uint64_t conn)->std::shared_ptr<Tunnel>{std::lock_guard lock(m);auto it=tunnels.find(conn);if(it==tunnels.end())return nullptr;auto& t=it->second;
+            if(t->broker<0)t->broker=int(from);else if(t->broker==directPath&&int(from)!=directPath)t->broker=int(from);return t->broker==int(from)?t:nullptr;};
         switch(plain[1]){
-        case kindHello:{if(r.code||left<3)return;const uint8_t flags=p[0];const size_t nameSize=std::min<size_t>(p[2],left-3);
+        case kindHello:{if(r.code||left<3||from==size_t(directPath))return;const uint8_t flags=p[0];const size_t nameSize=std::min<size_t>(p[2],left-3);
             RelayPresence presence;presence.phone=flags&helloPhone;presence.revision=p[1];presence.name=wide(std::string(p+3,p+3+nameSize));
+            const std::vector<Endpoint> offered=(flags&helloDirect)?readCandidates(p+3+nameSize,left-3-nameSize):std::vector<Endpoint>{};
             bool changed=false;{std::lock_guard lock(m);auto it=routes.find(topic);if(it==routes.end())return;auto& route=it->second;const auto clock=Clock::now();
                 // A goodbye is said on every broker: the device has gone from all of them.
                 if(flags&helloLeaving)route.heard.fill({});else route.heard[from]=clock;
                 presence.here=hereAnywhere(route,clock);auto& old=route.presence;
-                changed=old.here!=presence.here||old.phone!=presence.phone||old.revision!=presence.revision||old.name!=presence.name;old=presence;}
+                changed=old.here!=presence.here||old.phone!=presence.phone||old.revision!=presence.revision||old.name!=presence.name;old=presence;
+                // 0.21: its addresses: new ones (or none tried lately) are punched at once, unless a path is up.
+                if(!offered.empty()&&!(flags&helloLeaving)){route.directOk=true;bool fresh=false;for(auto& e:offered)if(std::find(route.theirs.begin(),route.theirs.end(),e)==route.theirs.end()){fresh=true;if(route.theirs.size()<16)route.theirs.push_back(e);}
+                    if(!route.up&&(fresh||clock-route.probedAt>std::chrono::seconds(10))&&clock>=route.punchUntil){route.punchUntil=clock+punchFor;route.nextProbe=clock;}}}
             // Answered on the broker it came by, so the other device learns this one is there too.
             if(flags&helloReply)sayHello(topic,false,false,int(from));
             if(changed&&o.changed)o.changed();break;}
         case kindOpen:{if(left<8)return;const uint64_t conn=get64(p);{std::lock_guard lock(m);if(tunnels.count(conn)||ended.count(conn))return;}
             SOCKET inner,outer;if(!loopbackPair(inner,outer))return;
-            auto t=start(conn,outer,r.outbox,r.seal,int(from));if(!t){closesocket(inner);return;}
+            auto t=start(conn,outer,r.outbox,r.seal,int(from),topic);if(!t){closesocket(inner);return;}
             if(o.incoming){auto self=shared_from_this();const std::string peer=r.code?std::string():r.peer;std::thread([self,inner,peer]{self->o.incoming(inner,peer);}).detach();}
             else closesocket(inner);
             break;}
@@ -287,10 +354,10 @@ struct Relay::Core:std::enable_shared_from_this<Core>{
             bool reply=false;uint32_t next=0;
             {std::lock_guard lock(t->m);const auto clock=Clock::now();t->heard=true;
                 // Had already (its acknowledgement was lost): said again, so the sender stops sending it.
-                if(seq<t->expected){if(clock-t->dupAckAt>=nackEvery){t->dupAckAt=clock;reply=true;}}
+                if(seq<t->expected){if(clock-t->dupAckAt>=t->nackGap){t->dupAckAt=clock;reply=true;}}
                 // Something before it was lost: this one is kept, and the sender told what's missing.
-                else if(seq>t->expected){if(seq-t->expected<2*window)t->early[seq]=Bytes(p+13,p+left);if(t->gapSince==Clock::time_point{})t->gapSince=clock;
-                    if(t->nackedFor!=t->expected||clock-t->nackedAt>=nackEvery){t->nackedFor=t->expected;t->nackedAt=clock;reply=true;}}
+                else if(seq>t->expected){if(seq-t->expected<(t->broker==directPath?2*uint32_t(windowMost):2*window))t->early[seq]=Bytes(p+13,p+left);if(t->gapSince==Clock::time_point{})t->gapSince=clock;
+                    if(t->nackedFor!=t->expected||clock-t->nackedAt>=t->nackGap){t->nackedFor=t->expected;t->nackedAt=clock;reply=true;}}
                 else{t->inbound.emplace_back(p+13,p+left);++t->expected;bool filled=false;
                     for(auto it=t->early.find(t->expected);it!=t->early.end();it=t->early.find(t->expected)){t->inbound.push_back(std::move(it->second));t->early.erase(it);++t->expected;filled=true;}
                     t->gapSince=t->early.empty()?Clock::time_point{}:clock;
@@ -302,33 +369,180 @@ struct Relay::Core:std::enable_shared_from_this<Core>{
         case kindAck:{if(left<12)return;const uint64_t conn=get64(p);const uint32_t next=get32(p+8);auto t=tunnelFor(conn);if(!t)return;
             std::vector<Bytes> again;
             {std::lock_guard lock(t->m);const auto clock=Clock::now();t->heard=true;
-                if(next>t->acked&&next<=t->sent){t->acked=next;t->unacked.erase(t->unacked.begin(),t->unacked.lower_bound(next));t->progressAt=clock;t->rto=rtoBase;t->resendAt=clock+rtoBase;}
-                // The other side is missing this one: sent again at once, with a few after it.
-                else if(next==t->acked&&next<t->sent&&clock-t->resentAt>=nackEvery){t->resentAt=clock;again=resendable(*t);}}
+                if(next>t->acked&&next<=t->sent){const double k=double(next-t->acked);t->acked=next;t->unacked.erase(t->unacked.begin(),t->unacked.lower_bound(next));t->progressAt=clock;t->rto=t->rtoFloor;t->resendAt=clock+t->rtoFloor;
+                    // The direct path's window grows with what arrives: doubling each round trip, then a message a round trip.
+                    if(t->broker==directPath)t->cwnd=std::min(windowMost,t->cwnd<t->ssthresh?t->cwnd+k:t->cwnd+k/t->cwnd);}
+                // The other side is missing this one: sent again at once, with a few after it (a loss: the window halves).
+                else if(next==t->acked&&next<t->sent&&clock-t->resentAt>=t->nackGap){t->resentAt=clock;again=resendable(*t);if(t->broker==directPath){t->ssthresh=std::max(windowLeast,t->cwnd/2);t->cwnd=t->ssthresh;}}}
             t->cv.notify_all();
             if(!again.empty()){const int b=brokerOf(t);for(auto& msg:again)publish(t->outbox,*t->seal,msg,b);}
             break;}
         case kindClose:{if(left<8)return;const uint64_t conn=get64(p);auto t=tunnelFor(conn);
             if(!t)return;{std::lock_guard lock(t->m);t->inEnd=true;t->closeSent=true;}t->cv.notify_all();break;}
+        // 0.21: a probe is answered the way it came: by the direct path, to the address it came from (one the other device
+        // reached this one from is tried too), or on its broker (the relay's round trip, for the connection's quality).
+        case kindProbe:{if(r.code||left<16)return;Bytes b=envelope(kindProbeAck);b.insert(b.end(),p,p+16);
+            if(from==size_t(directPath)&&source){sendDatagram(*source,r.outbox,*r.seal,b);
+                std::lock_guard lock(m);auto it=routes.find(topic);if(it==routes.end())break;auto& route=it->second;route.directOk=true;
+                if(std::find(route.theirs.begin(),route.theirs.end(),*source)==route.theirs.end()){if(route.theirs.size()>=16)route.theirs.erase(route.theirs.begin());route.theirs.push_back(*source);
+                    if(!route.up){const auto clock=Clock::now();route.punchUntil=std::max(route.punchUntil,clock+std::chrono::seconds(3));route.nextProbe=clock;}}}
+            else publish(r.outbox,*r.seal,b,int(from));
+            break;}
+        case kindProbeAck:{if(r.code||left<16)return;const uint64_t nonce=get64(p),sentAt=get64(p+8);const double rtt=double(now()-int64_t(sentAt));if(rtt<0||rtt>30000)return;
+            bool changed=false;
+            {std::lock_guard lock(m);auto it=routes.find(topic);if(it==routes.end())break;auto& route=it->second;const auto clock=Clock::now();
+                if(from==size_t(directPath)){auto a=asked.find(nonce);if(!source||a==asked.end()||a->second.inbox!=topic)break;asked.erase(a);
+                    const bool same=route.up&&route.at==*source;const double before=route.rtt;
+                    // The first path answered, the same one again, or one clearly faster: kept.
+                    if(!route.up||same||rtt<route.rtt*.7){route.at=*source;route.rtt=same?route.rtt*.8+rtt*.2:rtt;route.up=true;route.lastIn=clock;route.punchUntil=clock;route.keptAt=clock;
+                        changed=!same||std::abs(route.rtt-before)>before*.15;}}
+                else{const double before=route.relayRtt;route.relayRtt=before>0?before*.7+rtt*.3:rtt;changed=before<=0||std::abs(route.relayRtt-before)>before*.15;}}
+            if(changed&&o.changed)o.changed();
+            break;}
         default:break;}
     }
+    // ---- 0.21: the direct path ----
+    // A message by the direct path: sealed exactly as on a broker, behind the recipient's inbox id.
+    bool sendDatagram(const Endpoint& to,const std::string& topic,const Seal& seal,const Bytes& plain){
+        const SOCKET s=to.v6()?udp6:udp4;if(s==INVALID_SOCKET||topic.size()!=std::strlen(topicPrefix)+40)return false;
+        const Bytes id=unhex(topic.substr(std::strlen(topicPrefix)));const Bytes sealed=seal.seal(plain,topic);if(id.size()!=20||sealed.empty())return false;
+        Bytes d{datagramMagic,datagramVersion};d.insert(d.end(),id.begin(),id.end());d.insert(d.end(),sealed.begin(),sealed.end());
+        return sendto(s,reinterpret_cast<const char*>(d.data()),int(d.size()),0,reinterpret_cast<const sockaddr*>(&to.addr),to.len)==int(d.size());}
+    // A socket per family (IPv6 only on the IPv6 one), with room for a window's worth of datagrams; ICMP "unreachable"
+    // doesn't end its reads. On the loopback only, for tests.
+    SOCKET udpSocket(int family,uint16_t& port){
+        SOCKET s=socket(family,SOCK_DGRAM,IPPROTO_UDP);if(s==INVALID_SOCKET)return s;
+        if(family==AF_INET6){DWORD only=1;setsockopt(s,IPPROTO_IPV6,IPV6_V6ONLY,reinterpret_cast<const char*>(&only),sizeof(only));}
+        int room=4<<20;setsockopt(s,SOL_SOCKET,SO_RCVBUF,reinterpret_cast<const char*>(&room),sizeof(room));setsockopt(s,SOL_SOCKET,SO_SNDBUF,reinterpret_cast<const char*>(&room),sizeof(room));
+        BOOL reset=FALSE;DWORD got=0;WSAIoctl(s,SIO_UDP_CONNRESET,&reset,sizeof(reset),nullptr,0,&got,nullptr,nullptr);
+        sockaddr_storage at{};int len=0;
+        if(family==AF_INET){auto* a=reinterpret_cast<sockaddr_in*>(&at);a->sin_family=AF_INET;a->sin_addr.s_addr=htonl(o.directLoopback?INADDR_LOOPBACK:INADDR_ANY);len=sizeof(sockaddr_in);}
+        else{auto* a=reinterpret_cast<sockaddr_in6*>(&at);a->sin6_family=AF_INET6;a->sin6_addr=o.directLoopback?in6addr_loopback:in6addr_any;len=sizeof(sockaddr_in6);}
+        if(bind(s,reinterpret_cast<sockaddr*>(&at),len)!=0||getsockname(s,reinterpret_cast<sockaddr*>(&at),&len)!=0){closesocket(s);return INVALID_SOCKET;}
+        port=ntohs(family==AF_INET?reinterpret_cast<sockaddr_in*>(&at)->sin_port:reinterpret_cast<sockaddr_in6*>(&at)->sin6_port);return s;}
+    void openDirect(){
+        if(!o.direct)return;udp4=udpSocket(AF_INET,port4);udp6=udpSocket(AF_INET6,port6);
+        if(udp4==INVALID_SOCKET&&udp6==INVALID_SOCKET)return;
+        auto self=shared_from_this();receiver=std::thread([self]{self->receiveDirect();});
+    }
+    void receiveDirect(){
+        Bytes buffer(2048);
+        while(!stopping){
+            if(udp4==INVALID_SOCKET&&udp6==INVALID_SOCKET){std::unique_lock lock(sleepMutex);sleeper.wait_for(lock,std::chrono::milliseconds(200),[&]{return stopping.load();});continue;}
+            fd_set set;FD_ZERO(&set);if(udp4!=INVALID_SOCKET)FD_SET(udp4,&set);if(udp6!=INVALID_SOCKET)FD_SET(udp6,&set);
+            timeval wait{0,200000};if(select(0,&set,nullptr,nullptr,&wait)<=0)continue;
+            for(SOCKET s:{udp4,udp6}){if(s==INVALID_SOCKET||!FD_ISSET(s,&set))continue;
+                sockaddr_storage from{};int size=sizeof(from);const int n=recvfrom(s,reinterpret_cast<char*>(buffer.data()),int(buffer.size()),0,reinterpret_cast<sockaddr*>(&from),&size);
+                if(n<=0)continue;const Endpoint source=endpointOf(reinterpret_cast<sockaddr*>(&from));
+                // A STUN answer (a binding success, with the magic cookie).
+                if(n>=20&&buffer[0]==0x01&&buffer[1]==0x01&&buffer[4]==0x21&&buffer[5]==0x12&&buffer[6]==0xA4&&buffer[7]==0x42){onStun(buffer.data(),size_t(n));continue;}
+                if(n>22+28&&buffer[0]==datagramMagic&&buffer[1]==datagramVersion)onPublish(size_t(directPath),topicPrefix+hex(Bytes(buffer.begin()+2,buffer.begin()+22)),buffer.data()+22,size_t(n)-22,&source);}
+        }
+    }
+    // This device's candidates: its interfaces' global IPv6 and IPv4 addresses (a LAN address is how two devices behind
+    // one router meet), what STUN saw, and any offered by hand. New ones go out at once in a hello to every paired device.
+    void gather(bool askStun){
+        std::vector<std::pair<Endpoint,uint8_t>> found;
+        auto add=[&](Endpoint e,uint8_t kind){if(!e.len||!portOf(e))return;for(auto& f:found)if(f.first==e)return;if(found.size()<12)found.push_back({e,kind});};
+        auto parsed=[&](const std::string& text)->Endpoint{sockaddr_storage s{};
+            if(text.find(':')!=std::string::npos){auto* a=reinterpret_cast<sockaddr_in6*>(&s);a->sin6_family=AF_INET6;if(inet_pton(AF_INET6,text.c_str(),&a->sin6_addr)!=1)return {};a->sin6_port=htons(port6);}
+            else{auto* a=reinterpret_cast<sockaddr_in*>(&s);a->sin_family=AF_INET;if(inet_pton(AF_INET,text.c_str(),&a->sin_addr)!=1)return {};a->sin_port=htons(port4);}
+            return endpointOf(reinterpret_cast<sockaddr*>(&s));};
+        if(o.directLoopback){if(udp4!=INVALID_SOCKET)add(parsed("127.0.0.1"),0);if(udp6!=INVALID_SOCKET)add(parsed("::1"),0);}
+        else{ULONG size=16*1024;std::vector<uint8_t> table(size);
+            ULONG r=GetAdaptersAddresses(AF_UNSPEC,GAA_FLAG_SKIP_ANYCAST|GAA_FLAG_SKIP_MULTICAST|GAA_FLAG_SKIP_DNS_SERVER,nullptr,reinterpret_cast<IP_ADAPTER_ADDRESSES*>(table.data()),&size);
+            if(r==ERROR_BUFFER_OVERFLOW){table.resize(size);r=GetAdaptersAddresses(AF_UNSPEC,GAA_FLAG_SKIP_ANYCAST|GAA_FLAG_SKIP_MULTICAST|GAA_FLAG_SKIP_DNS_SERVER,nullptr,reinterpret_cast<IP_ADAPTER_ADDRESSES*>(table.data()),&size);}
+            if(r==NO_ERROR)for(auto* a=reinterpret_cast<IP_ADAPTER_ADDRESSES*>(table.data());a;a=a->Next){
+                if(a->OperStatus!=IfOperStatusUp||a->IfType==IF_TYPE_SOFTWARE_LOOPBACK)continue;
+                for(auto* u=a->FirstUnicastAddress;u;u=u->Next){const sockaddr* sa=u->Address.lpSockaddr;if(!sa)continue;
+                    if(sa->sa_family==AF_INET6&&udp6!=INVALID_SOCKET){const auto& in=reinterpret_cast<const sockaddr_in6*>(sa)->sin6_addr;
+                        // Global unicast only (2000::/3): link-local and unique-local addresses reach no one outside.
+                        if((in.s6_addr[0]&0xE0)==0x20&&u->DadState==IpDadStatePreferred)add(withPort(endpointOf(sa),port6),0);}
+                    else if(sa->sa_family==AF_INET&&udp4!=INVALID_SOCKET){const uint8_t* q=reinterpret_cast<const uint8_t*>(&reinterpret_cast<const sockaddr_in*>(sa)->sin_addr);
+                        if(q[0]!=127&&!(q[0]==169&&q[1]==254))add(withPort(endpointOf(sa),port4),0);}}}}
+        std::vector<Endpoint> seen;{std::lock_guard lock(m);seen=stunSeen;}for(auto& e:seen)add(e,1);
+        for(auto& text:o.directExtra)add(parsed(text),2);
+        bool changed=false;{std::lock_guard lock(m);changed=found.size()!=mine.size()||!std::equal(found.begin(),found.end(),mine.begin(),[](auto& a,auto& b){return a.first==b.first;});if(changed)mine=found;gatheredAt=Clock::now();}
+        if(askStun&&!o.directLoopback)stun();
+        if(changed)helloAll();
+    }
+    void helloAll(){std::vector<std::string> pairs;{std::lock_guard lock(m);for(auto& [inbox,r]:routes)if(!r.code)pairs.push_back(inbox);}if(anyUp())for(auto& inbox:pairs)sayHello(inbox,false,false,-1);}
+    // STUN binding requests (RFC 5389) from both sockets: the answers say where this device's datagrams appear to come from.
+    void stun(){
+        for(const char* server:stunServers){const std::string s=server;const auto colon=s.rfind(':');addrinfo hint{};hint.ai_socktype=SOCK_DGRAM;addrinfo* list=nullptr;
+            if(getaddrinfo(s.substr(0,colon).c_str(),s.substr(colon+1).c_str(),&hint,&list)!=0)continue;bool v4=false,v6=false;
+            for(auto* a=list;a;a=a->ai_next){const bool six=a->ai_family==AF_INET6;if((six&&(v6||udp6==INVALID_SOCKET))||(!six&&(v4||udp4==INVALID_SOCKET))||(a->ai_family!=AF_INET&&a->ai_family!=AF_INET6))continue;
+                (six?v6:v4)=true;const Bytes tid=randomBytes(12);if(tid.size()!=12)continue;
+                Bytes q{0x00,0x01,0x00,0x00,0x21,0x12,0xA4,0x42};q.insert(q.end(),tid.begin(),tid.end());{std::lock_guard lock(m);stunAsked[std::string(tid.begin(),tid.end())]=Clock::now();}
+                sendto(six?udp6:udp4,reinterpret_cast<const char*>(q.data()),int(q.size()),0,a->ai_addr,int(a->ai_addrlen));}
+            freeaddrinfo(list);}
+    }
+    void onStun(const uint8_t* d,size_t n){
+        {std::lock_guard lock(m);auto it=stunAsked.find(std::string(d+8,d+20));if(it==stunAsked.end())return;stunAsked.erase(it);}
+        for(size_t at=20;at+4<=n;){const uint16_t type=uint16_t(d[at]<<8|d[at+1]),len=uint16_t(d[at+2]<<8|d[at+3]);const uint8_t* v=d+at+4;if(at+4+len>n)break;
+            if(type==0x0020&&len>=8){sockaddr_storage s{};const uint16_t port=uint16_t((v[2]<<8|v[3])^0x2112);
+                if(v[1]==1){auto* a=reinterpret_cast<sockaddr_in*>(&s);a->sin_family=AF_INET;a->sin_port=htons(port);uint8_t ip[4];const uint8_t cookie[4]={0x21,0x12,0xA4,0x42};for(int i=0;i<4;++i)ip[i]=v[4+i]^cookie[i];std::memcpy(&a->sin_addr,ip,4);}
+                else if(v[1]==2&&len>=20){auto* a=reinterpret_cast<sockaddr_in6*>(&s);a->sin6_family=AF_INET6;a->sin6_port=htons(port);for(int i=0;i<16;++i)a->sin6_addr.s6_addr[i]=uint8_t(v[4+i]^(i<4?std::array<uint8_t,4>{0x21,0x12,0xA4,0x42}[size_t(i)]:d[8+i-4]));}
+                else break;
+                const Endpoint e=endpointOf(reinterpret_cast<sockaddr*>(&s));bool fresh=false;
+                {std::lock_guard lock(m);if(std::find(stunSeen.begin(),stunSeen.end(),e)==stunSeen.end()){fresh=true;if(stunSeen.size()>=4)stunSeen.erase(stunSeen.begin());stunSeen.push_back(e);}}
+                if(fresh)gather(false);break;}
+            at+=4+len+((4-len%4)%4);}
+    }
+    // Five times a second (with the resends): probes while punching, a path kept alive, a quiet one dropped (its tunnels
+    // go back to a broker), no path tried again now and then, and the relay's round trip measured.
+    void directTick(){
+        // No sockets (or no longer): any path is gone, and its tunnels carry on through a broker.
+        if(udp4==INVALID_SOCKET&&udp6==INVALID_SOCKET){std::vector<std::string> fell;{std::lock_guard lock(m);for(auto& [inbox,r]:routes)if(r.up){r.up=false;fell.push_back(inbox);}}
+            for(auto& inbox:fell)fallBack(inbox);if(!fell.empty()&&o.changed)o.changed();return;}
+        const auto clock=Clock::now();
+        struct Send{Endpoint to;std::string topic;std::shared_ptr<Seal> seal;Bytes plain;int broker=directPath;};std::vector<Send> out;std::vector<std::string> fell;bool changed=false;
+        {std::lock_guard lock(m);
+            for(auto it=asked.begin();it!=asked.end();)if(clock-it->second.at>std::chrono::seconds(15))it=asked.erase(it);else ++it;
+            for(auto it=stunAsked.begin();it!=stunAsked.end();)if(clock-it->second>std::chrono::seconds(15))it=stunAsked.erase(it);else ++it;
+            auto probe=[&](const std::string& inbox){const uint64_t nonce=random64();asked[nonce]={inbox,clock};Bytes b=envelope(kindProbe);put64(b,nonce);put64(b,uint64_t(now()));return b;};
+            for(auto& [inbox,r]:routes){if(r.code)continue;
+                if(r.up&&clock-r.lastIn>directGone){r.up=false;changed=true;fell.push_back(inbox);r.punchUntil=clock+punchFor;r.nextProbe=clock;}
+                const bool present=r.presence.here||r.up;
+                if(r.directOk&&!r.up&&present&&!r.theirs.empty()&&clock>=r.punchUntil&&clock-r.probedAt>reprobeEvery){r.punchUntil=clock+punchFor;r.nextProbe=clock;}
+                if(!r.up&&clock<r.punchUntil&&clock>=r.nextProbe){r.nextProbe=clock+probeEvery;r.probedAt=clock;for(auto& e:r.theirs)out.push_back({e,r.outbox,r.seal,probe(inbox)});}
+                else if(r.up&&clock-r.keptAt>=keepEvery){r.keptAt=clock;out.push_back({r.at,r.outbox,r.seal,probe(inbox)});}
+                if(!r.up&&r.presence.here&&clock-r.relayProbedAt>=relayProbeEvery){const int b=bestBroker(r);if(b>=0){r.relayProbedAt=clock;Bytes q=envelope(kindProbe);put64(q,random64());put64(q,uint64_t(now()));out.push_back({{},r.outbox,r.seal,q,b});}}}}
+        for(auto& s:out){if(s.broker==directPath)sendDatagram(s.to,s.topic,*s.seal,s.plain);else publish(s.topic,*s.seal,s.plain,s.broker);}
+        for(auto& inbox:fell)fallBack(inbox);
+        if(changed&&o.changed)o.changed();
+    }
+    // A direct path gone quiet: its tunnels carry on through the broker the other device was heard on most lately.
+    void fallBack(const std::string& inbox){
+        std::vector<std::shared_ptr<Tunnel>> ending;
+        {std::lock_guard lock(m);auto it=routes.find(inbox);const int b=it==routes.end()?-1:bestBroker(it->second);
+            for(auto& [c,t]:tunnels)if(t->route==inbox&&t->broker==directPath){if(b>=0)t->broker=b;else ending.push_back(t);}}
+        for(auto& t:ending)kill(t);
+    }
     // ---- tunnels ----
-    std::shared_ptr<Tunnel> start(uint64_t conn,SOCKET outer,const std::string& outbox,const std::shared_ptr<Seal>& seal,int broker){
-        auto t=std::make_shared<Tunnel>();t->conn=conn;t->outer=outer;t->outbox=outbox;t->seal=seal;t->broker=broker;
-        {std::lock_guard lock(m);if(!anyUp()){closesocket(outer);return nullptr;}tunnels[conn]=t;}
+    std::shared_ptr<Tunnel> start(uint64_t conn,SOCKET outer,const std::string& outbox,const std::shared_ptr<Seal>& seal,int broker,const std::string& route){
+        auto t=std::make_shared<Tunnel>();t->conn=conn;t->outer=outer;t->outbox=outbox;t->route=route;t->seal=seal;t->broker=broker;
+        {std::lock_guard lock(m);if(broker!=directPath&&!anyUp()){closesocket(outer);return nullptr;}
+            // On the direct path, its waits follow the path's round trip.
+            if(broker==directPath){auto it=routes.find(route);const double rtt=it==routes.end()?100:std::max(1.,it->second.rtt);
+                t->rtoFloor=std::chrono::milliseconds(std::clamp(int(rtt*3),150,2000));t->nackGap=std::chrono::milliseconds(std::clamp(int(rtt),40,300));t->rto=t->rtoFloor;}
+            tunnels[conn]=t;}
         auto self=shared_from_this();
         std::thread([self,t]{self->pumpOut(t);}).detach();std::thread([self,t]{self->pumpIn(t);}).detach();
         return t;
     }
-    int brokerOf(const std::shared_ptr<Tunnel>& t){std::lock_guard lock(m);return t->broker;}
+    int brokerOf(const std::shared_ptr<Tunnel>& t){return t->broker.load();}
     // Bytes the protocol wrote go out in numbered messages, never more than the window ahead of the acknowledgements.
     void pumpOut(std::shared_ptr<Tunnel> t){
         Bytes buffer(chunk);bool eof=false;
-        for(;;){const int n=::recv(t->outer,reinterpret_cast<char*>(buffer.data()),int(chunk),0);if(n<=0){eof=n==0;break;}
+        for(;;){const bool direct=t->broker==directPath;const int n=::recv(t->outer,reinterpret_cast<char*>(buffer.data()),int(direct?directChunk:chunk),0);if(n<=0){eof=n==0;break;}
             // The end of what the protocol wrote for now: the other side is asked to say it has it all.
             u_long more=0;const bool last=ioctlsocket(t->outer,FIONREAD,&more)!=0||more==0;
             uint32_t seq=0;bool ackNow=false;
-            {std::unique_lock lock(t->m);if(!t->cv.wait_for(lock,std::chrono::seconds(60),[&]{return t->dead||t->sent-t->acked<window;})||t->dead)break;seq=t->sent++;ackNow=last||t->sent-t->acked>=ackEvery;}
+            // Never more than the window ahead of the acknowledgements: 64 messages through a broker, the congestion window directly.
+            auto room=[&]{return t->broker==directPath?uint32_t(std::clamp(t->cwnd,windowLeast,windowMost)):window;};
+            {std::unique_lock lock(t->m);if(!t->cv.wait_for(lock,std::chrono::seconds(60),[&]{return t->dead||t->sent-t->acked<room();})||t->dead)break;seq=t->sent++;
+                ackNow=last||(t->broker==directPath?seq%16==15:t->sent-t->acked>=ackEvery);}
             Bytes b=envelope(kindData);put64(b,t->conn);put32(b,seq);b.push_back(ackNow?1:0);b.insert(b.end(),buffer.begin(),buffer.begin()+n);
             {std::lock_guard lock(t->m);const auto clock=Clock::now();if(t->unacked.empty()){t->progressAt=clock;t->resendAt=clock+t->rto;}t->unacked[seq]=b;}
             if(o.loseEvery>0&&++lost%o.loseEvery==0)continue;
@@ -347,6 +561,7 @@ struct Relay::Core:std::enable_shared_from_this<Core>{
     void resend(){
         while(!stopping){
             {std::unique_lock lock(sleepMutex);sleeper.wait_for(lock,std::chrono::milliseconds(200),[&]{return stopping.load();});}if(stopping)break;
+            directTick();
             std::vector<std::shared_ptr<Tunnel>> all;
             {std::lock_guard lock(m);const auto clock=Clock::now();for(auto& [c,t]:tunnels)all.push_back(t);
                 for(auto it=ended.begin();it!=ended.end();)if(clock-it->second>std::chrono::minutes(2))it=ended.erase(it);else ++it;}
@@ -354,7 +569,10 @@ struct Relay::Core:std::enable_shared_from_this<Core>{
                 {std::lock_guard lock(t->m);if(t->dead)continue;const auto clock=Clock::now();
                     if(!t->unacked.empty()&&clock>=t->resendAt){
                         if(clock-t->progressAt>giveUp)end=true;
-                        else{again=resendable(*t);if(!t->heard)open=t->open;t->resentAt=clock;t->rto=std::min<std::chrono::milliseconds>(t->rto*2,rtoMost);t->resendAt=clock+t->rto;}}
+                        else{again=resendable(*t);if(!t->heard)open=t->open;t->resentAt=clock;const bool direct=t->broker==directPath;
+                            t->rto=std::min<std::chrono::milliseconds>(t->rto*2,direct?std::chrono::milliseconds(4000):rtoMost);t->resendAt=clock+t->rto;
+                            // Nothing acknowledged in a while: the direct path's window starts small again.
+                            if(direct){t->ssthresh=std::max(windowLeast,t->cwnd/2);t->cwnd=windowLeast;}}}
                     if(t->gapSince!=Clock::time_point{}&&clock-t->gapSince>gapGiveUp)end=true;}
                 if(end){kill(t);continue;}
                 const int b=brokerOf(t);if(!open.empty())publish(t->outbox,*t->seal,open,b);for(auto& msg:again)publish(t->outbox,*t->seal,msg,b);}
@@ -372,9 +590,9 @@ struct Relay::Core:std::enable_shared_from_this<Core>{
     void finish(const std::shared_ptr<Tunnel>& t){bool last;{std::lock_guard lock(t->m);last=++t->finished==2;}if(!last)return;closesocket(t->outer);std::lock_guard lock(m);tunnels.erase(t->conn);ended[t->conn]=Clock::now();}
     void dropAll(){std::vector<std::shared_ptr<Tunnel>> all;{std::lock_guard lock(m);for(auto& [c,t]:tunnels)all.push_back(t);for(auto& [inbox,r]:routes){r.heard.fill({});r.presence.here=false;}}
         for(auto& t:all){{std::lock_guard lock(t->m);t->dead=true;t->closeSent=true;}t->cv.notify_all();shutdown(t->outer,SD_BOTH);}}
-    SOCKET openTunnel(const std::string& outbox,const std::shared_ptr<Seal>& seal,int broker){
+    SOCKET openTunnel(const std::string& outbox,const std::shared_ptr<Seal>& seal,int broker,const std::string& route){
         SOCKET inner,outer;if(!loopbackPair(inner,outer))return INVALID_SOCKET;uint64_t conn=0;const Bytes r=randomBytes(8);for(int i=0;i<8&&r.size()==8;++i)conn|=uint64_t(r[size_t(i)])<<(8*i);
-        auto t=start(conn,outer,outbox,seal,broker);if(!t){closesocket(inner);return INVALID_SOCKET;}
+        auto t=start(conn,outer,outbox,seal,broker,route);if(!t){closesocket(inner);return INVALID_SOCKET;}
         Bytes b=envelope(kindOpen);put64(b,conn);{std::lock_guard lock(t->m);t->open=b;}
         if(!publish(outbox,*seal,b,broker)){kill(t);closesocket(inner);return INVALID_SOCKET;}
         return inner;
@@ -387,7 +605,7 @@ struct Relay::Core:std::enable_shared_from_this<Core>{
 Relay::Relay(RelayOptions options):core_(std::make_shared<Core>()){
     core_->o=std::move(options);core_->makeBrokers();auto c=core_;
     for(auto& k:c->brokers){Core::Broker* raw=k.get();k->runner=std::thread([c,raw]{c->run(*raw);});}
-    c->ticker=std::thread([c]{c->tick();});c->resender=std::thread([c]{c->resend();});
+    c->openDirect();c->ticker=std::thread([c]{c->tick();});c->resender=std::thread([c]{c->resend();});
 }
 Relay::~Relay(){
     auto& c=*core_;
@@ -395,6 +613,7 @@ Relay::~Relay(){
     if(c.anyUp()){std::vector<std::string> pairs;{std::lock_guard lock(c.m);for(auto& [inbox,r]:c.routes)if(!r.code)pairs.push_back(inbox);}for(auto& inbox:pairs)c.sayHello(inbox,false,true,-1);c.writeTo(-1,Bytes{0xE0,0});}
     c.stopping=true;c.sleeper.notify_all();for(auto& k:c.brokers)c.abortSocket(*k);
     for(auto& k:c.brokers)if(k->runner.joinable())k->runner.join();if(c.ticker.joinable())c.ticker.join();if(c.resender.joinable())c.resender.join();
+    if(c.receiver.joinable())c.receiver.join();if(c.udp4!=INVALID_SOCKET)closesocket(c.udp4);if(c.udp6!=INVALID_SOCKET)closesocket(c.udp6);
     c.dropAll();
 }
 void Relay::pairs(std::vector<RelayPair> list){
@@ -410,17 +629,27 @@ void Relay::pairs(std::vector<RelayPair> list){
         c.routes=std::move(next);}
     if(c.anyUp()&&!added.empty()){c.subscribe(added,false);for(auto& inbox:added)c.sayHello(inbox,true,false,-1);}
 }
-RelayPresence Relay::presence(const std::string& peer)const{std::lock_guard lock(core_->m);for(auto& [inbox,r]:core_->routes)if(!r.code&&r.peer==peer)return r.presence;return {};}
+RelayPresence Relay::presence(const std::string& peer)const{std::lock_guard lock(core_->m);const auto clock=Clock::now();
+    for(auto& [inbox,r]:core_->routes)if(!r.code&&r.peer==peer){RelayPresence p=r.presence;p.here=p.here||Core::directFresh(r,clock);return p;}return {};}
+RelayPath Relay::path(const std::string& peer)const{
+    auto& c=*core_;std::lock_guard lock(c.m);const auto clock=Clock::now();
+    for(auto& [inbox,r]:c.routes)if(!r.code&&r.peer==peer){RelayPath p;int heard=0;for(size_t b=0;b<c.brokers.size();++b)if(c.brokers[b]->up&&Core::hereOn(r,b,clock))++heard;p.brokers=heard;
+        if(Core::directFresh(r,clock)){p.kind=2;p.rtt=r.rtt;p.v6=r.at.v6();}else if(r.presence.here&&heard>0){p.kind=1;p.rtt=r.relayRtt;}return p;}
+    return {};}
+void Relay::stopDirect(){auto& c=*core_;SOCKET a,b;{std::lock_guard lock(c.m);a=c.udp4;b=c.udp6;c.udp4=c.udp6=INVALID_SOCKET;}if(a!=INVALID_SOCKET)closesocket(a);if(b!=INVALID_SOCKET)closesocket(b);}
+void Relay::networkChanged(){auto c=core_;std::thread([c]{{std::lock_guard lock(c->m);c->stunSeen.clear();for(auto& [inbox,r]:c->routes)r.probedAt={};}c->gather(true);}).detach();}
 bool Relay::connected()const{return core_->anyUp();}
 std::wstring Relay::broker()const{std::wstring names;for(auto& k:core_->brokers)if(k->up)names+=(names.empty()?L"":L", ")+k->host;return names;}
 int Relay::brokersUp()const{int n=0;for(auto& k:core_->brokers)if(k->up)++n;return n;}
 SOCKET Relay::open(const std::string& peer,std::wstring& why){
-    auto& c=*core_;std::string outbox;std::shared_ptr<Seal> seal;bool here=false;std::wstring name;int broker=-1;
-    {std::lock_guard lock(c.m);for(auto& [inbox,r]:c.routes)if(!r.code&&r.peer==peer){outbox=r.outbox;seal=r.seal;here=r.presence.here;name=r.presence.name;broker=c.bestBroker(r);break;}}
+    auto& c=*core_;std::string outbox,route;std::shared_ptr<Seal> seal;bool here=false;std::wstring name;int broker=-1;
+    // 0.21: straight there when a direct path is up; through the broker it was heard on most lately otherwise.
+    {std::lock_guard lock(c.m);const auto clock=Clock::now();for(auto& [inbox,r]:c.routes)if(!r.code&&r.peer==peer){outbox=r.outbox;route=inbox;seal=r.seal;const bool direct=Core::directFresh(r,clock);
+        here=r.presence.here||direct;name=r.presence.name;broker=direct?directPath:c.bestBroker(r);break;}}
     if(!seal){why=L"Pair with it first";return INVALID_SOCKET;}
-    if(!c.anyUp()){why=L"This PC isn't connected to the internet";return INVALID_SOCKET;}
+    if(broker!=directPath&&!c.anyUp()){why=L"This PC isn't connected to the internet";return INVALID_SOCKET;}
     if(!here||broker<0){why=(name.empty()?std::wstring(L"It"):name)+L" isn't online";return INVALID_SOCKET;}
-    const SOCKET s=c.openTunnel(outbox,seal,broker);if(s==INVALID_SOCKET)why=L"The connection through the internet failed";return s;
+    const SOCKET s=c.openTunnel(outbox,seal,broker,route);if(s==INVALID_SOCKET)why=L"The connection through the internet failed";return s;
 }
 std::string Relay::host(){
     auto& c=*core_;if(!c.anyUp())return {};const Bytes r=randomBytes(8);if(r.size()!=8)return {};
@@ -445,6 +674,6 @@ SOCKET Relay::openCode(const std::string& typed,std::wstring& why){
     {std::lock_guard lock(c.m);Core::Route route;route.code=true;route.outbox=outbox;route.seal=seal;c.routes[inbox]=route;}
     if(!c.subscribe({inbox},true)){why=L"The connection through the internet failed";return INVALID_SOCKET;}
     // Opened on every broker: the tunnel keeps to whichever the other device answers on.
-    const SOCKET s=c.openTunnel(outbox,seal,-1);if(s==INVALID_SOCKET)why=L"The connection through the internet failed";return s;
+    const SOCKET s=c.openTunnel(outbox,seal,-1,inbox);if(s==INVALID_SOCKET)why=L"The connection through the internet failed";return s;
 }
 }

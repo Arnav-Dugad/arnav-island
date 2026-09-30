@@ -354,3 +354,28 @@ Shipped, as asked:
 Limits:
 - **The phone's own camera app** may not open `arnavisland://` links. The scanner in Arnav Island for Android always does.
 - **All three brokers blocked** (some workplace networks do this): devices on different networks still can't meet.
+
+## Status after v0.21.0-preview.1 — straight there — 2026-09-30
+
+Shipped, as asked:
+- **A much faster connection across networks, still free:**
+  - a direct path first (IPv6, or UDP hole punching with free STUN servers), with the relay as the fallback
+  - one round trip a command on connections kept open
+- **The connection's quality ring** on both devices: direct, relay or weak, with the relay count on hover.
+- **The pairing card stays** until it's answered (it folded away after a QR scan).
+- **Type a pairing code on a PC**, so two PCs pair from anywhere.
+- **[Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.3.0:** the same direct path, kept connections and quality ring.
+
+Next, in this order:
+- everything on the island from the phone
+- the PC's stats live on the phone
+- sharing to the Shelf with a live preview
+- the photo just taken
+- web pages handed over
+- the phone's hotspot and battery forecast
+- widgets in the cover's colours
+- screen mirroring
+- unlocking with the phone
+
+Limits:
+- **Two hard IPv4 NATs** (both endpoint-dependent) can't punch through, and neither can networks that block UDP. IPv6 usually gets round both; otherwise the relay carries on at relay speed.

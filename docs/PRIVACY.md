@@ -184,3 +184,12 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **The island stays on all three brokers at once**, so each of them sees the same as before: your IP address and random-looking topics, with everything sealed.
 - **The pairing QR code** shows the code and this PC's key fingerprint (the first 10 bytes of the SHA-256 of its public key). The fingerprint is not a secret; it only lets the phone check it reached this PC. The QR code is drawn on screen and never sent anywhere.
 - **The phone's camera** reads the code on the phone, only while its scanner is open. Nothing it sees is kept or sent.
+
+## v0.21 straight there
+
+- **The direct path** tells each paired device this PC's addresses, so the two can reach each other without the relay:
+  - its network addresses (IPv6, and IPv4 on your network)
+  - the public address STUN servers see
+
+  They go only to your paired devices, inside the same sealed hellos as before. The datagrams between them are sealed with the pair's key exactly like relay messages.
+- **STUN servers** (Google's and Cloudflare's) are asked where this PC's datagrams appear to come from. They see your public IP address, as any website does, and nothing else.
