@@ -193,3 +193,11 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 
   They go only to your paired devices, inside the same sealed hellos as before. The datagrams between them are sealed with the pair's key exactly like relay messages.
 - **STUN servers** (Google's and Cloudflare's) are asked where this PC's datagrams appear to come from. They see your public IP address, as any website does, and nothing else.
+
+## v0.22 the whole island, in your hand
+
+- **The phone's Island tab** asks this PC for what the island shows: its numbers (with the PC's model, Windows version, processor and graphics card by name), its settings, its controls and the command bar's results. It all goes only to your paired phones with *My phone can control this PC* on, sealed end to end, and nothing is kept.
+- **The command bar from the phone** searches what the island's bar searches (apps, files, settings). The results go to that phone only.
+- **The phone's hotspot:** its name and password come from the phone (typed there once), only while it's on. The island keeps them in memory and uses them only when you press Join. The Wi-Fi profile it makes is stored by Windows, like any network you join.
+- **Wi-Fi names count as location in Windows 11.** Nothing reads them until you press Join. Windows may then ask whether Arnav Island may use location. Without it, Join still works, without reading any network's name.
+- **The phone's battery forecast** is worked out on the phone from its own history, which stays there. The island receives only the forecast ("until 11 pm").

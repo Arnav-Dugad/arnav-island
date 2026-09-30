@@ -319,3 +319,20 @@ Measured between the phone's engine and share_peer, per remote command:
 | relay, PC on one broker | 501 ms |
 
 Before 0.21, each command was two round trips plus a handshake.
+
+## 0.22.0-preview.1
+
+**Revision 5.** Announced as `2.5`. The remote gains six commands. Answers start `[ok, 1]`; numbers are little-endian; strings are a u32 length and UTF-8.
+
+| Command | Request | Answer |
+|---|---|---|
+| 12 stats | — | 10 f64 (CPU, GPU, RAM used, total and %, disk used %, free and total, down, up), u64 uptime, u16 threads, i8 battery, u8 charging, f64 minutes left, n and n samples each of CPU, GPU (255 unknown) and download, then name, model, Windows, processor, graphics card |
+| 13 settings | `[0]` all; `[1, key, i32]` change; `[2, action]` a button | sections, then each setting: section, control, key, title, detail, range and step, value, action, unit, options, colours; a change answers the value kept |
+| 14 controls | `[0]`; `[1, control, i32]` | Wi-Fi, Bluetooth, dark (1, 0, -1 unknown, -2 none), brightness, volume, flags (muted, microphone there, muted, focus running, finished), focus mode, duration, shown, busy |
+| 15 command | `[0, text]`; `[1, text, index, title, yes]` | final, results (kind, asks first, title, detail, answer); or outcome (done, asks first, failed, stale) and a message |
+| 16 audio | `[0]`; `[1, id]` | outputs (id, name, current, form); not allowed while *Direct output switching* is off |
+| 17 island | `[0, page]`; `[1]` | opens a page, or closes the island |
+
+Sleep, restart and shut down wait 0.9 s, so the answer reaches the phone first.
+
+**Notices** gain `[0x30, 5, on, name, password]`, the phone's hotspot (name at most 32 bytes, password at most 64).

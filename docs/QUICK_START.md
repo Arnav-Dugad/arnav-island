@@ -223,3 +223,11 @@ Click a paired PC in Nearby to make it where Send goes. **Forget** unpairs it.
 **Nothing to set up.** On different networks, your phone and your PC find a direct path by themselves when they can. Nearby's ring shows how each device is reached: green directly or here, amber through the relay, red when it's slow. Hover a row for its round trip and how many relays carry it.
 
 **Two PCs, anywhere.** On one PC: Shelf › Nearby › **Pair with a code**. On the other: Shelf › Nearby › **Type a code**, type it, then check both show the same six digits.
+
+## v0.22 The whole island, in your hand
+
+**From the phone.** Open Arnav Island for Android 1.4 › **Island**. Everything there acts on this PC's island at once. It needs *My phone can control this PC* (Settings › Privacy & productivity). Tap the numbers for their graphs.
+
+**Your phone's hotspot.** In the phone app: Devices › **Your hotspot**, type its name and password once, and turn it on. When the hotspot comes on, the island shows a card: press **Join**. Windows may ask once whether Arnav Island may use location, since Wi-Fi names count as location. Either answer works.
+
+**The battery forecast** shows in the phone's view (Shelf › Nearby › your phone) once the phone has spent a while off the charger.

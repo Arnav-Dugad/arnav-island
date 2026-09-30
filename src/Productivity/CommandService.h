@@ -40,7 +40,9 @@ class CommandService {
     void publish(uint64_t seq,std::vector<CommandResult>);
 public:
     CommandService(HWND,std::wstring scope,std::filesystem::path data);~CommandService();
-    void query(const std::wstring& text,std::vector<std::wstring> workspaces,CommandContext context,std::vector<RememberedCommand> memory,bool currency,bool refreshState=false);
+    // Returns the query's number: results() answers it once it returns that number or more. With no window (a phone's
+    // queries), nothing is posted: the results are asked for.
+    uint64_t query(const std::wstring& text,std::vector<std::wstring> workspaces,CommandContext context,std::vector<RememberedCommand> memory,bool currency,bool refreshState=false);
     // Latest results, the sequence they answer, and one icon per result (may be null).
     uint64_t results(std::vector<CommandResult>& out,std::vector<std::shared_ptr<const Artwork>>& icons){std::lock_guard lock(mutex_);out=results_;icons=icons_;return resultSeq_;}
 };

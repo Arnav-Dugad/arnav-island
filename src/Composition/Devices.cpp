@@ -63,7 +63,7 @@ void Renderer::updateCard(const ContentSnapshot& s,UINT32 track,UINT32 accent,UI
                     ComPtr<ID2D1Layer> layer;rt->CreateLayer(&layer);rt->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),g.Get()),layer.Get());drawPreview(rt,*s.notice.icon,7,7,42,42);rt->PopLayer();}
                 else{rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),Icon::Phone,16,16,24,accent);}return;}
             // 0.20: pairing from anywhere.
-            if(s.notice.kind==20){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),Icon::Link,16,16,24,accent);return;}
+            if(s.notice.kind==20||s.notice.kind==21){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),s.notice.kind==21?Icon::Wifi:Icon::Link,16,16,24,accent);return;}
             // 0.18: the island has updated itself.
             if(s.notice.kind==18){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillEllipse(D2D1::Ellipse({28,28},24,24),b.Get());drawIcon(rt,d2d_.Get(),Icon::Spark,16,16,24,accent);return;}
             if(s.notice.kind==11){ComPtr<ID2D1SolidColorBrush> b;rt->CreateSolidColorBrush(D2D1::ColorF(raised,.95f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({4,4,52,52},12,12),b.Get());if(s.notice.icon)drawPreview(rt,*s.notice.icon,6,6,44,44);else drawIcon(rt,d2d_.Get(),Icon::Snip,16,16,24,accent);return;}

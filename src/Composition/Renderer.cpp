@@ -405,6 +405,9 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             if(n.actions.size()==1)button(Action::NoticeActionBase,n.actions[0].first,256,14,76,28,true);
             else if(n.actions.size()>=2){button(Action::NoticeActionBase,n.actions[0].first,256,4,76,26,true);button(Action(int(Action::NoticeActionBase)+1),n.actions[1].first,256,34,76,22);}
             return;}
+        // 0.22: a phone's hotspot, to join in one tap.
+        if(s.card&&s.notice.kind==21){const auto& n=s.notice;text(rt,n.app,72,6,176,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,176,11,muted);
+            button(Action::HotspotJoin,L"Join",256,4,76,26,true);button(Action::HotspotLater,L"Not now",256,34,76,22);return;}
         // 0.20: pairing from anywhere, the code to type on the phone.
         if(s.card&&s.notice.kind==20){const auto& n=s.notice;
             text(rt,L"Pair from anywhere",72,2,176,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.app,72,20,176,19,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,30);
@@ -802,7 +805,10 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 const std::wstring name=pit!=s.nearby.end()?pit->name:std::wstring(L"Your phone");const bool here=pit!=s.nearby.end()&&pit->online;
                 const auto info=s.phones.find(s.phoneView.peer);const bool known=info!=s.phones.end()&&!info->second.values.empty();
                 auto valueOf=[&](const std::wstring& k)->std::wstring{if(!known)return {};for(auto& [n,v]:info->second.values)if(n==k)return v;return {};};
-                iconButton(Action::PhoneBack,Icon::ArrowLeft,-4,26,32,30);text(rt,name,32,26,232,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,30);
+                // 0.22: its hotspot, when it's on: one tap to join.
+                const bool hot=here&&s.hotspots.count(s.phoneView.peer)>0;
+                iconButton(Action::PhoneBack,Icon::ArrowLeft,-4,26,32,30);text(rt,name,32,26,hot?194.f:232.f,13,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,30);
+                if(hot)iconButton(Action::PhoneHotspot,Icon::Wifi,232,26,34,30,true);
                 iconButton(Action::PhonePhoto,Icon::Camera,270,26,34,30,false,here);iconButton(Action::PhoneClipboard,Icon::Clipboard,308,26,34,30,false,here);iconButton(Action::PhoneRing,Icon::Volume,346,26,34,30,false,here);
                 // The battery.
                 int percent=pit!=s.nearby.end()?pit->battery:-1;if(percent<0){const auto b=valueOf(L"Battery");if(!b.empty())percent=std::clamp(_wtoi(b.c_str()),0,100);}
@@ -815,11 +821,13 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                         ComPtr<ID2D1StrokeStyle> round;auto style=D2D1::StrokeStyleProperties();style.startCap=style.endCap=D2D1_CAP_STYLE_ROUND;d2d_->CreateStrokeStyle(style,nullptr,0,&round);rt->DrawGeometry(arc.Get(),rb.Get(),5,round.Get());}}
                 label(percent>=0?std::to_wstring(percent)+L"%":std::wstring(L"—"),21,98,76,30,20,ink,DWRITE_FONT_WEIGHT_LIGHT);
                 if(charging)drawIcon(rt,d2d_.Get(),Icon::Bolt,52,128,14,0x5fd98a);
-                const std::wstring warmth=valueOf(L"Temperature");label(charging?L"Charging":!warmth.empty()?warmth:here?L"Battery":L"Away",0,164,118,20,10,muted,DWRITE_FONT_WEIGHT_NORMAL);
+                // 0.22: how long it lasts (or when it's full), from the phone's own history.
+                const std::wstring warmth=valueOf(L"Temperature"),lasts=here?valueOf(L"Lasts until"):std::wstring(),full=here?valueOf(L"Full by"):std::wstring();
+                label(charging?(full.empty()?std::wstring(L"Charging"):L"full by "+full):!lasts.empty()?L"until "+lasts:!warmth.empty()?warmth:here?L"Battery":L"Away",0,164,118,20,10,!lasts.empty()||!full.empty()?ink:muted,DWRITE_FONT_WEIGHT_NORMAL);
                 // Its readings, two columns of three.
                 std::vector<std::pair<std::wstring,std::wstring>> tiles;
                 for(const wchar_t* k:{L"Storage",L"Memory",L"Network",L"Sound",L"Android",L"Uptime"}){const auto v=valueOf(k);if(!v.empty())tiles.push_back({k,v});}
-                if(known)for(auto& [n,v]:info->second.values){if(tiles.size()>=6)break;if(n==L"Battery"||n==L"Charging"||n==L"Temperature"||n==L"Model"||n==L"Playing"||std::any_of(tiles.begin(),tiles.end(),[&](auto& t){return t.first==n;}))continue;tiles.push_back({n,v});}
+                if(known)for(auto& [n,v]:info->second.values){if(tiles.size()>=6)break;if(n==L"Battery"||n==L"Charging"||n==L"Temperature"||n==L"Lasts until"||n==L"Full by"||n==L"Model"||n==L"Playing"||std::any_of(tiles.begin(),tiles.end(),[&](auto& t){return t.first==n;}))continue;tiles.push_back({n,v});}
                 if(!known){box(126,62,254,136,raised,16);label(here?L"Waiting for its details…":L"It’s away",136,104,234,24,12,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
                     label(here?L"Arnav Island 1.1 on the phone sends them":L"Its details show when it’s back",136,128,234,20,10,muted,DWRITE_FONT_WEIGHT_NORMAL);}
                 else for(size_t i=0;i<tiles.size()&&i<6;++i){const float x=126+float(i%2)*131,y=62+float(i/2)*46;box(x,y,123,40,raised,11);

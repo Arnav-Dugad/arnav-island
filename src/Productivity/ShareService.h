@@ -29,11 +29,14 @@ namespace nexus {
 // song's lyrics, photos for the Shelf.
 constexpr UINT ShareMessage=WM_APP+45;
 // Revision 4 (0.21): a remote connection stays open for more commands, and so does a notices one (one round trip each,
-// with no new handshake); the relay has a direct path.
-constexpr int shareProtocol=2,shareRevision=4;
+// with no new handshake); the relay has a direct path. Revision 5 (0.22): a phone controls the whole island (its stats,
+// settings, controls, command bar, sound output and pages) and tells it about its hotspot.
+constexpr int shareProtocol=2,shareRevision=5;
 // Remote commands (mode R) and their answers.
 // Revision 3: RingPC (find this PC), Lyrics (the song's lines and word times, when the island has them).
-enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,ClipboardGet=6,ClipboardSet=7,Seek=8,Open=9,RingPC=10,Lyrics=11};
+enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,ClipboardGet=6,ClipboardSet=7,Seek=8,Open=9,RingPC=10,Lyrics=11,
+    // Revision 5 (0.22): a phone controls the whole island (see the answers below for each one's payloads).
+    Stats=12,Settings=13,Controls=14,Command=15,Audio=16,Island=17};
 constexpr uint8_t remoteOk=0,remoteNotAllowed=1,remoteUnsupported=2,remoteFailed=3;
 // What the island reports to a phone's remote. cover: a small JPEG (at most shareCoverLimit bytes), or empty.
 // clipboard (0.20): the island's universal clipboard is on, so the phone sends its own copies over as it opens.
@@ -69,7 +72,7 @@ struct ShareEvent{
     // readings, one "name<TAB>value" a line); PhoneNoticeGone (key: a notification the phone no longer shows). A
     // PhoneNotice carries its key and actions (their titles, and whether each takes a reply). An Offer or Received with
     // toShelf: photos a phone took for this PC's Shelf.
-    enum class Kind{Peers,PairCode,Paired,PairFailed,Offer,Progress,Received,Sent,Failed,Handoff,HandoffAnswered,HandoffFile,ShelfList,ShelfTaken,PhoneStatus,PhoneNotice,Rang,PairingCode,PhoneDetails,PhoneNoticeGone} kind=Kind::Peers;
+    enum class Kind{Peers,PairCode,Paired,PairFailed,Offer,Progress,Received,Sent,Failed,Handoff,HandoffAnswered,HandoffFile,ShelfList,ShelfTaken,PhoneStatus,PhoneNotice,Rang,PairingCode,PhoneDetails,PhoneNoticeGone,PhoneHotspot} kind=Kind::Peers;
     std::string peer;std::wstring name,file,detail;uint64_t size=0,done=0;uint32_t code=0,transfer=0,count=0;bool folder=false,outgoing=false;ShareHandoff handoff;std::vector<ShareShelfItem> shelf;
     std::wstring app;std::vector<uint8_t> icon;int battery=-1;bool charging=false,urgent=false;
     std::string key;std::vector<std::pair<std::wstring,bool>> actions;bool toShelf=false;std::vector<std::wstring> paths;
@@ -150,6 +153,46 @@ std::vector<uint8_t> remoteStatusAnswer(const RemoteStatus& status,const std::ve
 // text each begins, in UTF-16 units). At most 400 lines.
 struct ShareLyricLine{double time=0;std::wstring text;std::vector<std::pair<double,uint32_t>> words;};
 std::vector<uint8_t> remoteLyricsAnswer(int state,const std::wstring& key,const std::vector<ShareLyricLine>& lines);
+// ---- Revision 5 (0.22): a phone controls the whole island ----
+// All little-endian; a string is a u32 length and UTF-8. Each answer starts with remoteOk and a version byte (1).
+// Stats (no payload): the PC's numbers live, their last 40 samples (CPU and GPU in percent, 255 unknown; downloads in
+// bytes a second) and what the PC is.
+struct PcStats{double cpu=-1,gpu=-1,ramUsedGiB=0,ramTotalGiB=0,ramPercent=0,diskUsedPercent=-1,diskFreeGiB=0,diskTotalGiB=0,download=0,upload=0,batteryMinutes=-1;
+    uint64_t uptime=0;unsigned logical=0;int battery=-1;bool charging=false;std::vector<float> cpuHistory,gpuHistory,downloadHistory;std::wstring name,model,os,cpuName,gpuName;};
+std::vector<uint8_t> remoteStatsAnswer(const PcStats&);
+// Settings: payload [0] reads every setting (its section, control, key, title, detail, range, value, the action a button
+// runs, its unit, options and colours, for swatches); [1, key, i32] sets one (answered with the value it has now); [2, u8]
+// runs a settings button's action. control: 0 switch, 1 slider, 2 choice, 3 stepper, 4 swatch, 5 button.
+struct RemoteSetting{int section=0,control=0;std::string key;std::wstring title,detail,unit;int lo=0,hi=1,step=1,value=0,action=0;std::vector<std::wstring> options;std::vector<uint32_t> colours;};
+std::vector<uint8_t> remoteSettingsAnswer(const std::vector<std::wstring>& sections,const std::vector<RemoteSetting>& items);
+std::vector<uint8_t> remoteValueAnswer(int value);
+// Controls: payload [0] reads them; [1, control, i32] changes one: 1 Wi-Fi, 2 Bluetooth, 3 dark mode, 4 airplane mode (1
+// every radio off), 5 brightness, 6 volume, 7 mute, 8 microphone muted, 9 lock, 10 sleep, 11 restart, 12 shut down,
+// 13 empty the recycle bin, 15 focus for N minutes, 16 a break of N minutes, 17 pause or resume, 18 reset, 19 stopwatch.
+// Radios and dark mode are 1 on, 0 off, -1 unknown, -2 none; busy: switches changing (1 Wi-Fi, 2 Bluetooth, 4 radios, 8 dark).
+struct PcControls{int wifi=-1,bluetooth=-1,dark=-1,brightness=-1,volume=0,busy=0,focusMode=0;bool muted=false,micAvailable=false,micMuted=false,focusRunning=false,focusFinished=false;double focusDuration=0,focusShown=0;};
+std::vector<uint8_t> remoteControlsAnswer(const PcControls&);
+// Command: payload [0, text] asks the command bar (final: these results answer that text; ask again until then);
+// [1, text, index, title, confirmed] runs one, answered by an outcome (0 done, 1 needs a yes first, 2 failed, 3 the
+// results have changed) and what happened.
+struct RemoteResult{int kind=0;bool confirm=false;std::wstring title,detail,answer;};
+std::vector<uint8_t> remoteCommandAnswer(bool final,const std::vector<RemoteResult>&);
+std::vector<uint8_t> remoteOutcome(int outcome,const std::wstring& message);
+// Audio: payload [0] lists the outputs; [1, id] makes one the default.
+struct RemoteOutput{std::wstring id,name;bool current=false;int form=-1;};
+std::vector<uint8_t> remoteAudioAnswer(const std::vector<RemoteOutput>&);
+// Island: payload [0, page] opens one of its pages on the PC (Home, Media, Stats, Focus, Settings, Shelf, Audio,
+// Controls); [1] closes it.
+// A request's payload, read in order; any read past its end fails (and so does everything after).
+class RemoteReader{const std::vector<uint8_t>& b_;size_t at_=0;bool ok_=true;
+public:
+    explicit RemoteReader(const std::vector<uint8_t>& b):b_(b){}
+    bool ok()const{return ok_;}
+    int u8(){if(!ok_||at_+1>b_.size()){ok_=false;return 0;}return b_[at_++];}
+    int i32(){if(!ok_||at_+4>b_.size()){ok_=false;return 0;}uint32_t v=0;for(int k=0;k<4;++k)v|=uint32_t(b_[at_+size_t(k)])<<(8*k);at_+=4;return int(v);}
+    std::string bytes(size_t limit){const int n=i32();if(!ok_||n<0||size_t(n)>limit||at_+size_t(n)>b_.size()){ok_=false;return {};}std::string s(b_.begin()+long(at_),b_.begin()+long(at_+size_t(n)));at_+=size_t(n);return s;}
+    std::wstring text(size_t limit);
+};
 // "Photos", "notes.txt", or "notes.txt and 2 more", for a transfer of these top-level items.
 std::wstring shareTitle(const std::vector<std::wstring>& names);
 }

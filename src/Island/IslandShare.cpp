@@ -126,7 +126,10 @@ void IslandWindow::shareEvents(){
         case K::ShelfTaken:drop(e.transfer);shareCard(16,e.name+L" took "+e.file,L"A copy, from your Shelf",{},3.5);store_.log("Info","share_shelf_taken_there");break;
         // 0.19: a phone's battery (its row, and a card once when it runs low), its notifications, and find my phone.
         case K::PhoneStatus:{content_.nearby=share_->peers();auto it=phoneBattery_.try_emplace(e.peer,101).first;
-            if(settings_.phoneNotices&&e.battery>=0&&e.battery<=20&&!e.charging&&it->second>20)phoneCard(e.name+L" is at "+std::to_wstring(e.battery)+L"%",L"Charge it soon",e.name,nullptr,5);
+            if(settings_.phoneNotices&&e.battery>=0&&e.battery<=20&&!e.charging&&it->second>20){
+                // 0.22: with the phone's forecast, when it runs out.
+                std::wstring lasts;if(auto p=content_.phones.find(e.peer);p!=content_.phones.end())for(auto& [k,v]:p->second.values)if(k==L"Lasts until")lasts=v;
+                phoneCard(e.name+L" is at "+std::to_wstring(e.battery)+L"%",lasts.empty()?std::wstring(L"Charge it soon"):L"Lasts until "+lasts+L"  \u00b7  charge it soon",e.name,nullptr,5);}
             if(e.battery>=0)it->second=e.charging?101:e.battery;if(state_==IslandState::Expanded&&content_.page==Page::Shelf)redraw=true;break;}
         case K::PhoneNotice:{if(!settings_.phoneNotices)break;
             // A call stays up while it rings (the phone says when it has gone); others for a few seconds, longer with actions.
@@ -136,6 +139,8 @@ void IslandWindow::shareEvents(){
             std::erase_if(heldCards_,[&](auto& h){return h.notice.kind==19&&h.notice.peer==e.peer&&h.notice.key==e.key;});
             if(state_==IslandState::Notification&&content_.notice.kind==19&&content_.notice.peer==e.peer&&!e.key.empty()&&content_.notice.key==e.key){events_.dismiss(now);content_.activity.clear();transition(IslandState::Compact);}
             syncBud();break;}
+        // 0.22: a phone's hotspot came on (its name and password) or went off.
+        case K::PhoneHotspot:phoneHotspot(e.peer,e.name,e.code!=0,e.file,e.detail);break;
         // A phone's readings, for its own view in Nearby.
         case K::PhoneDetails:{auto& info=content_.phones[e.peer];info.values.clear();info.at=now;size_t from=0;
             while(from<e.detail.size()&&info.values.size()<40){size_t end=e.detail.find(L'\n',from);if(end==std::wstring::npos)end=e.detail.size();const std::wstring line=e.detail.substr(from,end-from);from=end+1;
@@ -229,6 +234,10 @@ bool IslandWindow::shareAction(Action a){
     // The pairing card's QR code: Nearby opens with it, large enough for a phone's camera.
     if(a==Action::PairingShow){events_.dismiss(now);content_.activity.clear();content_.page=Page::Shelf;content_.shelfTab=2;content_.shelfDetail=-1;content_.phoneView={};content_.remote.open=false;
         content_.pinned=true;transition(IslandState::Expanded);refresh();animate();return true;}
+    // 0.22: a phone's hotspot, joined from its card or its view.
+    if(a==Action::HotspotJoin){const std::string peer=content_.notice.peer;events_.dismiss(now);content_.activity.clear();transition(IslandState::Compact);joinHotspot(peer);return true;}
+    if(a==Action::HotspotLater){close();return true;}
+    if(a==Action::PhoneHotspot){joinHotspot(content_.phoneView.peer);return true;}
     if(a==Action::PhoneBack){content_.phoneView={};if(!motion_.reduced){motion_.swipe.reset(-22,now);motion_.swipe.retarget(0,now,MotionTokens::content);}refresh();animate();return true;}
     if(a==Action::PhoneRing||a==Action::PhonePhoto||a==Action::PhoneClipboard){const std::string peer=content_.phoneView.peer;auto it=std::find_if(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==peer;});
         if(!share_||it==content_.nearby.end())return true;
@@ -307,6 +316,13 @@ std::vector<uint8_t> IslandWindow::remoteAnswer(const std::string& peer,RemoteCo
         if(reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr,L"open",url.c_str(),nullptr,nullptr,SW_SHOWNORMAL))<=32)return {remoteFailed};
         phoneCard(L"Opened from "+from,cardLine(url),from,nullptr,3);store_.log("Info","phone_open");return {remoteOk};}
     // Find my PC: a chime, again and again, and the edge lighting up, until the card is closed (or after twelve seconds).
+    // 0.22 (revision 5): everything else on the island (IslandRemote.cpp).
+    case RemoteCommand::Stats:return remoteStats();
+    case RemoteCommand::Settings:return remoteSettings(payload);
+    case RemoteCommand::Controls:return remoteControls(payload);
+    case RemoteCommand::Command:return remoteCommand(payload);
+    case RemoteCommand::Audio:return remoteAudio(payload);
+    case RemoteCommand::Island:return remoteIsland(payload);
     case RemoteCommand::RingPC:{ringChimes_=8;playSound(Sound::Chime);SetTimer(window_,RingPCTimer,1400,nullptr);phoneCard(L"Here I am",from+L" is looking for this PC",from,nullptr,12);store_.log("Info","phone_find_pc");return {remoteOk};}
     // The song's lyrics, as the island has them (the phone shows them in time with the song).
     case RemoteCommand::Lyrics:{const std::wstring key=p.available?p.title+L"\t"+p.artist:std::wstring();int state=0;std::vector<ShareLyricLine> lines;
@@ -371,6 +387,8 @@ void IslandWindow::proximityCheck(){
 }
 bool IslandWindow::shareTimer(UINT_PTR id){
     if(id==ProximityTimer){proximityCheck();return true;}
+    if(id==PhoneStatsTimer){KillTimer(window_,PhoneStatsTimer);clockTimer();return true;}
+    if(id==PhonePowerTimer){KillTimer(window_,PhonePowerTimer);phonePower();return true;}
     if(id==RingPCTimer){const bool showing=state_==IslandState::Notification&&content_.notice.kind==19&&content_.notice.app==L"Here I am";
         if(--ringChimes_<=0||!showing){KillTimer(window_,RingPCTimer);ringChimes_=0;return true;}playSound(Sound::Chime);alertSplash();return true;}
     return false;
@@ -379,7 +397,7 @@ bool IslandWindow::shareTimer(UINT_PTR id){
 // pairing code (20), a phone's message with actions or a call (19). Such a card isn't folded away by the pointer.
 bool IslandWindow::decisionShowing()const{
     if(state_!=IslandState::Notification||!events_.active())return false;const auto& n=content_.notice;
-    return n.kind==14||n.kind==15||n.kind==17||n.kind==20||(n.kind==19&&!n.actions.empty());
+    return n.kind==14||n.kind==15||n.kind==17||n.kind==20||n.kind==21||(n.kind==19&&!n.actions.empty());
 }
 // 0.21: pairing with another PC's code (it shows on that PC's island: Shelf › Nearby › Pair with a code). The bar takes
 // the eight letters and digits in glass cells; the last one pairs at once, and both PCs then show the same six digits.

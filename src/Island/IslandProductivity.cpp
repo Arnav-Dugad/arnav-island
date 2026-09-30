@@ -163,6 +163,8 @@ void IslandWindow::showPrivacyNotice(const PrivacyUse& u){
 // ---- Command bar -----------------------------------------------------------
 // The command bar's service (apps, files, answers on its own thread). Test runs search only the Public folder, where the
 // sample files live, never the user's own files.
+// 0.22: the command bar a phone asks: its own service, with no window to post to.
+void IslandWindow::ensureRemoteCommands(){if(!remoteCommands_){wchar_t pub[MAX_PATH]{};GetEnvironmentVariableW(L"PUBLIC",pub,MAX_PATH);remoteCommands_=std::make_unique<CommandService>(nullptr,testing_&&*pub?std::wstring(pub):userFolder(),store_.directory);}}
 void IslandWindow::ensureCommands(){if(!commands_){wchar_t pub[MAX_PATH]{};GetEnvironmentVariableW(L"PUBLIC",pub,MAX_PATH);commands_=std::make_unique<CommandService>(window_,testing_&&*pub?std::wstring(pub):userFolder(),store_.directory);}}
 void IslandWindow::openCommand(){
     if(content_.command.active){SetForegroundWindow(window_);return;}ensureCommands();

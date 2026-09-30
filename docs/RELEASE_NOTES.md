@@ -1,3 +1,55 @@
+# Arnav Island 0.22.0-preview.1 — the whole island, in your hand
+
+## Your phone controls everything
+[Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.4 has a new **Island** tab. From it, on this PC:
+- **Its numbers, live:**
+  - processor, graphics and memory in rings, with a flowing graph of the processor
+  - downloads and uploads, disk, battery (and time left), how long it's been on
+  - tap for more: live graphs of the processor, graphics and network, the processor and graphics card by name, the PC's model and Windows version
+- **The Controls page:** Wi-Fi, Bluetooth, airplane mode, dark mode, the microphone, mute, brightness and volume. A switch that's changing shows it.
+- **The focus clock:** 15, 25 or 45 minutes or a break, pause and resume, reset, the stopwatch. It counts on the phone as it does here.
+- **The command bar:** type what the island's bar takes (an app, a file, a setting, "timer 10", "100 usd in eur") and tap a result. Anything the island asks about first (restart, shut down, empty the recycle bin) asks on the phone.
+- **Power:** lock, sleep, restart and shut down (each after asking), and emptying the recycle bin.
+- **Where the sound goes,** with *Direct output switching* on. The phone offers to turn it on.
+- **The island's pages:** open any of them on this PC, or close the island.
+- **Every setting,** as the Settings window has it: switches, sliders, choices, steppers, colours and buttons. Turning off something that cuts the phone off asks first:
+  - *Share with my PCs*
+  - *My phone can control this PC*
+  - *Reach my devices anywhere*
+- While the phone shows the numbers, this PC keeps measuring them, and for 12 s after, as it does while the Stats page is open.
+- It all needs *My phone can control this PC* (Settings › Privacy & productivity), like the remote.
+
+## The phone's hotspot, one tap to join
+- **When your phone's hotspot comes on, the island says so:** a card with its name, and **Join**. The phone's own view in Nearby has a Wi-Fi button for as long as it's on.
+- **Join** makes a Wi-Fi profile for it and connects. If Wi-Fi is off, it's turned on first. The card then says how it went:
+  - connected
+  - can't be seen from here
+  - couldn't join (the password, most likely); the profile is removed then
+- **Windows 11 counts Wi-Fi names as location.** Nothing reads them until you press Join.
+  - With location allowed (Windows asks the first time), the hotspot is found first, joined as it's secured, and confirmed by name.
+  - Without it, it's joined as phones secure hotspots (WPA2, then WPA3) and confirmed by the Wi-Fi's own state.
+- **The profile connects only when asked,** so this PC won't reach for your phone's hotspot later by itself.
+- **The card stays up longer** when this PC has no internet of its own.
+- **Only the phone knows the password.** You type the hotspot's name and password in the phone app once (Android doesn't tell apps). The phone sends them only to your paired PCs, sealed end to end, and only while the hotspot is on. The island keeps them in memory.
+
+## The phone's battery, forecast
+- **The phone's view in Nearby** says how long its battery lasts ("until 11 pm"), or when it's full while it charges.
+- **The low-battery card** says when it runs out.
+- **The forecast comes from the phone's own history,** which stays on the phone:
+  - at first at the pace of the last hour or so
+  - then more and more at the pace the phone usually keeps at each hour of the day, recent days counting most
+
+## Checks
+- **Unit suites:** core 11,682; model 2,061; phase 5,724; share 199; provider lifecycle passing.
+- **The phone against this PC's engine (seven tests), over the network and live over the internet:**
+  - the whole island: its numbers, every setting and its change, the controls, the command bar (a yes asked first where it's needed), the outputs and the pages
+  - the hotspot on and off
+  - the direct path and the relay, as in 0.21
+- **UI test** on the signed build: all 53 stages. They include the hotspot card waiting for its answer, going when the hotspot does, and its spoken name.
+- **Settings end-to-end:** 216 checks, 0 failures.
+- **On the Android emulator,** against a made-up PC: every control, each kind of setting, the command bar with its keyboard, the focus clock counting down, the stats sheet, the page tiles, and the emulator's own hotspot on and off reaching this PC's engine.
+- **Join wasn't run against a real hotspot** in the tests (it would change this PC's Wi-Fi). Its card, its answers and the phone's side were tested.
+
 # Arnav Island 0.21.0-preview.1 — straight there
 
 ## Faster on any network

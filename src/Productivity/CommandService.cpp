@@ -81,8 +81,8 @@ struct CommandService::Rates {std::mutex m;ExchangeRates rates;bool loading=fals
 struct CommandService::Index {ComPtr<IDBCreateCommand> session;bool off=false;double retryAt=0;};
 CommandService::CommandService(HWND w,std::wstring scope,std::filesystem::path data):window_(w),scope_(std::move(scope)),data_(std::move(data)),rates_(std::make_shared<Rates>()),index_(std::make_unique<Index>()){worker_=std::thread([this]{run();});}
 CommandService::~CommandService(){{std::lock_guard lock(mutex_);stop_=true;}wake_.notify_all();if(worker_.joinable())worker_.join();}
-void CommandService::query(const std::wstring& text,std::vector<std::wstring> workspaces,CommandContext context,std::vector<RememberedCommand> memory,bool currency,bool refreshState){
-    {std::lock_guard lock(mutex_);query_=text;workspaces_=std::move(workspaces);context_=std::move(context);memory_=std::move(memory);currency_=currency;refresh_=refresh_||refreshState;++querySeq_;}wake_.notify_all();
+uint64_t CommandService::query(const std::wstring& text,std::vector<std::wstring> workspaces,CommandContext context,std::vector<RememberedCommand> memory,bool currency,bool refreshState){
+    uint64_t seq=0;{std::lock_guard lock(mutex_);query_=text;workspaces_=std::move(workspaces);context_=std::move(context);memory_=std::move(memory);currency_=currency;refresh_=refresh_||refreshState;seq=++querySeq_;}wake_.notify_all();return seq;
 }
 std::shared_ptr<const Artwork> CommandService::icon(const CommandResult& r){
     std::wstring name=!r.appId.empty()?L"shell:AppsFolder\\"+r.appId:r.kind==CommandKind::OpenFile?r.target:std::wstring{};if(name.empty())return nullptr;
@@ -91,7 +91,7 @@ std::shared_ptr<const Artwork> CommandService::icon(const CommandResult& r){
 void CommandService::publish(uint64_t seq,std::vector<CommandResult> results){
     std::vector<std::shared_ptr<const Artwork>> icons;for(auto& r:results)icons.push_back(icon(r));
     {std::lock_guard lock(mutex_);if(seq<resultSeq_||querySeq_!=seq)return;results_=std::move(results);icons_=std::move(icons);resultSeq_=seq;}
-    PostMessageW(window_,CommandMessage,0,LPARAM(seq));
+    if(window_)PostMessageW(window_,CommandMessage,0,LPARAM(seq));
 }
 void CommandService::refreshState(){
     env_.dark=darkModeNow();

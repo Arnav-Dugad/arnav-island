@@ -121,6 +121,8 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
             p.viaInternet=internet;p.path=path;p.rtt=rtt;p.relays=relays;p.v6=v6;if(phone){p.battery=76;p.charging=false;}return p;};
         content_.nearby={peer("a1",L"Studio PC",false,false,0,0,0,false),peer("b2",L"Travel PC",false,true,2,38,3,true),peer("c3",L"Galaxy S23+",true,true,1,342,3,false),peer("d4",L"Office PC",false,true,1,812,1,false)};
         content_.page=Page::Shelf;content_.shelfTab=2;content_.pinned=true;transition(IslandState::Expanded);refresh();}
+    // --qa-hotspot: a made-up phone's hotspot card (a made-up network: Join says it can't be seen from here).
+    if(testing_&&cmd.find(L"--qa-hotspot")!=std::wstring::npos){hotspots_["qa"]={L"QA hotspot 7F3K",L"not-a-real-password",seconds()};content_.hotspots["qa"]=L"QA hotspot 7F3K";hotspotCard("qa",L"Pixel 9");}
     // --qa-pair-code: the command bar taking another PC's pairing code, four of eight typed.
     if(testing_&&cmd.find(L"--qa-pair-code")!=std::wstring::npos){openPairCode();for(wchar_t ch:std::wstring(L"7K2P"))commandChar(ch);}
     // --qa-late (with --qa-share-card): the card comes 5 s after start (so a screen reader client is already listening).
@@ -506,6 +508,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
     case SettingsTownMessage:townMessage(w,l);return 0;
     case ShareMessage:shareEvents();return 0;
     case RemoteMessage:remoteCall(l);return 0;
+    case HotspotMessage:hotspotMessage(w,l);return 0;
     case WallpaperLumaMessage:{std::unique_ptr<std::shared_ptr<WallpaperLuma>> map(reinterpret_cast<std::shared_ptr<WallpaperLuma>*>(l));wallLoading_=false;if(map&&*map)wallLuma_=*map;adaptBackdrop();return 0;}
     case FullscreenMessage:adaptBackdrop();if(w){SetTimer(window_,17,120,nullptr);}else{DWORD pid=0;auto fg=GetForegroundWindow();if(fg)GetWindowThreadProcessId(fg,&pid);if(!testing_&&pid&&pid!=GetCurrentProcessId())yieldToApp();fullscreen();}return 0;
     case WM_DISPLAYCHANGE:if(renderer_)applySettings(true);return 0;
@@ -694,6 +697,10 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                         pass=pass&&content_.command.active&&content_.command.pairCode&&content_.command.text==L"7K2P"&&accessibleName(Action::PairTypeCode)==L"Type another PC’s pairing code";
                         commandKey(VK_BACK);pass=pass&&content_.command.text==L"7K2";for(wchar_t ch:std::wstring(L"PMX41O"))commandChar(ch);
                         pass=pass&&content_.command.active&&content_.command.text==L"7K2PMX4";closeCommand(false);pass=pass&&!content_.command.active;
+                        // 0.22: a phone's hotspot card waits for its answer; it goes when the hotspot does.
+                        hotspots_["uitest"]={L"UI test hotspot",L"nothing-real",seconds()};content_.hotspots["uitest"]=L"UI test hotspot";hotspotCard("uitest",L"Test phone");
+                        pass=pass&&state_==IslandState::Notification&&content_.notice.kind==21&&decisionShowing()&&accessAlert(content_.notice).find(L"UI test hotspot")!=std::wstring::npos&&accessibleName(Action::HotspotJoin)==L"Join the hotspot";
+                        phoneHotspot("uitest",L"Test phone",false,{},{});pass=pass&&state_!=IslandState::Notification&&hotspots_.empty()&&content_.hotspots.empty();
                         settings_.sharing=wasSharing;settings_.relay=wasRelay;content_.settings=settings_;content_.shelfTab=0;perform(Action::Close);}
                     events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);}
                 content_.pinned=false;phoneCard(L"UI test message",L"Nothing real",L"Messages  \u00b7  Test phone",nullptr,3);
@@ -880,7 +887,8 @@ void IslandWindow::syncDropTimer(){const bool on=renderer_&&renderer_->wantsDrop
 void IslandWindow::clockTimer(){bool visible=state_!=IslandState::Compact&&IsWindowVisible(window_);
     // The idle glance in the compact island shows CPU and GPU, so it needs the system provider too.
     const bool glance=state_==IslandState::Compact&&IsWindowVisible(window_)&&!autoHide_.hidden&&settings_.compactGlance&&settings_.uiMode!=0&&settings_.edge==0&&!(settings_.compactMedia&&content_.playback.available)&&!content_.focus.running;
-    bool request=(visible&&!content_.live&&(content_.page==Page::Overview||content_.page==Page::System))||glance;if(request!=systemRequested_){systemRequested_=request;if(request)SetTimer(window_,10,400,nullptr);else{KillTimer(window_,10);if(system_)system_->setActive(false);}}if(content_.focus.running||(visible&&(content_.live||content_.page==Page::Media)&&content_.playback.playing))SetTimer(window_,9,1000,nullptr);else KillTimer(window_,9);if(settings_.compactClock&&IsWindowVisible(window_))SetTimer(window_,18,60000,nullptr);else KillTimer(window_,18);updateProviders();
+    // 0.22: and while a phone keeps asking for the PC's stats.
+    bool request=(visible&&!content_.live&&(content_.page==Page::Overview||content_.page==Page::System))||glance||seconds()<phoneStatsUntil_;if(request!=systemRequested_){systemRequested_=request;if(request)SetTimer(window_,10,400,nullptr);else{KillTimer(window_,10);if(system_)system_->setActive(false);}}if(content_.focus.running||(visible&&(content_.live||content_.page==Page::Media)&&content_.playback.playing))SetTimer(window_,9,1000,nullptr);else KillTimer(window_,9);if(settings_.compactClock&&IsWindowVisible(window_))SetTimer(window_,18,60000,nullptr);else KillTimer(window_,18);updateProviders();
     syncPeek();
     // The Controls page re-reads its switches every two seconds while it shows.
     if(visible&&!content_.live&&content_.page==Page::Control)SetTimer(window_,47,2000,nullptr);else KillTimer(window_,47);

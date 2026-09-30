@@ -238,3 +238,11 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Quality ring | Nearby: whole green (here or direct), amber (relay), short red (600 ms or more, or one broker); round trip, relay count on hover | Round trips measured every 15–20 s |
 | Pair with a typed code | Shelf › Nearby › Type a code; the command bar in eight glass cells, its alphabet only | Needs *Reach my devices anywhere* |
 | Answer-waiting cards | Pairing, offers, handoffs, the code card and messages with actions stay until answered; other alerts wait behind them | — |
+
+| v0.22.0-preview.1 feature | Implemented | Limits |
+|---|---|---|
+| Revision 5: the whole island | Remote commands 12–17: stats (with the last 40 samples and the PC's names), settings (the Settings table, a change, a button), controls (read and change, the focus clock), the command bar (results until final; run, asking first), audio outputs, the island's pages | Needs *My phone can control this PC*; the phone app 1.4 |
+| Stats kept live | The system provider measures while a phone asks and for 12 s after | — |
+| Hotspot notice | `[0x30, 5, on, name, password]` from the phone; a card with Join, and a Wi-Fi button in the phone's view | Name and password typed once on the phone |
+| Join | A manual-connect profile; with location: scanned, secured as seen, confirmed by name; without: WPA2 then WPA3, confirmed by the interface state; Wi-Fi turned on first | Not run against a real hotspot in tests |
+| Battery forecast | The phone's "Lasts until" / "Full by" in its view and the low-battery card | From the phone's own history |

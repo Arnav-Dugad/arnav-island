@@ -588,6 +588,11 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
                             e.actions.push_back({clean(wide(std::string(f.begin()+long(at),f.begin()+long(at+size))),24),(flags&1)!=0});at+=size;}}}}}
         else if(f[1]==3&&f.size()>=6){e.kind=ShareEvent::Kind::PhoneDetails;const uint32_t n=get32(f.data()+2);if(n>16*1024||6+n>f.size())return false;e.detail=wide(std::string(f.begin()+6,f.begin()+long(6+n)));}
         else if(f[1]==4&&f.size()>=6){e.kind=ShareEvent::Kind::PhoneNoticeGone;const uint32_t n=get32(f.data()+2);if(n>512||6+n>f.size())return false;e.key.assign(f.begin()+6,f.begin()+long(6+n));}
+        // Revision 5: its hotspot, [on] and when on its name (32 bytes at most) and password (64 at most).
+        else if(f[1]==5&&f.size()>=3){e.kind=ShareEvent::Kind::PhoneHotspot;e.code=f[2]!=0;size_t at=3;
+            auto text=[&](size_t limit,std::wstring& out){if(at+4>f.size())return false;const uint32_t n=get32(f.data()+at);at+=4;if(n>limit||at+n>f.size())return false;
+                out=wide(std::string(f.begin()+long(at),f.begin()+long(at+n)));at+=n;return true;};
+            if(e.code&&(!text(32,e.file)||!text(64,e.detail)||e.file.empty()))return false;}
         else return false;
         const bool acked=sealed(s,ss.channel,Bytes{frameNoticeAck});post(std::move(e));return acked;
     }
@@ -707,6 +712,46 @@ std::vector<uint8_t> remoteStatusAnswer(const RemoteStatus& st,const std::vector
     const std::string text=utf8(line(st.title)+L"\n"+line(st.artist)+L"\n"+line(st.app)+L"\n"+line(st.name)+L"\n"+line(st.weather));put32(b,uint32_t(text.size()));append(b,text);
     return b;
 }
+// ---- Revision 5 ----
+namespace {
+void putU16(Bytes& b,unsigned v){b.push_back(uint8_t(v&255));b.push_back(uint8_t((v>>8)&255));}
+void putStr(Bytes& b,const std::wstring& s,size_t limit=600){const std::string u=utf8(s.substr(0,limit));put32(b,uint32_t(u.size()));append(b,u);}
+void putStr(Bytes& b,const std::string& s){put32(b,uint32_t(s.size()));append(b,s);}
+void putI32(Bytes& b,int v){put32(b,uint32_t(v));}
+uint8_t percentByte(double v){return v<0||!std::isfinite(v)?255:uint8_t(std::clamp(int(std::lround(v)),0,100));}
+}
+std::wstring RemoteReader::text(size_t limit){const std::string u=bytes(limit);return wide(u);}
+std::vector<uint8_t> remoteStatsAnswer(const PcStats& s){
+    Bytes b{remoteOk,1};for(double v:{s.cpu,s.gpu,s.ramUsedGiB,s.ramTotalGiB,s.ramPercent,s.diskUsedPercent,s.diskFreeGiB,s.diskTotalGiB,s.download,s.upload})putF64(b,std::isfinite(v)?v:-1);
+    put64(b,s.uptime);putU16(b,std::min(s.logical,65535u));b.push_back(uint8_t(int8_t(std::clamp(s.battery,-1,100))));b.push_back(s.charging?1:0);putF64(b,s.batteryMinutes);
+    const size_t n=std::min<size_t>({s.cpuHistory.size(),s.gpuHistory.size(),s.downloadHistory.size(),size_t(40)});b.push_back(uint8_t(n));
+    for(size_t i=0;i<n;++i)b.push_back(percentByte(s.cpuHistory[s.cpuHistory.size()-n+i]));
+    for(size_t i=0;i<n;++i)b.push_back(percentByte(s.gpuHistory[s.gpuHistory.size()-n+i]));
+    for(size_t i=0;i<n;++i){const double d=s.downloadHistory[s.downloadHistory.size()-n+i];put32(b,uint32_t(std::clamp(d,0.,4e9)));}
+    for(auto* t:{&s.name,&s.model,&s.os,&s.cpuName,&s.gpuName})putStr(b,*t,120);
+    return b;}
+std::vector<uint8_t> remoteSettingsAnswer(const std::vector<std::wstring>& sections,const std::vector<RemoteSetting>& items){
+    Bytes b{remoteOk,1};b.push_back(uint8_t(std::min<size_t>(sections.size(),64)));for(size_t i=0;i<sections.size()&&i<64;++i)putStr(b,sections[i],80);
+    const size_t n=std::min<size_t>(items.size(),1000);putU16(b,unsigned(n));
+    for(size_t i=0;i<n;++i){const auto& it=items[i];b.push_back(uint8_t(it.section));b.push_back(uint8_t(it.control));putStr(b,it.key.substr(0,64));putStr(b,it.title,120);putStr(b,it.detail,300);
+        putI32(b,it.lo);putI32(b,it.hi);putI32(b,it.step);putI32(b,it.value);b.push_back(uint8_t(it.action));putStr(b,it.unit,16);
+        const size_t o=std::min<size_t>(it.options.size(),32);b.push_back(uint8_t(o));for(size_t k=0;k<o;++k)putStr(b,it.options[k],60);
+        const size_t c=std::min<size_t>(it.colours.size(),32);b.push_back(uint8_t(c));for(size_t k=0;k<c;++k)put32(b,it.colours[k]);}
+    return b;}
+std::vector<uint8_t> remoteValueAnswer(int value){Bytes b{remoteOk};putI32(b,value);return b;}
+std::vector<uint8_t> remoteControlsAnswer(const PcControls& c){
+    Bytes b{remoteOk,1};for(int v:{c.wifi,c.bluetooth,c.dark,c.brightness})b.push_back(uint8_t(int8_t(std::clamp(v,-2,100))));b.push_back(uint8_t(std::clamp(c.volume,0,100)));
+    b.push_back(uint8_t((c.muted?1:0)|(c.micAvailable?2:0)|(c.micMuted?4:0)|(c.focusRunning?8:0)|(c.focusFinished?16:0)));b.push_back(uint8_t(std::clamp(c.focusMode,0,2)));
+    putF64(b,c.focusDuration);putF64(b,c.focusShown);b.push_back(uint8_t(c.busy&15));return b;}
+std::vector<uint8_t> remoteCommandAnswer(bool final,const std::vector<RemoteResult>& results){
+    Bytes b{remoteOk,1,uint8_t(final?1:0)};const size_t n=std::min<size_t>(results.size(),12);b.push_back(uint8_t(n));
+    for(size_t i=0;i<n;++i){const auto& r=results[i];b.push_back(uint8_t(std::clamp(r.kind,0,255)));b.push_back(r.confirm?1:0);putStr(b,r.title,200);putStr(b,r.detail,300);putStr(b,r.answer,60);}
+    return b;}
+std::vector<uint8_t> remoteOutcome(int outcome,const std::wstring& message){Bytes b{remoteOk,uint8_t(std::clamp(outcome,0,3))};putStr(b,message,300);return b;}
+std::vector<uint8_t> remoteAudioAnswer(const std::vector<RemoteOutput>& outputs){
+    Bytes b{remoteOk,1};const size_t n=std::min<size_t>(outputs.size(),32);b.push_back(uint8_t(n));
+    for(size_t i=0;i<n;++i){const auto& o=outputs[i];putStr(b,o.id,400);putStr(b,o.name,120);b.push_back(o.current?1:0);b.push_back(uint8_t(int8_t(std::clamp(o.form,-1,100))));}
+    return b;}
 std::vector<uint8_t> remoteLyricsAnswer(int state,const std::wstring& key,const std::vector<ShareLyricLine>& lines){
     Bytes b{remoteOk,uint8_t(std::clamp(state,0,3))};const std::string k=utf8(key.substr(0,300));put32(b,uint32_t(k.size()));append(b,k);
     const size_t count=std::min<size_t>(lines.size(),400);put32(b,uint32_t(count));

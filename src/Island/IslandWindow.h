@@ -46,6 +46,8 @@ namespace nexus {
 constexpr UINT ControlStateMessage=WM_APP+40,WallpaperLumaMessage=WM_APP+44;
 // 0.19: a phone's remote command, answered on the island's thread (lParam: the call, owned from then on).
 constexpr UINT RemoteMessage=WM_APP+46;
+// 0.22: how joining a phone's hotspot went (wParam: 0 joined, 1 not in sight, 2 couldn't connect, 3 no Wi-Fi, 4 not ready).
+constexpr UINT HotspotMessage=WM_APP+47;
 enum class InteractionState { Rest,Hover,Pressed,Dragging };
 class IslandWindow {
     HWND window_=nullptr,qaMatte_=nullptr;HBRUSH qaBrush_=nullptr;HINSTANCE instance_{};HWINEVENTHOOK foregroundHook_=nullptr,locationHook_=nullptr;
@@ -127,6 +129,18 @@ class IslandWindow {
     void openReply(const std::string& peer,const std::string& key,int action,const std::wstring& to);bool shareTimer(UINT_PTR id);
     // 0.21: another PC's pairing code, typed in the command bar; and whether the card showing still waits for an answer.
     void openPairCode();bool decisionShowing()const;double cardShownAt_=-10;
+    // 0.22: phones' hotspots (their names and passwords, as the phones said; memory only), one tap to join.
+    struct Hotspot{std::wstring ssid,key;double at=0;};std::map<std::string,Hotspot> hotspots_;bool hotspotBusy_=false;std::wstring hotspotSsid_;
+    void phoneHotspot(const std::string& peer,const std::wstring& phone,bool on,const std::wstring& ssid,const std::wstring& key);
+    void hotspotCard(const std::string& peer,const std::wstring& phone);void joinHotspot(const std::string& peer);void hotspotMessage(WPARAM w,LPARAM l);
+    static int joinNetwork(const std::wstring& ssid,const std::wstring& key);
+    // 0.22 (revision 5): a phone controls the whole island (IslandRemote.cpp): live stats, every setting, the controls, the
+    // command bar (its own service, so the island's bar is left alone), the audio outputs and the pages.
+    std::vector<uint8_t> remoteStats();std::vector<uint8_t> remoteSettings(const std::vector<uint8_t>&);std::vector<uint8_t> remoteControls(const std::vector<uint8_t>&);
+    std::vector<uint8_t> remoteCommand(const std::vector<uint8_t>&);std::vector<uint8_t> remoteAudio(const std::vector<uint8_t>&);std::vector<uint8_t> remoteIsland(const std::vector<uint8_t>&);
+    std::pair<int,std::wstring> runRemote(const CommandResult&,bool confirmed);void ensureRemoteCommands();void readPcInfo();void phonePower();
+    std::unique_ptr<CommandService> remoteCommands_;std::wstring remoteQueryText_;uint64_t remoteQuerySeq_=0;double phoneStatsUntil_=-10,controlsAskedAt_=-10;int pendingPower_=0;
+    struct PcInfo{std::wstring os,cpu,gpu,model;bool read=false;} pcInfo_;static constexpr UINT_PTR PhoneStatsTimer=87,PhonePowerTimer=88;
     std::shared_ptr<const WallpaperLuma> wallLuma_;bool wallLoading_=false,qaBackdrop_=false;void loadWallpaperLuma();void adaptBackdrop();bool backdropCovered()const;
     // The body's top-left in the canvas (DIPs), including how far a notification pill has dropped (drop: 0..1).
     // Phase 5H: spread side by side with a waiting alert, the pill sits further left.

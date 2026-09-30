@@ -379,3 +379,22 @@ Next, in this order:
 
 Limits:
 - **Two hard IPv4 NATs** (both endpoint-dependent) can't punch through, and neither can networks that block UDP. IPv6 usually gets round both; otherwise the relay carries on at relay speed.
+
+## Status after v0.22.0-preview.1 — the whole island, in your hand — 2026-09-30
+
+Shipped, as asked:
+- **Everything on the island from the phone:** the new Island tab in [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.4.
+- **The PC's stats live on the phone,** with graphs.
+- **The phone's hotspot on the island,** one tap to join.
+- **The phone's battery forecast.**
+- **Widgets in the cover's colours** (the phone app).
+
+Next, in this order:
+- sharing from any app to the Shelf with a live preview
+- the photo just taken
+- web pages handed over at the same scroll position
+- screen mirroring both ways
+- unlocking with the phone
+
+Limits:
+- **Join wasn't run against a real hotspot** in the tests.

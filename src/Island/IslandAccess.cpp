@@ -221,7 +221,7 @@ std::wstring IslandWindow::accessibleName(Action a)const{
     if(inRange(a,Action::NearbyBrowseBase,Action::NearbyBrowseEnd))return peer(Action::NearbyBrowseBase)+L"’s Shelf";
     if(inRange(a,Action::NearbyRingBase,Action::NearbyRingEnd))return L"Ring "+peer(Action::NearbyRingBase);
     if(inRange(a,Action::NoticeActionBase,Action::NoticeActionEnd)){const size_t i=size_t(int(a)-int(Action::NoticeActionBase));return i<content_.notice.actions.size()?content_.notice.actions[i].first:std::wstring(L"Action");}
-    switch(a){case Action::PairAnywhere:return L"Pair with a code";case Action::PairingStop:return L"Stop offering the code";case Action::PairingShow:return L"Show the QR code";case Action::PairTypeCode:return L"Type another PC\u2019s pairing code";case Action::PhoneBack:return L"Back to Nearby";
+    switch(a){case Action::PairAnywhere:return L"Pair with a code";case Action::PairingStop:return L"Stop offering the code";case Action::PairingShow:return L"Show the QR code";case Action::PairTypeCode:return L"Type another PC\u2019s pairing code";case Action::HotspotJoin:return L"Join the hotspot";case Action::HotspotLater:return L"Not now";case Action::PhoneHotspot:return L"Join its hotspot";case Action::PhoneBack:return L"Back to Nearby";
         case Action::PhoneRing:return L"Ring the phone";case Action::PhonePhoto:return L"Ask the phone for a photo";case Action::PhoneClipboard:return L"Give the phone this clipboard";default:break;}
     if(inRange(a,Action::HandoffPeerBase,Action::HandoffPeerEnd))return L"Continue on "+peer(Action::HandoffPeerBase);
     if(inRange(a,Action::LibraryItemBase,Action::LibraryItemEnd)){const size_t i=size_t(content_.libraryOffset)+row(Action::LibraryItemBase);if(content_.libraryTracks&&i<content_.libraryTracks->size()){const auto& t=(*content_.libraryTracks)[i];return L"Play "+t.title+(t.artist.empty()?L"":L" by "+t.artist);}return L"Song";}
@@ -242,6 +242,7 @@ std::wstring IslandWindow::accessAlert(const ContentSnapshot::Notice& n)const{
     case 17:return spoken(L"Music from another PC: "+n.app+L", "+n.detail+L". Play here, or not now");
     case 19:{std::wstring acts;for(auto& [title,reply]:n.actions)acts+=L". "+title;return spoken(n.app+(n.detail.empty()?L"":L". "+n.detail)+(n.source.empty()?L"":L". From "+n.source)+acts);}
     case 20:return spoken(L"Pair from anywhere. The code is "+n.app+L". Scan its QR code in Arnav Island on your phone, Devices, Scan the QR code; or type it there");
+    case 21:return spoken(n.app+L" is on: "+n.detail+L". Join, or not now");
     default:return spoken(budTitle(n)+(n.detail.empty()?L"":L". "+n.detail));}
 }
 // The island in a sentence, for the pane's status.
