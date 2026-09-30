@@ -43,8 +43,25 @@ std::vector<uint8_t> IslandWindow::remoteStats(){
     // The histories, oldest first: the provider fills its 40 samples from the start and then shifts them left.
     const size_t n=std::min<size_t>(s.samples,40);
     for(size_t i=0;i<n;++i){const size_t at=40-n+i;st.cpuHistory.push_back(s.cpuHistory[at]);st.gpuHistory.push_back(s.gpu>=0?s.gpuHistory[at]:-1.f);st.downloadHistory.push_back(s.downloadHistory[at]);}
-    st.name=content_.shareName;st.model=pcInfo_.model;st.os=pcInfo_.os;st.cpuName=pcInfo_.cpu;st.gpuName=pcInfo_.gpu;
+    st.name=content_.shareName;st.model=pcInfo_.model;st.os=pcInfo_.os;st.cpuName=pcInfo_.cpu;st.gpuName=pcInfo_.gpu;st.cores=s.cores;
     return remoteStatsAnswer(st);
+}
+// 0.23: the battery in full, with the last day of its history (when history is kept).
+std::vector<uint8_t> IslandWindow::remoteBattery(){
+    PcBattery b;if(!battery_){b.present=false;return remoteBatteryAnswer(b);}
+    battery_->setFast(true);SetTimer(window_,PhoneStatsTimer,12500,nullptr);phoneStatsUntil_=seconds()+12;
+    const auto r=battery_->reading();const auto e=battery_->estimate();
+    b.present=r.present;b.online=r.online;b.charging=r.charging;b.saver=r.saver;b.critical=r.critical;b.percent=r.present?r.percent:-1;
+    b.minutesLeft=e.minutesRemaining(r);b.minutesToFull=e.minutesToFull(r);
+    // Windows' own estimate when the battery's rate says nothing yet.
+    if(b.minutesLeft<0&&!r.charging&&r.windowsSeconds>0)b.minutesLeft=r.windowsSeconds/60;
+    if(!r.relative){b.designMwh=r.designMwh;b.fullMwh=r.fullMwh;b.remainingMwh=r.remainingMwh;b.rateMw=r.rateMw;}
+    b.voltageMv=r.voltageMv;b.cycles=r.cycles;b.temperatureDeciK=r.temperatureDeciK;b.chemistry=r.chemistry;b.manufacturer=r.manufacturer;b.name=r.name;
+    if(!testing_){const auto log=battery_->health();if(auto w=log.week()){b.healthBefore=w->first;b.health=w->second;}}
+    if(b.health<0&&!r.relative&&r.designMwh>0&&r.fullMwh>0)b.health=std::min(1.,double(r.fullMwh)/double(r.designMwh));
+    const auto history=battery_->history();const int64_t now=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    for(auto& h:history.samples)if(now-h.time<=86400)b.day.push_back({h.time,h.percent,h.charging});
+    return remoteBatteryAnswer(b);
 }
 // Settings: the table the Settings window draws, as it is now; a change goes the Settings window's way (receiveSettings).
 std::vector<uint8_t> IslandWindow::remoteSettings(const std::vector<uint8_t>& payload){
@@ -173,9 +190,9 @@ std::vector<uint8_t> IslandWindow::remoteAudio(const std::vector<uint8_t>& paylo
 std::vector<uint8_t> IslandWindow::remoteIsland(const std::vector<uint8_t>& payload){
     RemoteReader in(payload);const int op=in.u8();if(!in.ok())return {remoteFailed};
     if(op==1){content_.pinned=false;perform(Action::Close);return {remoteOk};}
-    if(op!=0)return {remoteUnsupported};const int page=in.u8();if(!in.ok()||page<0||page>7)return {remoteFailed};
+    if(op!=0)return {remoteUnsupported};const int page=in.u8();if(!in.ok()||page<0||page>8)return {remoteFailed};
     if(page==4){openSettings();return {remoteOk};}
-    static const Page pages[]={Page::Overview,Page::Media,Page::System,Page::Focus,Page::Settings,Page::Shelf,Page::Audio,Page::Control};
+    static const Page pages[]={Page::Overview,Page::Media,Page::System,Page::Focus,Page::Settings,Page::Shelf,Page::Audio,Page::Control,Page::Phone};
     events_.dismiss(seconds());content_.activity.clear();content_.page=pages[page];content_.phoneView={};content_.remote.open=false;content_.pinned=true;transition(IslandState::Expanded);refresh();animate();
     store_.log("Info","phone_page");return {remoteOk};
 }

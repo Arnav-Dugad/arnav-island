@@ -246,3 +246,11 @@ See DELIVERY_PHASES.md for the remaining request; planned providers are not ship
 | Hotspot notice | `[0x30, 5, on, name, password]` from the phone; a card with Join, and a Wi-Fi button in the phone's view | Name and password typed once on the phone |
 | Join | A manual-connect profile; with location: scanned, secured as seen, confirmed by name; without: WPA2 then WPA3, confirmed by the interface state; Wi-Fi turned on first | Not run against a real hotspot in tests |
 | Battery forecast | The phone's "Lasts until" / "Full by" in its view and the low-battery card | From the phone's own history |
+
+| v0.23.0-preview.1 feature | Implemented | Limits |
+|---|---|---|
+| Phone page | Ninth page: battery ring with forecast and power, cover and song, network/storage/memory tiles, a line of readings, how it's reached, ring/photo/clipboard/hotspot; the next phone; pairing when none | Live readings need the phone app 1.5 |
+| Query mode (revision 6) | Mode Q: this PC asks a phone on a connection kept open (idle 40 s: reopened; a dead one found within 6 s): readings every 2 s while the page shows, the focus clock (told again, up to three times) | — |
+| PC battery for the phone | Remote command 18: level, flags, minutes left and to full, capacities, rate, voltage, cycles, temperature, health now and a week before, names, the last day | Needs *My phone can control this PC* |
+| Cores | Stats gain each logical processor's load (NtQuerySystemInformation), up to 64 | — |
+| Hotspot card | Shown whenever the island didn't know the hotspot was on; a phone that goes away takes its hotspot with it; the one this PC joined isn't offered again | — |

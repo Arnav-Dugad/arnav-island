@@ -106,7 +106,7 @@ void Renderer::initialize(HWND hwnd,float dpi,HWND shadow) {
 }
 // The liquid pill: the left cap at the left end, the right cap at the right end, and the middle stretched between them.
 void Renderer::placeNav(double now,float navY){
-    auto left=animation(navLeft_,now,scale_,20*scale_),right=animation(navRight_,now,scale_,(20-47)*scale_),middle=animation(navLeft_,now,scale_,(20+14)*scale_);
+    auto left=animation(navLeft_,now,scale_,20*scale_),right=animation(navRight_,now,scale_,(20-navWidth)*scale_),middle=animation(navLeft_,now,scale_,(20+14)*scale_);
     navCapLeft_->SetOffsetX(left.Get());navCapRight_->SetOffsetX(right.Get());navMiddle_->SetOffsetX(middle.Get());
     auto span=curveOf([this](double t){return std::max(0.,(navRight_.sample(t).position-navLeft_.sample(t).position-28)/2);},now,[this](double t){return navLeft_.settled(t)&&navRight_.settled(t);});
     navMiddleScale_->SetScaleX(span.Get());nav_->SetOffsetX(0.f);nav_->SetOffsetY((38+navY)*scale_);
@@ -234,7 +234,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         wings(wingRadius_>0?wingRadius_:17);
         {const UINT32 tone=s.light?0x1c2230:0xffffff;if(hoverColor_!=tone){hoverColor_=tone;surface(hoverSurface_,440,360,[&](auto* rt){rt->Clear(D2D1::ColorF(tone,s.light?.065f:.10f));});hoverVisual_->SetContent(hoverSurface_.Get());}}
         surface(barSurface_,380,2,[&](auto* rt){rt->Clear(D2D1::ColorF(accent));});bar_->SetContent(barSurface_.Get());
-        surface(navSurface_,47,44,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink,s.light?.055f:.055f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,47,44},12,12),b.Get());});
+        surface(navSurface_,navWidth,44,[&](auto* rt){ComPtr<ID2D1SolidColorBrush>b;rt->CreateSolidColorBrush(D2D1::ColorF(ink,s.light?.055f:.055f),&b);rt->FillRoundedRectangle(D2D1::RoundedRect({0,0,navWidth,44},12,12),b.Get());});
         surface(navMiddleSurface_,2,44,[&](auto* rt){rt->Clear(D2D1::ColorF(ink,.055f));});
         navCapLeft_->SetContent(navSurface_.Get());navCapRight_->SetContent(navSurface_.Get());navMiddle_->SetContent(navMiddleSurface_.Get());
     }
@@ -476,7 +476,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 for(int i=0;i<n;++i){bool selected=i==s.session;float w=selected?12.f:5.f;b->SetColor(D2D1::ColorF(selected?ink:muted,selected?1.f:.55f));rt->FillRoundedRectangle(D2D1::RoundedRect({x,58,x+w,63},2.5f,2.5f),b.Get());targets.push_back({Action(int(Action::SessionBase)+i),x-2,54,w+4,13});x+=w+4;}}
             return;
         }
-        const wchar_t* titles[]={L"",L"Now playing",L"System overview",L"Make room for focus",L"Make it yours",L"Within reach",L"Sound, your way",L"Quick controls"};
+        const wchar_t* titles[]={L"",L"Now playing",L"System overview",L"Make room for focus",L"Make it yours",L"Within reach",L"Sound, your way",L"Quick controls",L""};static_assert(std::size(titles)==size_t(pageCount));
         int chips=s.mediaPage()?int(std::min<size_t>(5,s.sessions.size())):0;if(chips<2)chips=0;
         auto tabs=[&](std::initializer_list<std::pair<Action,const wchar_t*>> items,int selected,float y){int i=0;for(auto& [a,name]:items){float x=i*88.f;targets.push_back({a,x,y,82,26});label(name,x,y,82,26,11.5f,i==selected?(s.light?0xf8f8fa:0x171b22):muted,i==selected?DWRITE_FONT_WEIGHT_SEMI_BOLD:DWRITE_FONT_WEIGHT_MEDIUM);++i;}};
         if(s.page==Page::System)tabs({{Action::StatsSystem,L"System"},{Action::StatsBattery,L"Battery"},{Action::StatsDevices,L"Devices"}},s.statsTab,-3);
@@ -737,6 +737,82 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
                 text(rt,enabled?std::to_wstring(value)+L"%":std::wstring(L"\u2014"),310,y+4,70,10.5f,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,20);targets.push_back({a,34,y,270,28,enabled});};
             iconButton(Action::Mute,s.muted?Icon::Muted:Icon::Volume,-2,160,32,28);slider(Action::VolumeSlider,160,s.muted?0:s.volume,true);
             drawIcon(rt,d2d_.Get(),Icon::Brightness,5,198,18,s.brightness>=0?ink:muted);slider(Action::ControlBrightness,192,std::max(0,s.brightness),s.brightness>=0);
+        }else if(s.page==Page::Phone){
+            // 0.23: a phone of yours, live: its battery in a ring (how long it lasts, the power going in or out), what plays
+            // on it, its network, storage and memory, a line of its other readings, and what it can do from here.
+            const auto pit=std::find_if(s.nearby.begin(),s.nearby.end(),[&](auto& p){return p.id==s.phonePage;});
+            if(pit==s.nearby.end()){
+                box(0,34,380,136,raised,16);drawIcon(rt,d2d_.Get(),Icon::Phone,172,56,36,accent);
+                label(L"Pair your phone",20,98,340,22,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+                label(L"Arnav Island for Android: its battery, what plays on it and more, live here",20,120,340,20,10.5f,muted,DWRITE_FONT_WEIGHT_NORMAL);
+                button(Action::PhonePair,L"Pair a phone",130,184,120,30,true,s.settings.sharing);
+                if(!s.settings.sharing)label(L"Turn on sharing in Settings \u203a Privacy & productivity",0,218,380,12,9,muted,DWRITE_FONT_WEIGHT_NORMAL);
+            }else{
+                const auto& phone=*pit;const bool here=phone.online;
+                const auto info=s.phones.find(phone.id);const bool known=info!=s.phones.end()&&!info->second.values.empty();
+                auto valueOf=[&](const std::wstring& k)->std::wstring{if(!known)return {};for(auto& [n,v]:info->second.values)if(n==k)return v;return {};};
+                const UINT32 fg=here?ink:muted;
+                // The header: its name, how it's reached, and the next phone when there's more than one.
+                const int phones=int(std::count_if(s.nearby.begin(),s.nearby.end(),[](auto& p){return p.paired&&p.phone;}));
+                text(rt,phone.name,0,-4,phones>1?170.f:200.f,18,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_TEXT_ALIGNMENT_LEADING,28);
+                std::wstring how;UINT32 dot=0x5fd98a;
+                if(!here){how=L"Away";dot=line;if(known){const int ago=int(seconds()-info->second.at);how+=ago<90?std::wstring(L""):ago<3600?L"  \u00b7  "+std::to_wstring(ago/60)+L" min ago":L"  \u00b7  "+std::to_wstring(ago/3600)+L" h ago";}}
+                else if(!phone.viaInternet)how=L"On this Wi-Fi";
+                else{wchar_t ms[24]=L"";if(phone.rtt>0)swprintf(ms,24,L"  \u00b7  %.0f ms",phone.rtt);how=std::wstring(phone.path==2?L"Direct":L"Relay")+ms;dot=phone.path==2?0x5fd98a:phone.rtt>=600||phone.relays<=1?0xff6b61:0xffc04d;}
+                const float howRight=phones>1?312.f:346.f,howWidth=measure(how,10)+4;
+                text(rt,how,howRight-howWidth,2,howWidth,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,16);
+                b->SetColor(D2D1::ColorF(dot));rt->FillEllipse(D2D1::Ellipse({howRight-howWidth-8,10},3.5f,3.5f),b.Get());
+                if(phones>1)iconButton(Action::PhoneNext,Icon::ArrowRight,318,-4,28,28);
+                // The battery: a ring, its level, how long it lasts (or when it's full) and the power going in or out.
+                int percent=phone.battery;if(percent<0){const auto v=valueOf(L"Battery");if(!v.empty())percent=std::clamp(_wtoi(v.c_str()),0,100);}
+                const bool charging=phone.charging||valueOf(L"Charging")==L"Yes";
+                box(0,34,124,136,raised,16);
+                const UINT32 ring=!here?muted:charging?0x5fd98a:percent>=0&&percent<=20?0xff6b61:accent;
+                drawRing(rt,d2d_.Get(),62,88,38,4,percent>0?std::min(percent,100)/100.:0.,ring,track);
+                label(percent>=0?std::to_wstring(percent)+L"%":std::wstring(L"\u2014"),22,72,80,32,22,fg,DWRITE_FONT_WEIGHT_LIGHT);
+                if(charging)drawIcon(rt,d2d_.Get(),Icon::Bolt,55,104,14,0x5fd98a);
+                const std::wstring lasts=here?valueOf(L"Lasts until"):std::wstring(),full=here?valueOf(L"Full by"):std::wstring(),power=here?valueOf(L"Power"):std::wstring(),warmth=valueOf(L"Temperature");
+                label(charging?(full.empty()?std::wstring(L"Charging"):L"Full by "+full):!lasts.empty()?L"Until "+lasts:here?std::wstring(L"Battery"):std::wstring(L"Away"),4,134,116,16,10.5f,fg,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+                label(!power.empty()?power:warmth,4,150,116,14,9,muted,DWRITE_FONT_WEIGHT_NORMAL);
+                // What plays on it, with its cover.
+                box(132,34,248,62,raised,16);
+                // What plays and whether its screen is on say nothing once it's gone.
+                const std::wstring playing=here?valueOf(L"Playing"):std::wstring();
+                if(!playing.empty()){const auto dash=playing.find(L" \u2014 ");const std::wstring title=dash==std::wstring::npos?playing:playing.substr(0,dash),artist=dash==std::wstring::npos?std::wstring():playing.substr(dash+3);
+                    const auto cover=s.phoneCovers.find(phone.id);
+                    if(cover!=s.phoneCovers.end()&&cover->second){ComPtr<ID2D1RoundedRectangleGeometry> g;d2d_->CreateRoundedRectangleGeometry(D2D1::RoundedRect({141,43,185,87},9,9),&g);ComPtr<ID2D1Layer> layer;rt->CreateLayer(&layer);
+                        rt->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(),g.Get()),layer.Get());drawPreview(rt,*cover->second,141,43,44,44);rt->PopLayer();}
+                    else{box(141,43,44,44,s.light?0xffffff:0x2c323c,9);drawIcon(rt,d2d_.Get(),Icon::Music,154,56,18,accent);}
+                    text(rt,title,194,44,178,12,fg,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,artist.empty()?std::wstring(L"Playing on the phone"):artist,194,64,178,10,muted);}
+                else{drawIcon(rt,d2d_.Get(),Icon::Music,146,56,18,muted);text(rt,here?L"Nothing playing":L"It\u2019s away",176,46,196,12,fg,DWRITE_FONT_WEIGHT_SEMI_BOLD);
+                    const std::wstring model=valueOf(L"Model"),android=valueOf(L"Android");text(rt,model.empty()?std::wstring(L"Its readings show when it\u2019s here"):model+(android.empty()?L"":L"  \u00b7  Android "+android),176,66,196,10,muted);}
+                // Network, storage and memory.
+                auto shortened=[](std::wstring v){const auto cut=v.find(L" of ");return cut==std::wstring::npos?v:v.substr(0,cut);};
+                const std::wstring network=valueOf(L"Network");const auto dotAt=network.find(L"  \u00b7  ");const std::wstring kind=network.substr(0,dotAt);
+                const int bars=dotAt==std::wstring::npos?-1:int(std::count(network.begin()+long(dotAt),network.end(),L'\u25cf'));
+                struct Tile{Icon glyph;const wchar_t* name;std::wstring value;};
+                const Tile tiles[]={{kind==L"Mobile data"?Icon::Phone:Icon::Wifi,L"Network",kind.empty()?std::wstring(L"\u2014"):kind},{Icon::Disk,L"Storage",shortened(valueOf(L"Storage"))},{Icon::Memory,L"Memory",shortened(valueOf(L"Memory"))}};
+                for(int i=0;i<3;++i){const float x=132+float(i)*85,y=102;box(x,y,78,68,raised,14);drawIcon(rt,d2d_.Get(),tiles[i].glyph,x+10,y+10,16,here?accent:muted);
+                    // The signal as four bars beside the network's icon.
+                    if(i==0&&bars>=0)for(int k=0;k<4;++k){b->SetColor(D2D1::ColorF(k<bars?(here?ink:muted):track));const float bh=4+float(k)*3;rt->FillRoundedRectangle(D2D1::RoundedRect({x+54+float(k)*5,y+24-bh,x+57+float(k)*5,y+24},1,1),b.Get());}
+                    text(rt,tiles[i].name,x+10,y+32,62,9,muted);text(rt,tiles[i].value.empty()?std::wstring(L"\u2014"):tiles[i].value,x+10,y+46,64,10.5f,fg,DWRITE_FONT_WEIGHT_SEMI_BOLD);}
+                // A line of its other readings, or what just happened.
+                const bool note=!s.shelfStatus.empty()&&seconds()<s.shelfStatusUntil;
+                if(note)text(rt,s.shelfStatus,0,176,380,10.5f,accent,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,20);
+                else{std::vector<std::wstring> chips;
+                    const std::wstring sound=valueOf(L"Sound");if(!sound.empty())chips.push_back(sound.substr(0,sound.find(L"  \u00b7  Do Not Disturb"))+(sound.find(L"Do Not Disturb")!=std::wstring::npos?L"  \u00b7  DND":L""));
+                    if(!power.empty()&&!warmth.empty())chips.push_back(warmth);
+                    const std::wstring health=valueOf(L"Battery health");if(!health.empty())chips.push_back(L"Health "+health);
+                    const std::wstring uptime=valueOf(L"Uptime");if(!uptime.empty())chips.push_back(L"Up "+uptime);
+                    const std::wstring screen=here?valueOf(L"Screen"):std::wstring();if(!screen.empty())chips.push_back(L"Screen "+screen);
+                    float x=0;for(auto& c:chips){const float w=measure(c,9.5f)+18;if(x+w>380)break;box(x,176,w,20,raised,10);text(rt,c,x+9,176,w-12,9.5f,muted,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,20);x+=w+6;}
+                    if(chips.empty())text(rt,here?(known?std::wstring(L""):phone.revision>=6?std::wstring(L"Reading it\u2026"):std::wstring(L"Update Arnav Island on the phone for its live readings")):std::wstring(L"Its readings show when it\u2019s back"),0,176,380,10,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_LEADING,20);}
+                // What it can do from here; its hotspot, when it's on, first.
+                float x=0;const bool hot=here&&s.hotspots.count(phone.id)>0;
+                if(hot){const std::wstring join=L"Join "+s.hotspots.at(phone.id);const float w=std::min(150.f,measure(join,11.5f)+28);button(Action::PhoneHotspot,join,x,202,w,25,true);x+=w+6;}
+                button(Action::PhoneRing,L"Ring",x,202,58,25,false,here);x+=64;button(Action::PhonePhoto,L"Photo",x,202,62,25,false,here);x+=68;
+                button(Action::PhoneClipboard,hot?L"Clipboard":L"Send clipboard",x,202,std::min(hot?92.f:124.f,380-x),25,false,here);
+            }
         }else if(s.page==Page::Focus){
             button(Action::Timer25,L"Focus",0,36,120,28,s.focus.mode==FocusClock::Mode::Focus);button(Action::Timer5,L"Break",130,36,120,28,s.focus.mode==FocusClock::Mode::Break);button(Action::Stopwatch,L"Stopwatch",260,36,120,28,s.focus.mode==FocusClock::Mode::Stopwatch);
             double progress=s.focus.mode==FocusClock::Mode::Stopwatch?std::fmod(s.focus.elapsed(seconds()),60.)/60.:normalizedProgress(s.focus.displayed(seconds()),s.focus.duration);drawRing(rt,d2d_.Get(),63,130,38,3,progress,accent,line);drawIcon(rt,d2d_.Get(),Icon::Focus,50,117,26,accent);
@@ -968,13 +1044,13 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             targets.push_back({Action::SoundSettings,0,203,214,25});box(0,203,214,25,raised,9);text(rt,L"Windows sound settings",14,203,170,11.5f,ink,DWRITE_FONT_WEIGHT_MEDIUM,DWRITE_TEXT_ALIGNMENT_LEADING,25);drawIcon(rt,d2d_.Get(),Icon::ArrowRight,190,209,13,muted);text(rt,s.settings.directAudio?L"Direct switching":L"System picker",236,210,144,9,muted,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_TEXT_ALIGNMENT_TRAILING);}
         }
         hairline(0,229,380);
-        const wchar_t* labels[]={L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio",L"Controls"};const Action actions[]={Action::Overview,Action::Media,Action::System,Action::Focus,Action::Settings,Action::Shelf,Action::Audio,Action::Control};const Icon glyphs[]={Icon::Home,Icon::Music,Icon::Stats,Icon::Focus,Icon::Settings,Icon::Shelf,Icon::Audio,Icon::Sliders};
-        for(int slot=0;slot<pageCount;++slot){int p=s.settings.navigation[size_t(slot)];float x=std::round((slot*navStep+4)*scale_)/scale_;bool selected=int(s.page)==p;targets.push_back({actions[p],x,navY,47,44});
+        const wchar_t* labels[]={L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio",L"Controls",L"Phone"};const Action actions[]={Action::Overview,Action::Media,Action::System,Action::Focus,Action::Settings,Action::Shelf,Action::Audio,Action::Control,Action::PhonePage};const Icon glyphs[]={Icon::Home,Icon::Music,Icon::Stats,Icon::Focus,Icon::Settings,Icon::Shelf,Icon::Audio,Icon::Sliders,Icon::Phone};
+        for(int slot=0;slot<pageCount;++slot){int p=s.settings.navigation[size_t(slot)];float x=std::round((slot*navStep+(navStep-navWidth)/2)*scale_)/scale_;bool selected=int(s.page)==p;targets.push_back({actions[p],x,navY,navWidth,44});
             // A page just chosen plays its icon's little animation once.
-            const bool celebrate=selected&&celebratedPage_!=p&&s.expanded&&!s.live;if(celebrate)celebratedPage_=p;icon(actions[p],glyphs[p],x+14,navY+5,19,selected?ink:muted,p,celebrate);label(labels[p],x,navY+26,47,16,9.5f,selected?ink:muted);if(selected){const double now=seconds();if(s.reducedMotion||!s.expanded){navX.reset(x,now);navLeft_.reset(x,now);navRight_.reset(x+47,now);}
+            const bool celebrate=selected&&celebratedPage_!=p&&s.expanded&&!s.live;if(celebrate)celebratedPage_=p;icon(actions[p],glyphs[p],x+navIconX,navY+5,19,selected?ink:muted,p,celebrate);label(labels[p],x-2,navY+26,navWidth+4,16,9.5f,selected?ink:muted);if(selected){const double now=seconds();if(s.reducedMotion||!s.expanded){navX.reset(x,now);navLeft_.reset(x,now);navRight_.reset(x+navWidth,now);}
                 else if(navX.target()!=x){const bool right=x>navX.target();navX.retarget(x,now,MotionTokens::navigation);
                     // The end it moves toward leads; the other follows a beat behind.
-                    constexpr SpringSpec lead{.7,560,34},trail{.9,300,30};navLeft_.retarget(x,now,right?trail:lead);navRight_.retarget(x+47,now,right?lead:trail);}}}
+                    constexpr SpringSpec lead{.7,560,34},trail{.9,300,30};navLeft_.retarget(x,now,right?trail:lead);navRight_.retarget(x+navWidth,now,right?lead:trail);}}}
         if(debug){b->SetColor(D2D1::ColorF(0xf98585));for(auto& target:targets)rt->DrawRectangle({target.x,target.y,target.x+target.width,target.y+target.height},b.Get());}
     });drawingContent_=false;
     // (Its surfaces are drawn once the content surface is closed: one surface draws at a time.)

@@ -137,10 +137,17 @@ class IslandWindow {
     // 0.22 (revision 5): a phone controls the whole island (IslandRemote.cpp): live stats, every setting, the controls, the
     // command bar (its own service, so the island's bar is left alone), the audio outputs and the pages.
     std::vector<uint8_t> remoteStats();std::vector<uint8_t> remoteSettings(const std::vector<uint8_t>&);std::vector<uint8_t> remoteControls(const std::vector<uint8_t>&);
-    std::vector<uint8_t> remoteCommand(const std::vector<uint8_t>&);std::vector<uint8_t> remoteAudio(const std::vector<uint8_t>&);std::vector<uint8_t> remoteIsland(const std::vector<uint8_t>&);
+    std::vector<uint8_t> remoteCommand(const std::vector<uint8_t>&);std::vector<uint8_t> remoteAudio(const std::vector<uint8_t>&);std::vector<uint8_t> remoteIsland(const std::vector<uint8_t>&);std::vector<uint8_t> remoteBattery();
     std::pair<int,std::wstring> runRemote(const CommandResult&,bool confirmed);void ensureRemoteCommands();void readPcInfo();void phonePower();
     std::unique_ptr<CommandService> remoteCommands_;std::wstring remoteQueryText_;uint64_t remoteQuerySeq_=0;double phoneStatsUntil_=-10,controlsAskedAt_=-10;int pendingPower_=0;
-    struct PcInfo{std::wstring os,cpu,gpu,model;bool read=false;} pcInfo_;static constexpr UINT_PTR PhoneStatsTimer=87,PhonePowerTimer=88;
+    struct PcInfo{std::wstring os,cpu,gpu,model;bool read=false;} pcInfo_;static constexpr UINT_PTR PhoneStatsTimer=87,PhonePowerTimer=88,PhoneLiveTimer=89;
+    // 0.23: the Phone page (its phone asked for readings every two seconds while it shows, one question at a time).
+    bool phoneLive_=false;std::shared_ptr<std::atomic<bool>> phoneAsking_=std::make_shared<std::atomic<bool>>(false);double phoneAskedAt_=-10;
+    void choosePhone(bool next);void askPhoneLive();
+    // 0.23: the focus clock as phones last heard it (its state, and which phones heard it), and whether it ran.
+    std::wstring focusKey_;std::set<std::string> focusTold_;bool focusShared_=false;void syncPhoneFocus();
+    // 0.22.1: the hotspot this PC last joined (its card isn't shown again while that phone comes and goes).
+    std::wstring hotspotJoined_;
     std::shared_ptr<const WallpaperLuma> wallLuma_;bool wallLoading_=false,qaBackdrop_=false;void loadWallpaperLuma();void adaptBackdrop();bool backdropCovered()const;
     // The body's top-left in the canvas (DIPs), including how far a notification pill has dropped (drop: 0..1).
     // Phase 5H: spread side by side with a waiting alert, the pill sits further left.

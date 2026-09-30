@@ -33,6 +33,8 @@ constexpr uint8_t frameRequest=0x20,frameReply=0x21,frameNotice=0x30,frameNotice
 // Revision 3: modes and frames. Input (phone to PC): frames 0x60-0x6F. To a phone: an action on one of its notifications,
 // the clipboard, a photo for the Shelf. Each is answered [ack, status] (0 done, 1 the notification is gone, 2 failed).
 constexpr uint8_t modeInput='I',modeAction='A',modeClip='C',modeCamera='K';
+// Revision 6: asking a phone (this PC asks; kept open for more).
+constexpr uint8_t modeQuery='Q',frameQuery=0x80,frameQueryReply=0x81;
 constexpr uint8_t frameAction=0x70,frameActionAck=0x71,frameClip=0x50,frameClipAck=0x51,frameCamera=0x42,frameCameraAck=0x43;
 bool success(LONG status){return status>=0;}
 std::string hex(const uint8_t* p,size_t n){static const char* digits="0123456789abcdef";std::string s;s.reserve(n*2);for(size_t i=0;i<n;++i){s+=digits[p[i]>>4];s+=digits[p[i]&15];}return s;}
@@ -419,7 +421,7 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         s=target.online?connectTo(target.address,target.port):INVALID_SOCKET;
         if(s==INVALID_SOCKET&&relay){std::wstring through;s=relay->open(peer,through);if(s==INVALID_SOCKET){why=through.empty()?L"Couldn't reach "+target.name:through;return false;}}
         if(s==INVALID_SOCKET){why=L"Couldn't reach "+target.name;return false;}
-        track(s);if(!attach(transfer,s)){why=L"You stopped it";return false;}timeout(s,15000);
+        track(s);if(transfer&&!attach(transfer,s)){why=L"You stopped it";return false;}timeout(s,15000);
         if(!greet(s,mode,ss)){why=ss.outdated?L"Update Arnav Island on "+target.name+L" to share with it":ss.rejected?target.name+L" doesn't have this PC paired. Pair again from Nearby.":L"Couldn't reach "+target.name;return false;}
         if(hex(ss.peerId)!=peer||ss.peerPub!=target.key){why=target.name+L" answered with a different key. Pair again from Nearby.";return false;}
         return true;
@@ -610,6 +612,27 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         if(s!=INVALID_SOCKET){untrack(s);closesocket(s);}
         finish(transfer);return done;
     }
+    // Revision 6: one request to a phone on its kept query connection (opened as needed; a dead one is replaced once).
+    struct Kept{std::mutex m;SOCKET s=INVALID_SOCKET;std::unique_ptr<Session> ss;Clock::time_point used{};};
+    std::map<std::string,std::shared_ptr<Kept>> queries;
+    bool askQuery(const std::string& peer,uint8_t command,const Bytes& payload,Bytes& answer){
+        std::shared_ptr<Kept> k;{std::lock_guard lock(m);auto& slot=queries[peer];if(!slot)slot=std::make_shared<Kept>();k=slot;}
+        std::lock_guard held(k->m);
+        auto drop=[&]{if(k->s!=INVALID_SOCKET){untrack(k->s);closesocket(k->s);k->s=INVALID_SOCKET;}};
+        // The phone closes a connection idle for a minute: one idle for 40 s isn't trusted. A kept one that died (the
+        // phone restarted, or changed networks) is found within 6 s, and a fresh one tried.
+        if(k->s!=INVALID_SOCKET&&Clock::now()-k->used>std::chrono::seconds(40))drop();
+        for(int attempt=0;attempt<2;++attempt){
+            const bool reused=k->s!=INVALID_SOCKET;
+            if(!reused){Peer target;std::wstring why;if(!ready(peer,target,why)||target.revision<6)return false;
+                SOCKET s=INVALID_SOCKET;auto ss=std::make_unique<Session>();if(!reach(target,peer,modeQuery,0,s,*ss,why)){if(s!=INVALID_SOCKET){untrack(s);closesocket(s);}return false;}
+                k->s=s;k->ss=std::move(ss);}
+            timeout(k->s,reused?6000:15000);
+            Bytes request{frameQuery,command};append(request,payload);Bytes a;
+            if(sealed(k->s,k->ss->channel,request)&&opened(k->s,k->ss->channel,a)&&a.size()>=2&&a[0]==frameQueryReply){k->used=Clock::now();if(a[1]!=0)return false;answer.assign(a.begin()+2,a.end());return true;}
+            drop();}
+        return false;
+    }
     void ringPhone(const std::string& peer,uint32_t transfer){
         Peer target;std::wstring why;SOCKET s=INVALID_SOCKET;Session ss;bool rang=false;
         if(ready(peer,target,why)&&(target.revision>=2||(why=L"Update Arnav Island on "+target.name+L" to ring it",false))&&reach(target,peer,modeFind,transfer,s,ss,why)){
@@ -680,6 +703,17 @@ void ShareService::pushClipboard(const std::string& peer,const std::wstring& tex
 void ShareService::askPhoto(const std::string& peer){
     if(!core_->ok)return;const uint32_t transfer=core_->newTransfer();
     std::thread([core=core_,peer,transfer]{std::wstring why;if(!core->askPhone(peer,modeCamera,Bytes{frameCamera},frameCameraAck,transfer,why))core->fail(ShareEvent::Kind::Failed,peer,core->nameOf(peer,L""),{},why,transfer,true);}).detach();}
+void ShareService::queryPhone(const std::string& peer){
+    if(!core_->ok)return;
+    std::thread([core=core_,peer]{Bytes a;if(!core->askQuery(peer,1,{},a))return;
+        // [u32 n, the lines], [u32 n, the cover]: both bounded.
+        if(a.size()<4)return;const uint32_t n=get32(a.data());if(n>32*1024||4+size_t(n)+4>a.size())return;
+        ShareEvent e;e.kind=ShareEvent::Kind::PhoneLive;e.peer=peer;e.name=core->nameOf(peer,L"");e.detail=wide(std::string(a.begin()+4,a.begin()+long(4+n)));
+        const size_t at=4+n;const uint32_t c=get32(a.data()+at);if(c<=48*1024&&at+4+c<=a.size())e.icon.assign(a.begin()+long(at+4),a.begin()+long(at+4+c));
+        core->post(std::move(e));}).detach();}
+void ShareService::tellPhoneFocus(const std::string& peer,const std::vector<uint8_t>& state){
+    // Told again, a few seconds apart, if the phone didn't hear it (it may be changing networks).
+    if(!core_->ok)return;std::thread([core=core_,peer,state]{for(int k=0;k<3;++k){Bytes a;if(core->askQuery(peer,2,state,a))return;std::this_thread::sleep_for(std::chrono::seconds(4));}}).detach();}
 void ShareService::hostPairing(){
     if(!core_->ok)return;std::thread([core=core_]{ShareEvent e;e.kind=ShareEvent::Kind::PairingCode;e.detail=core->relay?core->wideCode(core->relay->host()):std::wstring();core->post(e);}).detach();}
 void ShareService::stopPairing(){if(core_->relay)core_->relay->stopHosting();}
@@ -721,6 +755,16 @@ void putI32(Bytes& b,int v){put32(b,uint32_t(v));}
 uint8_t percentByte(double v){return v<0||!std::isfinite(v)?255:uint8_t(std::clamp(int(std::lround(v)),0,100));}
 }
 std::wstring RemoteReader::text(size_t limit){const std::string u=bytes(limit);return wide(u);}
+std::vector<uint8_t> remoteBatteryAnswer(const PcBattery& p){
+    Bytes b{remoteOk,1};b.push_back(uint8_t(int8_t(std::clamp(p.percent,-1,100))));
+    b.push_back(uint8_t((p.present?1:0)|(p.online?2:0)|(p.charging?4:0)|(p.saver?8:0)|(p.critical?16:0)));
+    put32(b,uint32_t(p.minutesLeft));put32(b,uint32_t(p.minutesToFull));
+    for(long long v:{p.designMwh,p.fullMwh,p.remainingMwh,p.rateMw,p.voltageMv})put64(b,uint64_t(v));
+    put32(b,p.cycles);put32(b,uint32_t(p.temperatureDeciK));putF64(b,std::isfinite(p.health)?p.health:-1);putF64(b,std::isfinite(p.healthBefore)?p.healthBefore:-1);
+    for(auto* t:{&p.chemistry,&p.manufacturer,&p.name})putStr(b,*t,80);
+    const size_t n=std::min<size_t>(p.day.size(),400);putU16(b,unsigned(n));
+    for(size_t i=p.day.size()-n;i<p.day.size();++i){put64(b,uint64_t(p.day[i].time));b.push_back(uint8_t(std::clamp(p.day[i].percent,0,100)));b.push_back(p.day[i].charging?1:0);}
+    return b;}
 std::vector<uint8_t> remoteStatsAnswer(const PcStats& s){
     Bytes b{remoteOk,1};for(double v:{s.cpu,s.gpu,s.ramUsedGiB,s.ramTotalGiB,s.ramPercent,s.diskUsedPercent,s.diskFreeGiB,s.diskTotalGiB,s.download,s.upload})putF64(b,std::isfinite(v)?v:-1);
     put64(b,s.uptime);putU16(b,std::min(s.logical,65535u));b.push_back(uint8_t(int8_t(std::clamp(s.battery,-1,100))));b.push_back(s.charging?1:0);putF64(b,s.batteryMinutes);
@@ -729,6 +773,7 @@ std::vector<uint8_t> remoteStatsAnswer(const PcStats& s){
     for(size_t i=0;i<n;++i)b.push_back(percentByte(s.gpuHistory[s.gpuHistory.size()-n+i]));
     for(size_t i=0;i<n;++i){const double d=s.downloadHistory[s.downloadHistory.size()-n+i];put32(b,uint32_t(std::clamp(d,0.,4e9)));}
     for(auto* t:{&s.name,&s.model,&s.os,&s.cpuName,&s.gpuName})putStr(b,*t,120);
+    const size_t c=std::min<size_t>(s.cores.size(),64);b.push_back(uint8_t(c));for(size_t i=0;i<c;++i)b.push_back(percentByte(s.cores[i]));
     return b;}
 std::vector<uint8_t> remoteSettingsAnswer(const std::vector<std::wstring>& sections,const std::vector<RemoteSetting>& items){
     Bytes b{remoteOk,1};b.push_back(uint8_t(std::min<size_t>(sections.size(),64)));for(size_t i=0;i<sections.size()&&i<64;++i)putStr(b,sections[i],80);

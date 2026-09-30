@@ -30,13 +30,17 @@ namespace nexus {
 constexpr UINT ShareMessage=WM_APP+45;
 // Revision 4 (0.21): a remote connection stays open for more commands, and so does a notices one (one round trip each,
 // with no new handshake); the relay has a direct path. Revision 5 (0.22): a phone controls the whole island (its stats,
-// settings, controls, command bar, sound output and pages) and tells it about its hotspot.
-constexpr int shareProtocol=2,shareRevision=5;
+// settings, controls, command bar, sound output and pages) and tells it about its hotspot. Revision 6 (0.23): the PC's
+// battery in full and each core's load for the phone; this PC asks a phone for its readings (mode Q, kept open) while
+// the Phone page shows, and tells it about the focus clock.
+constexpr int shareProtocol=2,shareRevision=6;
 // Remote commands (mode R) and their answers.
 // Revision 3: RingPC (find this PC), Lyrics (the song's lines and word times, when the island has them).
 enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,ClipboardGet=6,ClipboardSet=7,Seek=8,Open=9,RingPC=10,Lyrics=11,
     // Revision 5 (0.22): a phone controls the whole island (see the answers below for each one's payloads).
-    Stats=12,Settings=13,Controls=14,Command=15,Audio=16,Island=17};
+    Stats=12,Settings=13,Controls=14,Command=15,Audio=16,Island=17,
+    // Revision 6 (0.23): the battery in full.
+    Battery=18};
 constexpr uint8_t remoteOk=0,remoteNotAllowed=1,remoteUnsupported=2,remoteFailed=3;
 // What the island reports to a phone's remote. cover: a small JPEG (at most shareCoverLimit bytes), or empty.
 // clipboard (0.20): the island's universal clipboard is on, so the phone sends its own copies over as it opens.
@@ -72,7 +76,7 @@ struct ShareEvent{
     // readings, one "name<TAB>value" a line); PhoneNoticeGone (key: a notification the phone no longer shows). A
     // PhoneNotice carries its key and actions (their titles, and whether each takes a reply). An Offer or Received with
     // toShelf: photos a phone took for this PC's Shelf.
-    enum class Kind{Peers,PairCode,Paired,PairFailed,Offer,Progress,Received,Sent,Failed,Handoff,HandoffAnswered,HandoffFile,ShelfList,ShelfTaken,PhoneStatus,PhoneNotice,Rang,PairingCode,PhoneDetails,PhoneNoticeGone,PhoneHotspot} kind=Kind::Peers;
+    enum class Kind{Peers,PairCode,Paired,PairFailed,Offer,Progress,Received,Sent,Failed,Handoff,HandoffAnswered,HandoffFile,ShelfList,ShelfTaken,PhoneStatus,PhoneNotice,Rang,PairingCode,PhoneDetails,PhoneNoticeGone,PhoneHotspot,PhoneLive} kind=Kind::Peers;
     std::string peer;std::wstring name,file,detail;uint64_t size=0,done=0;uint32_t code=0,transfer=0,count=0;bool folder=false,outgoing=false;ShareHandoff handoff;std::vector<ShareShelfItem> shelf;
     std::wstring app;std::vector<uint8_t> icon;int battery=-1;bool charging=false,urgent=false;
     std::string key;std::vector<std::pair<std::wstring,bool>> actions;bool toShelf=false;std::vector<std::wstring> paths;
@@ -131,6 +135,12 @@ public:
     void noticeAction(const std::string& peer,const std::string& key,int action,const std::wstring& reply);
     void pushClipboard(const std::string& peer,const std::wstring& text,bool sensitive);
     void askPhoto(const std::string& peer);
+    // Revision 6, to a paired phone, on a connection kept open for more (mode Q: [0x80, command, payload] answered
+    // [0x81, status, payload]): 1 its readings now (answered by a PhoneLive event: detail its "name<TAB>value" lines,
+    // icon the cover of what plays on it); 2 the focus clock (payload: mode, running, finished, f64 shown, f64 duration,
+    // this PC's name). A phone that can't answer (older, away) posts nothing.
+    void queryPhone(const std::string& peer);
+    void tellPhoneFocus(const std::string& peer,const std::vector<uint8_t>& state);
     // Tests: the relay's direct path goes quiet, as when a network drops it.
     void stopDirect();
     // Connected to the relay (and through which broker).
@@ -158,8 +168,20 @@ std::vector<uint8_t> remoteLyricsAnswer(int state,const std::wstring& key,const 
 // Stats (no payload): the PC's numbers live, their last 40 samples (CPU and GPU in percent, 255 unknown; downloads in
 // bytes a second) and what the PC is.
 struct PcStats{double cpu=-1,gpu=-1,ramUsedGiB=0,ramTotalGiB=0,ramPercent=0,diskUsedPercent=-1,diskFreeGiB=0,diskTotalGiB=0,download=0,upload=0,batteryMinutes=-1;
-    uint64_t uptime=0;unsigned logical=0;int battery=-1;bool charging=false;std::vector<float> cpuHistory,gpuHistory,downloadHistory;std::wstring name,model,os,cpuName,gpuName;};
+    uint64_t uptime=0;unsigned logical=0;int battery=-1;bool charging=false;std::vector<float> cpuHistory,gpuHistory,downloadHistory;std::wstring name,model,os,cpuName,gpuName;
+    // Revision 6, after the names: u8 n and each core's load (percent, 255 unknown).
+    std::vector<float> cores;};
 std::vector<uint8_t> remoteStatsAnswer(const PcStats&);
+// ---- Revision 6 (0.23) ----
+// Battery (no payload): i8 percent (-1 none), u8 flags (1 present, 2 on power, 4 charging, 8 battery saver, 16 critical),
+// i32 minutes left and to full (-1 unknown), i64 design, full and remaining capacity (mWh; 0 unknown), i64 rate (mW,
+// negative draining), i64 voltage (mV), u32 cycles, i32 temperature (tenths of a kelvin, 0 unknown), f64 health (full
+// over design, -1 unknown) and a week before (-1), chemistry, manufacturer and name, then u16 n and the last day's
+// samples (i64 unix time, u8 percent, u8 charging).
+struct PcBattery{int percent=-1,minutesLeft=-1,minutesToFull=-1,temperatureDeciK=0;bool present=false,online=false,charging=false,saver=false,critical=false;
+    long long designMwh=0,fullMwh=0,remainingMwh=0,rateMw=0,voltageMv=0;unsigned cycles=0;double health=-1,healthBefore=-1;std::wstring chemistry,manufacturer,name;
+    struct Sample{int64_t time=0;int percent=0;bool charging=false;};std::vector<Sample> day;};
+std::vector<uint8_t> remoteBatteryAnswer(const PcBattery&);
 // Settings: payload [0] reads every setting (its section, control, key, title, detail, range, value, the action a button
 // runs, its unit, options and colours, for swatches); [1, key, i32] sets one (answered with the value it has now); [2, u8]
 // runs a settings button's action. control: 0 switch, 1 slider, 2 choice, 3 stepper, 4 swatch, 5 button.

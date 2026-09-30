@@ -10,10 +10,26 @@
 #include "Hardware/GpuModel.h"
 namespace nexus {
 static uint64_t stamp(FILETIME t){return (uint64_t(t.dwHighDateTime)<<32)|t.dwLowDateTime;}
+namespace cores {
+// Each logical processor's idle, kernel and user times (NtQuerySystemInformation's processor performance class).
+struct Times{LARGE_INTEGER idle,kernel,user,reserved[2];ULONG interrupts;};
+using Query=LONG(WINAPI*)(ULONG,PVOID,ULONG,PULONG);
+Query query(){static const Query q=[]{HMODULE nt=GetModuleHandleW(L"ntdll.dll");return nt?reinterpret_cast<Query>(reinterpret_cast<void*>(GetProcAddress(nt,"NtQuerySystemInformation"))):nullptr;}();return q;}
+// Busy percentages since the last call (empty the first time, or when Windows won't say).
+std::vector<float> sample(std::vector<std::pair<uint64_t,uint64_t>>& last,unsigned count){
+    std::vector<float> out;const Query q=query();if(!q||count==0)return out;count=std::min(count,64u);
+    std::vector<Times> t(count);ULONG got=0;if(q(8,t.data(),ULONG(t.size()*sizeof(Times)),&got)<0)return out;
+    const size_t n=std::min<size_t>(count,got/sizeof(Times));const bool first=last.size()!=n;if(first)last.assign(n,{0,0});
+    for(size_t i=0;i<n;++i){const uint64_t total=uint64_t(t[i].kernel.QuadPart)+uint64_t(t[i].user.QuadPart),idle=uint64_t(t[i].idle.QuadPart);
+        if(!first&&total>last[i].first)out.push_back(float(std::clamp(100.*(1.-double(idle-last[i].second)/double(total-last[i].first)),0.,100.)));
+        last[i]={total,idle};}
+    if(out.size()!=n)out.clear();return out;
+}
+}
 SystemProvider::SystemProvider(HWND w):window_(w),stop_(CreateEventW(nullptr,TRUE,FALSE,nullptr)),wake_(CreateEventW(nullptr,FALSE,FALSE,nullptr)){if(!stop_||!wake_)throw std::runtime_error("System event creation failed");worker_=std::thread([this]{run();});}
 SystemProvider::~SystemProvider(){SetEvent(stop_);if(worker_.joinable())worker_.join();CloseHandle(stop_);CloseHandle(wake_);}
 void SystemProvider::run(){
-    FILETIME idle{},kernel{},user{};uint64_t lastIdle=0,lastTotal=0,lastIn=0,lastOut=0;double lastTime=0;bool first=true;unsigned iteration=0;SystemSnapshot s;
+    FILETIME idle{},kernel{},user{};uint64_t lastIdle=0,lastTotal=0,lastIn=0,lastOut=0;double lastTime=0;bool first=true;unsigned iteration=0;SystemSnapshot s;std::vector<std::pair<uint64_t,uint64_t>> lastCores;
     SYSTEM_INFO info{};GetNativeSystemInfo(&info);s.logicalProcessors=info.dwNumberOfProcessors;
     // GPU engines through the performance counters (no admin rights needed); a rate needs two samples.
     PDH_HQUERY query=nullptr;PDH_HCOUNTER engines=nullptr;bool gpuCounters=false;
@@ -22,6 +38,7 @@ void SystemProvider::run(){
         bool active=active_.load();if(active){
             const double now=seconds();
             if(GetSystemTimes(&idle,&kernel,&user)){auto total=stamp(kernel)+stamp(user),idleValue=stamp(idle);if(lastTotal&&total>lastTotal)s.cpu=std::clamp(100.*(1.-double(idleValue-lastIdle)/double(total-lastTotal)),0.,100.);lastIdle=idleValue;lastTotal=total;}
+            s.cores=cores::sample(lastCores,s.logicalProcessors);
             MEMORYSTATUSEX memory{sizeof(memory)};if(GlobalMemoryStatusEx(&memory)){s.ramPercent=memory.dwMemoryLoad;s.ramTotalGiB=memory.ullTotalPhys/1073741824.;s.ramUsedGiB=(memory.ullTotalPhys-memory.ullAvailPhys)/1073741824.;}
             PMIB_IF_TABLE2 table=nullptr;uint64_t in=0,out=0;s.networkAvailable=false;
             if(GetIfTable2(&table)==NO_ERROR){for(ULONG i=0;i<table->NumEntries;++i){auto& r=table->Table[i];if(r.OperStatus==IfOperStatusUp&&r.Type!=IF_TYPE_SOFTWARE_LOOPBACK&&r.InterfaceAndOperStatusFlags.HardwareInterface){in+=r.InOctets;out+=r.OutOctets;s.networkAvailable=true;}}FreeMibTable(table);}
@@ -37,7 +54,7 @@ void SystemProvider::run(){
             std::move(s.gpuHistory.begin()+1,s.gpuHistory.end(),s.gpuHistory.begin());s.gpuHistory.back()=float(std::max(0.,s.gpu));
             std::move(s.downloadHistory.begin()+1,s.downloadHistory.end(),s.downloadHistory.begin());s.downloadHistory.back()=float(s.download);s.samples=std::min(40u,s.samples+1);
             {std::lock_guard lock(mutex_);current_=s;}PostMessageW(window_,SystemMessage,0,0);
-        }else{lastTime=0;lastTotal=0;}
+        }else{lastTime=0;lastTotal=0;lastCores.clear();s.cores.clear();}
         HANDLE handles[]={stop_,wake_};if(WaitForMultipleObjects(2,handles,FALSE,active?1000:INFINITE)==WAIT_OBJECT_0)break;
     }
     if(query)PdhCloseQuery(query);

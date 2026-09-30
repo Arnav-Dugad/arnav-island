@@ -27,7 +27,7 @@ inline SpringSpec bodySpring(const Settings& s){
     // Slowing by k keeps the shape of the motion: stiffness / k squared, damping / k.
     const double k=s.labSpeed==2?4:s.labSpeed==1?2:1;spec.stiffness/=k*k;spec.damping/=k;return spec;
 }
-inline const std::vector<std::wstring>& pageNames(){static const std::vector<std::wstring> names{L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio",L"Controls"};return names;}
+inline const std::vector<std::wstring>& pageNames(){static const std::vector<std::wstring> names{L"Home",L"Media",L"Stats",L"Focus",L"Settings",L"Shelf",L"Audio",L"Controls",L"Phone"};return names;}
 inline const std::vector<std::wstring>& metricNames(){static const std::vector<std::wstring> names{L"CPU",L"Memory",L"Battery",L"Download",L"Upload",L"Disk free",L"Uptime",L"GPU",L"Weather"};return names;}
 inline void assignMetric(std::array<int,3>& metrics,int slot,int value){value=std::clamp(value,0,metricCount-1);for(int i=0;i<3;++i)if(i!=slot&&metrics[i]==value)metrics[i]=metrics[slot];metrics[slot]=value;}
 inline std::vector<SettingItem> settingItems(int monitors=1){

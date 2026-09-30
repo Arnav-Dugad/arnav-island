@@ -1,3 +1,47 @@
+# Arnav Island 0.23.0-preview.1 — your phone, at a glance
+
+## A Phone page
+**The island has a ninth page: Phone.** It shows a phone of yours, live:
+- **Its battery:** a ring with its level, how long it lasts ("Until 11:15 pm") or when it's full, and the power going in or out ("Using 1.8 W", "Charging at 15.2 W").
+- **What plays on it,** with its cover.
+- **Its network** (with its signal), **storage** and **memory**.
+- **A line of its other readings:** sound mode and Do Not Disturb, temperature, battery health, uptime, whether its screen is on.
+- **How it's reached:** here, directly (with its round trip) or through the relay. When it's away, it says how long ago it was last heard from, and dims what it last said.
+- **What it can do from here:** ring it, ask it for a photo, send it your clipboard, and join its hotspot while that's on.
+
+The page asks the phone every two seconds while it shows, on a connection kept open, and stops as soon as the page closes. With more than one phone, the arrow at the top moves to the next. With none, it offers to pair one. The phone needs [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.5 for the live readings. With an older app it shows what the phone last sent.
+
+The page sits after Focus in the bar. A saved order keeps its places and gains Phone after Focus.
+
+## Fixed: the hotspot card didn't show
+- **What went wrong:** when you turned the hotspot off, the phone was changing networks at that moment, so the island often never heard "off". The next time you turned it on, the island thought it had known all along and showed no card. The Wi-Fi button in the phone's view still worked.
+- **Now:** a phone that goes away takes its hotspot with it. When it's back with the hotspot on, the card shows again.
+- **The hotspot this PC joined isn't offered again** while it stays on.
+- **The card stays longer:** 30 s, or a minute when this PC has no internet of its own.
+- **It shows** whether or not your phone's notifications are turned on here.
+
+## For the phone app (1.5)
+- **This PC's battery in full:** its level, time left or to full, the power going in or out, health and cycles, temperature, capacity and its last day.
+- **Each processor core's load,** for the app's core bars.
+- **The focus clock:** when it starts, pauses or stops, your phones hear it (their lock screens and widgets count down with it). A phone that comes back while it runs hears it again.
+- **The Phone tab** can be opened from the phone's Island tab.
+
+## Checks
+- **Unit suites:** core 11,682; model 2,061; phase 5,724 (with Phone joining a saved order after Focus); share 199; provider lifecycle passing.
+- **The phone against this PC's engine (seven tests), over the network and live over the internet:**
+  - this PC's battery and cores
+  - the phone asked for its readings twice on one kept connection
+  - the focus clock told to it
+  - the Phone page opened from the phone
+  - everything from 0.22
+- **UI test** on the signed build: all 53 stages. They include:
+  - the Phone page from the bar (nine pages now), and its name for screen readers
+  - offering to pair with no phone, and its actions with one
+- **Settings end-to-end:** 217 checks, 0 failures.
+- **Captured and checked:** the Phone page with a phone here (its hotspot on) and away.
+- **On the Android emulator,** against two made-up PCs (one on the network, one through the relay):
+  - the carousel, the battery card and the core bars
+  - a focus clock told to the phone over the internet, and its readings asked for by the PC
 # Arnav Island 0.22.0-preview.1 — the whole island, in your hand
 
 ## Your phone controls everything

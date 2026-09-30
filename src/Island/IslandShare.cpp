@@ -82,6 +82,13 @@ void IslandWindow::shareEvents(){
         using K=ShareEvent::Kind;
         switch(e.kind){
         case K::Peers:{content_.nearby=share_->peers();content_.internet=share_->internet();proximity();
+            // 0.22.1: a phone that went away takes its hotspot with it (its "off" may never have arrived); when it's back
+            // with the hotspot still on, it says so again and the card shows again.
+            for(auto it=hotspots_.begin();it!=hotspots_.end();){const bool here=std::any_of(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==it->first&&p.online;});
+                if(here){++it;continue;}content_.hotspots.erase(it->first);it=hotspots_.erase(it);}
+            // A phone that went away is told the focus clock again when it's back (it may have restarted meanwhile).
+            std::erase_if(focusTold_,[&](const std::string& id){return std::none_of(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==id&&p.online;});});
+            syncPhoneFocus();if(state_==IslandState::Expanded&&content_.page==Page::Phone){choosePhone(false);redraw=true;}
             if(content_.phoneView.open&&std::none_of(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==content_.phoneView.peer&&p.paired;}))content_.phoneView={};
             // Sends go to the chosen paired PC; failing that, the first paired PC that is here.
             const bool keep=std::any_of(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==shareTarget_&&p.paired;});
@@ -141,6 +148,12 @@ void IslandWindow::shareEvents(){
             syncBud();break;}
         // 0.22: a phone's hotspot came on (its name and password) or went off.
         case K::PhoneHotspot:phoneHotspot(e.peer,e.name,e.code!=0,e.file,e.detail);break;
+        // 0.23: a phone's readings now, asked for while the Phone page shows (with the cover of what plays on it).
+        case K::PhoneLive:{auto& info=content_.phones[e.peer];info.values.clear();info.at=now;size_t from=0;
+            while(from<e.detail.size()&&info.values.size()<48){size_t end=e.detail.find(L'\n',from);if(end==std::wstring::npos)end=e.detail.size();const std::wstring line=e.detail.substr(from,end-from);from=end+1;
+                const auto tab=line.find(L'\t');if(tab!=std::wstring::npos&&tab>0)info.values.push_back({line.substr(0,tab).substr(0,32),line.substr(tab+1).substr(0,80)});}
+            if(!e.icon.empty()){if(auto art=decodeCover(e.icon,96))content_.phoneCovers[e.peer]=art;}else content_.phoneCovers.erase(e.peer);
+            phoneAsking_->store(false);if(state_==IslandState::Expanded&&content_.page==Page::Phone&&content_.phonePage==e.peer)redraw=true;break;}
         // A phone's readings, for its own view in Nearby.
         case K::PhoneDetails:{auto& info=content_.phones[e.peer];info.values.clear();info.at=now;size_t from=0;
             while(from<e.detail.size()&&info.values.size()<40){size_t end=e.detail.find(L'\n',from);if(end==std::wstring::npos)end=e.detail.size();const std::wstring line=e.detail.substr(from,end-from);from=end+1;
@@ -237,9 +250,9 @@ bool IslandWindow::shareAction(Action a){
     // 0.22: a phone's hotspot, joined from its card or its view.
     if(a==Action::HotspotJoin){const std::string peer=content_.notice.peer;events_.dismiss(now);content_.activity.clear();transition(IslandState::Compact);joinHotspot(peer);return true;}
     if(a==Action::HotspotLater){close();return true;}
-    if(a==Action::PhoneHotspot){joinHotspot(content_.phoneView.peer);return true;}
+    if(a==Action::PhoneHotspot){joinHotspot(content_.page==Page::Phone?content_.phonePage:content_.phoneView.peer);return true;}
     if(a==Action::PhoneBack){content_.phoneView={};if(!motion_.reduced){motion_.swipe.reset(-22,now);motion_.swipe.retarget(0,now,MotionTokens::content);}refresh();animate();return true;}
-    if(a==Action::PhoneRing||a==Action::PhonePhoto||a==Action::PhoneClipboard){const std::string peer=content_.phoneView.peer;auto it=std::find_if(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==peer;});
+    if(a==Action::PhoneRing||a==Action::PhonePhoto||a==Action::PhoneClipboard){const std::string peer=content_.page==Page::Phone?content_.phonePage:content_.phoneView.peer;auto it=std::find_if(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==peer;});
         if(!share_||it==content_.nearby.end())return true;
         if(a==Action::PhoneRing){share_->ring(peer);note(L"Ringing "+it->name+L"\u2026");}
         else if(a==Action::PhonePhoto){share_->askPhoto(peer);note(L"On "+it->name+L": the camera opens, or tap its notification");}
@@ -323,6 +336,7 @@ std::vector<uint8_t> IslandWindow::remoteAnswer(const std::string& peer,RemoteCo
     case RemoteCommand::Command:return remoteCommand(payload);
     case RemoteCommand::Audio:return remoteAudio(payload);
     case RemoteCommand::Island:return remoteIsland(payload);
+    case RemoteCommand::Battery:return remoteBattery();
     case RemoteCommand::RingPC:{ringChimes_=8;playSound(Sound::Chime);SetTimer(window_,RingPCTimer,1400,nullptr);phoneCard(L"Here I am",from+L" is looking for this PC",from,nullptr,12);store_.log("Info","phone_find_pc");return {remoteOk};}
     // The song's lyrics, as the island has them (the phone shows them in time with the song).
     case RemoteCommand::Lyrics:{const std::wstring key=p.available?p.title+L"\t"+p.artist:std::wstring();int state=0;std::vector<ShareLyricLine> lines;
@@ -388,10 +402,44 @@ void IslandWindow::proximityCheck(){
 bool IslandWindow::shareTimer(UINT_PTR id){
     if(id==ProximityTimer){proximityCheck();return true;}
     if(id==PhoneStatsTimer){KillTimer(window_,PhoneStatsTimer);clockTimer();return true;}
+    if(id==PhoneLiveTimer){askPhoneLive();return true;}
     if(id==PhonePowerTimer){KillTimer(window_,PhonePowerTimer);phonePower();return true;}
     if(id==RingPCTimer){const bool showing=state_==IslandState::Notification&&content_.notice.kind==19&&content_.notice.app==L"Here I am";
         if(--ringChimes_<=0||!showing){KillTimer(window_,RingPCTimer);ringChimes_=0;return true;}playSound(Sound::Chime);alertSplash();return true;}
     return false;
+}
+// 0.23: the Phone page's phone: the one chosen while it's still paired (or the next one), else the first here, else the
+// first paired.
+void IslandWindow::choosePhone(bool next){
+    std::vector<const SharePeer*> phones;for(auto& p:content_.nearby)if(p.paired&&p.phone)phones.push_back(&p);
+    if(phones.empty()){content_.phonePage.clear();return;}
+    auto at=std::find_if(phones.begin(),phones.end(),[&](auto* p){return p->id==content_.phonePage;});
+    if(next&&at!=phones.end()){content_.phonePage=(at+1==phones.end()?phones.front():*(at+1))->id;return;}
+    if(at!=phones.end())return;
+    auto here=std::find_if(phones.begin(),phones.end(),[](auto* p){return p->online;});content_.phonePage=(here!=phones.end()?*here:phones.front())->id;
+}
+// Asks the Phone page's phone for its readings (one question at a time; a lost one is given up after 6 s).
+void IslandWindow::askPhoneLive(){
+    if(!share_||content_.phonePage.empty())return;const double now=seconds();
+    auto it=std::find_if(content_.nearby.begin(),content_.nearby.end(),[&](auto& p){return p.id==content_.phonePage;});
+    if(it==content_.nearby.end()||!it->online||it->revision<6)return;
+    if(phoneAsking_->load()&&now-phoneAskedAt_<6)return;phoneAsking_->store(true);phoneAskedAt_=now;share_->queryPhone(content_.phonePage);
+}
+// 0.23: the focus clock, told to paired phones (island 0.23 on the phone: its lock screen and widget follow it). Sent when
+// it starts, changes or stops; a phone that arrives while it runs hears it then.
+void IslandWindow::syncPhoneFocus(){
+    if(!share_)return;const auto& f=content_.focus;const double now=seconds();
+    const int shown=int(std::lround(f.displayed(now)));
+    std::wstring key=std::to_wstring(int(f.mode))+L"|"+std::to_wstring(f.running)+L"|"+std::to_wstring(f.finished)+L"|"+std::to_wstring(int(std::lround(f.duration)))+(f.running?L"":L"|"+std::to_wstring(shown));
+    if(key!=focusKey_){focusKey_=key;focusTold_.clear();}
+    // Nothing to tell until it has run: a phone isn't told about a clock that never started.
+    if(!f.running&&!focusShared_)return;
+    std::vector<uint8_t> state{uint8_t(int(f.mode)),uint8_t(f.running?1:0),uint8_t(f.finished?1:0)};
+    auto f64=[&](double v){uint64_t u=0;std::memcpy(&u,&v,8);for(int i=0;i<8;++i)state.push_back(uint8_t(u>>(8*i)));};f64(f.displayed(now));f64(f.duration);
+    std::string name;{const std::wstring& w=content_.shareName;const int n=WideCharToMultiByte(CP_UTF8,0,w.data(),int(w.size()),nullptr,0,nullptr,nullptr);name.resize(size_t(std::max(n,0)));if(n>0)WideCharToMultiByte(CP_UTF8,0,w.data(),int(w.size()),name.data(),n,nullptr,nullptr);}
+    for(int i=0;i<4;++i)state.push_back(uint8_t(name.size()>>(8*i)));state.insert(state.end(),name.begin(),name.end());
+    for(auto& p:content_.nearby)if(p.paired&&p.phone&&p.online&&p.revision>=6&&!focusTold_.count(p.id)){focusTold_.insert(p.id);share_->tellPhoneFocus(p.id,state);}
+    focusShared_=f.running;
 }
 // Whether the card showing waits for someone's answer: pairing (14), files offered (15), music handed off (17), the
 // pairing code (20), a phone's message with actions or a call (19). Such a card isn't folded away by the pointer.

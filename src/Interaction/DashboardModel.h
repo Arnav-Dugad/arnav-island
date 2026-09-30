@@ -8,7 +8,7 @@
 #include <cwctype>
 #include <cwchar>
 namespace nexus {
-enum class Page { Overview,Media,System,Focus,Settings,Shelf,Audio,Control };
+enum class Page { Overview,Media,System,Focus,Settings,Shelf,Audio,Control,Phone };
 enum class Action { None,Overview,Media,System,Focus,Settings,Pin,Close,Play,Previous,Next,MediaMode,VolumeDown,Mute,VolumeUp,Timer25,Timer5,Stopwatch,TimerToggle,TimerReset,HoverToggle,HoverDelay,FullscreenToggle,ReducedToggle,MotionPreset,Offset,Monitor,SoundSettings,DisplaySettings,NetworkSettings,BluetoothSettings,Lab,Shelf,Audio,SettingsNext,StartupToggle,Theme,Scale,Corner,Edge,CompactWidth,CollapseDelay,GlassToggle,AccentsToggle,MagneticToggle,CompactMediaToggle,CompactBatteryToggle,Accent,AudioCompatibility,ShelfClear,SettingsReset,LayoutSlot,LayoutLeft,LayoutRight,MetricOne,MetricTwo,MetricThree,Rings,IconsToggle,HandoffToggle,LayoutReset,VolumeSlider,AppSwitchToggle,WheelVolumeToggle,Seek,UiMode,CompactVolumeToggle,CompactTimerToggle,CompactClockToggle,ShelfPeekToggle,WidthDown,HorizontalOffset,AudioApps,AudioOutputs,MixerSettings,StatsSystem,StatsBattery,StatsDevices,Armoury,PowerSettings,ShelfFiles,ShelfClipboard,ClipboardEnable,ClipboardPause,ClipboardClear,CommandOpen,LyricsToggle,SkipBack,SkipForward,SwitchBack,MicMute,ShelfBack,ShelfOpen,ShelfOpenWith,ShelfReveal,ShelfCopyPath,ShelfCopyText,ShelfConvert,ShelfHalf,ShelfRemove,ShelfZip,CaptureSnip,CaptureText,CaptureColour,ClipSearch,
     // Phase 5F (105-127): the Controls page, privacy settings for the app on a card, sharing.
     Control,ControlWifi,ControlBluetooth,ControlAirplane,ControlDark,ControlFocus,ControlMic,ControlBrightness,PrivacyShow,PrivacySettings,ShareSend,ShareAccept,ShareDecline,SharePair,NoticeDismiss,ShelfNearby,ShareShow,
@@ -29,7 +29,9 @@ enum class Action { None,Overview,Media,System,Focus,Settings,Pin,Close,Play,Pre
     NearbyRingBase=559,NearbyRingEnd=563,
     // 0.20 (563-571): pairing from anywhere, a phone's own view (ring it, ask it for a photo, give it the clipboard), and
     // the actions on a phone's notification card.
-    PairAnywhere=563,PairingStop=564,PhoneBack=565,PhoneRing=566,PhonePhoto=567,PhoneClipboard=568,NoticeActionBase=569,NoticeActionEnd=571,PairingShow=572,PairTypeCode=573,HotspotJoin=574,HotspotLater=575,PhoneHotspot=576,ActionEnd=577 };
+    PairAnywhere=563,PairingStop=564,PhoneBack=565,PhoneRing=566,PhonePhoto=567,PhoneClipboard=568,NoticeActionBase=569,NoticeActionEnd=571,PairingShow=572,PairTypeCode=573,HotspotJoin=574,HotspotLater=575,PhoneHotspot=576,
+    // 0.23 (577-580): the Phone page, the next paired phone on it, and pairing one from it.
+    PhonePage=577,PhoneNext=578,PhonePair=579,ActionEnd=580 };
 inline bool inRange(Action a,Action base,Action end){return int(a)>=int(base)&&int(a)<int(end);}
 // Command bar layout: input 42, then 40 per row, then the key hints.
 inline float commandFooterY(int rows){return 52+40.f*float(rows)+2;}

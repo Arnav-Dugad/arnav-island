@@ -398,3 +398,21 @@ Next, in this order:
 
 Limits:
 - **Join wasn't run against a real hotspot** in the tests.
+
+## Status after v0.23.0-preview.1 — your phone, at a glance — 2026-09-30
+
+Shipped, as asked:
+- **A separate Phone page** on the island, live.
+- **The hotspot card** shows again whenever the hotspot comes on.
+- **In the phone app 1.5:**
+  - volume up and down buttons
+  - this PC's battery
+  - swiping between PCs, core bars that shimmer under load, graphs to scrub, a warm tint when the processor works hard
+  - a live stats widget, Material You widgets, and the focus clock on the lock screen
+
+Next, in this order:
+- screen mirroring both ways
+- unlocking with the phone
+- sharing from any app to the Shelf with a live preview
+- the photo just taken
+- web pages handed over at the same scroll position

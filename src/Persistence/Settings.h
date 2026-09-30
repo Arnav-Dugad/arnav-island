@@ -66,9 +66,9 @@ struct Settings {
     // explicit vertical offset floats the island clear of the edge.
     bool glassy()const{return material!=0;}
     bool floating()const{return verticalOffset>0;}
-    static Settings parse(std::istream& in){Settings s;std::string key;double value;bool controls=false,navigated=false;while(in>>key){if(key.starts_with("nav"))navigated=true;if(!(in>>value)||!std::isfinite(value))throw std::runtime_error("Invalid setting");
+    static Settings parse(std::istream& in){Settings s;std::string key;double value;bool controls=false,phone=false,navigated=false;while(in>>key){if(key.starts_with("nav"))navigated=true;if(!(in>>value)||!std::isfinite(value))throw std::runtime_error("Invalid setting");
         if(key=="version"){if(value<1||value>currentVersion||std::floor(value)!=value)throw std::runtime_error("Unsupported settings version");}
-        else if(key.size()==4&&key.starts_with("nav")&&key[3]>='0'&&key[3]<='7'){s.navigation[size_t(key[3]-'0')]=int(std::clamp(value,0.,double(pageCount-1)));if(key[3]=='7')controls=true;}
+        else if(key.size()==4&&key.starts_with("nav")&&key[3]>='0'&&key[3]<='8'){s.navigation[size_t(key[3]-'0')]=int(std::clamp(value,0.,double(pageCount-1)));if(key[3]=='7')controls=true;if(key[3]=='8')phone=true;}
         else if(key.size()==5&&key.starts_with("home")&&key[4]>='0'&&key[4]<='2')s.homeMetrics[key[4]-'0']=int(std::clamp(value,0.,double(metricCount-1)));
         else if(key.size()==5&&key.starts_with("chip")&&key[4]>='0'&&key[4]<='6')s.chips[size_t(key[4]-'0')]=int(std::clamp(value,0.,double(chipCount-1)));
         else if(key=="glass"){/* v5 interior acrylic; superseded by material. */}
@@ -86,6 +86,8 @@ struct Settings {
         }if(!in.eof())throw std::runtime_error("Malformed settings");
         // Before v14 there were seven pages: the saved order keeps its places and gains Controls after Stats.
         if(navigated&&!controls){std::array<int,7> legacy{};std::copy_n(s.navigation.begin(),7,legacy.begin());s.navigation=withControls(legacy);}
+        // Before 0.23 there were eight: the saved order gains Phone after Focus.
+        else if(navigated&&!phone){std::array<int,8> legacy{};std::copy_n(s.navigation.begin(),8,legacy.begin());s.navigation=withPhone(legacy);}
         if(!validNavigation(s.navigation))s.navigation=defaultNavigation;if(!validChips(s.chips))s.chips=defaultChips;auto metrics=s.homeMetrics;std::sort(metrics.begin(),metrics.end());if(std::adjacent_find(metrics.begin(),metrics.end())!=metrics.end())s.homeMetrics=defaultMetrics;return s;}
     void write(std::ostream& out)const{out<<"version "<<currentVersion<<'\n';for(int i=0;i<pageCount;++i)out<<"nav"<<i<<' '<<navigation[size_t(i)]<<'\n';for(int i=0;i<3;++i)out<<"home"<<i<<' '<<homeMetrics[i]<<'\n';for(int i=0;i<chipCount;++i)out<<"chip"<<i<<' '<<chips[size_t(i)]<<'\n';
 #define WRITE(name) out<<#name<<' '<<name<<'\n';

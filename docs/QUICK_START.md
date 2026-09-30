@@ -231,3 +231,7 @@ Click a paired PC in Nearby to make it where Send goes. **Forget** unpairs it.
 **Your phone's hotspot.** In the phone app: Devices › **Your hotspot**, type its name and password once, and turn it on. When the hotspot comes on, the island shows a card: press **Join**. Windows may ask once whether Arnav Island may use location, since Wi-Fi names count as location. Either answer works.
 
 **The battery forecast** shows in the phone's view (Shelf › Nearby › your phone) once the phone has spent a while off the charger.
+
+## v0.23 Your phone, at a glance
+
+**Open the Phone page** (the phone in the bar, after Focus). It shows your phone live while it's open. With the phone app 1.5 its readings refresh every two seconds. The arrow at the top moves between phones. Ring it, ask it for a photo, send it your clipboard, or join its hotspot from its buttons.

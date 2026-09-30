@@ -1,10 +1,12 @@
-# Arnav Island 0.22 — the whole island, in your hand
+# Arnav Island 0.23 — your phone, at a glance
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.22.0-preview.1) · [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.4
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.23.0-preview.1) · [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.5
 
 **Your phone, anywhere.** Your phone and your PCs now reach each other on any network: another Wi-Fi, mobile data, anywhere. It’s free and end-to-end encrypted. To pair from far away, open **Shelf › Nearby › Pair with a code** and scan its QR code with the phone app (or type the code).
+
+**Your phone, at a glance (0.23).** A new Phone page shows your phone live: its battery and how long it lasts, what plays on it, its network, storage and more. Ring it, ask it for a photo, send it your clipboard or join its hotspot from there.
 
 **The whole island, in your hand (0.22).** The phone app's new Island tab shows this PC's numbers live and controls everything on the island: its controls, the focus clock, the command bar, power, where the sound goes, its pages and every setting. Your phone's hotspot shows on the island with one tap to join, and its battery says how long it lasts.
 

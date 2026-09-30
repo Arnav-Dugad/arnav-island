@@ -12,6 +12,8 @@
 // With a cover (screenshots of the phone app), the remote reports a made-up song that plays on, under that PC name, and
 // keeps the volume it is given; each shelf command adds to the Shelf (a "<path>.preview" JPEG beside a file is its preview).
 #include "Productivity/ShareService.h"
+#include <cstring>
+#include <ctime>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -74,7 +76,14 @@ int main(int argc,char** argv){
             for(int i=0;i<40;++i){const double at=t-(39-i);st.cpuHistory.push_back(float(std::clamp(23+12*std::sin(at*.9)+4.8*std::sin(at*2.07),0.,100.)));st.gpuHistory.push_back(float(std::clamp(41+18*std::sin(at*.6+1)+7.2*std::sin(at*1.38+1.7),0.,100.)));
                 st.downloadHistory.push_back(float(2.4e6*(1.2+std::sin(at*.7))));}
             st.name=name;st.model=L"ASUS ROG Zephyrus G14";st.os=L"Windows 11 Home 24H2";st.cpuName=L"AMD Ryzen 9 7940HS w/ Radeon 780M Graphics";st.gpuName=L"NVIDIA GeForce RTX 4060 Laptop GPU";
+            // Revision 6: sixteen made-up cores, two of them busy.
+            for(int i=0;i<16;++i)st.cores.push_back(float(i==3?wave(86,10,1.3,0):i==11?wave(71,14,1.1,2):wave(14,9,.8+i*.05,i)));
             return remoteStatsAnswer(st);}
+        // Revision 6: a made-up battery, charging, with a day of history.
+        case RemoteCommand::Battery:{PcBattery b;b.present=true;b.online=true;b.charging=true;b.percent=82;b.minutesToFull=34;b.designMwh=76000;b.fullMwh=69920;b.remainingMwh=57334;b.rateMw=21500;b.voltageMv=16420;b.cycles=187;
+            b.temperatureDeciK=3071;b.health=.92;b.healthBefore=.921;b.chemistry=L"LION";b.manufacturer=L"ASUSTeK";b.name=L"A32N2105";
+            const int64_t now=int64_t(std::time(nullptr));for(int i=0;i<288;++i){const int64_t at=now-int64_t(287-i)*300;const int p=i<120?95-i/2:i<200?35+(i-120)/2:std::min(100,75+(i-200)/3);b.day.push_back({at,p,i>=120});}
+            say("REMOTE battery");return remoteBatteryAnswer(b);}
         case RemoteCommand::Settings:{RemoteReader in(payload);const int op=in.u8();std::lock_guard lock(made->m);auto& v=made->settings;
             if(op==1){const std::string key=in.bytes(64);const int value=in.i32();auto it=v.find(key);if(!in.ok()||it==v.end())return {remoteUnsupported};
                 it->second=key=="hoverDelay"?std::clamp(value,100,700):key=="uiMode"||key=="theme"?std::clamp(value,0,2):key=="accent"?std::clamp(value,0,4):value!=0;say("SETTING "+key+" "+std::to_string(it->second));return remoteValueAnswer(it->second);}
@@ -140,6 +149,8 @@ int main(int argc,char** argv){
                 case K::PhoneNotice:{std::string acts;for(auto& [title,reply]:ev.actions)acts+="|"+narrow(title)+(reply?"*":"");
                     say("PHONENOTICE "+narrow(ev.app)+"|"+narrow(ev.file)+"|"+narrow(ev.detail)+"|"+std::to_string(ev.icon.size())+"|"+std::to_string(ev.urgent?1:0)+(ev.key.empty()?"":"|"+ev.key+acts));break;}
                 case K::PhoneDetails:say("DETAILS "+narrow(ev.detail).substr(0,narrow(ev.detail).find('\n')));break;
+                // Revision 6: a phone's readings, asked for: how many lines, the first, and the cover's size.
+                case K::PhoneLive:{const std::string d=narrow(ev.detail);say("PHONELIVE "+std::to_string(std::count(d.begin(),d.end(),'\n')+(d.empty()?0:1))+" "+d.substr(0,d.find('\n'))+" "+std::to_string(ev.icon.size()));break;}
                 case K::PhoneNoticeGone:say("GONE "+ev.key);break;
                 case K::PhoneHotspot:say(std::string("HOTSPOT ")+(ev.code?"on ":"off ")+narrow(ev.file)+" "+std::to_string(ev.detail.size()));break;
                 case K::Rang:say("RANG");break;
@@ -151,7 +162,7 @@ int main(int argc,char** argv){
     while(std::getline(std::cin,line)){
         std::istringstream in(line);std::string cmd;in>>cmd;
         if(cmd=="quit")break;
-        if(cmd=="peer"){std::string id;int p=0;in>>id>>p;share.addPeer(id,L"Phone",("127.0.0.1"),uint16_t(p),2,3);say("OK peer");}
+        if(cmd=="peer"){std::string id;int p=0;in>>id>>p;share.addPeer(id,L"Phone",("127.0.0.1"),uint16_t(p),shareProtocol,shareRevision);say("OK peer");}
         else if(cmd=="send"){std::string id,path;in>>id;std::getline(in>>std::ws,path);share.send(id,{widen(path)});}
         else if(cmd=="shelf"){std::string path;std::getline(in>>std::ws,path);if(!qa)shelf.clear();ShareShelfEntry e{widen(path),{}};
             std::ifstream preview(path+".preview",std::ios::binary);if(preview)e.preview.assign(std::istreambuf_iterator<char>(preview),std::istreambuf_iterator<char>());shelf.push_back(e);share.offerShelf(shelf,true);say("OK shelf");}
@@ -162,6 +173,11 @@ int main(int argc,char** argv){
         else if(cmd=="action"){std::string id,key,reply;int index=0;in>>id>>key>>index;std::getline(in>>std::ws,reply);share.noticeAction(id,key,index,widen(reply));}
         else if(cmd=="clip"){std::string id,text;in>>id;std::getline(in>>std::ws,text);share.pushClipboard(id,widen(text),false);}
         else if(cmd=="photo"){std::string id;in>>id;share.askPhoto(id);}
+        // Revision 6: ask a phone for its readings; tell it the focus clock (focus <id> <mode> <running> <shown> <duration>).
+        else if(cmd=="query"){std::string id;in>>id;share.queryPhone(id);}
+        else if(cmd=="focus"){std::string id;int mode=0,running=0;double shown=0,duration=0;in>>id>>mode>>running>>shown>>duration;std::vector<uint8_t> st{uint8_t(mode),uint8_t(running),0};
+            auto f64=[&](double v){uint64_t u=0;std::memcpy(&u,&v,8);for(int i=0;i<8;++i)st.push_back(uint8_t(u>>(8*i)));};f64(shown);f64(duration);
+            const std::string pc=narrow(name);for(int i=0;i<4;++i)st.push_back(uint8_t(pc.size()>>(8*i)));st.insert(st.end(),pc.begin(),pc.end());share.tellPhoneFocus(id,st);say("OK focus");}
         else if(cmd=="code"){std::string code;std::getline(in>>std::ws,code);share.pairWithCode(code);}
         else if(cmd=="peers"){for(auto& p:share.peers()){say("PEER "+p.id+" "+std::to_string(p.paired)+" "+std::to_string(p.online)+" "+std::to_string(p.viaInternet)+" "+narrow(p.name));
                 if(p.paired)say("PATH "+p.id+" "+std::to_string(p.path)+" "+std::to_string(int(p.rtt))+" "+std::to_string(p.relays)+" "+std::to_string(p.v6?1:0));}

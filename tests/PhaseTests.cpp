@@ -523,11 +523,12 @@ int main(){try{
         auto week=summarizeWeek(h,t0+3700);test(week.charges==1&&std::abs(week.usedPerDay-11)<1e-9&&std::abs(week.hoursOnBattery-11*300/3600.)<1e-9,"the week on battery");
         test(summarizeWeek({},t0).usedPerDay==-1,"no history, no summary");}
     // ---- Phase 5F: chips, the Controls page, settings v14 --------------------------------------------------
-    {test(withControls({0,1,2,3,4,5,6})==std::array<int,pageCount>{0,1,2,7,3,4,5,6}&&withControls({0,0,2,3,4,5,6})==defaultNavigation,"Controls joins a saved order after Stats");
+    {test(withControls({0,1,2,3,4,5,6})==std::array<int,pageCount>{0,1,2,7,3,8,4,5,6}&&withControls({0,0,2,3,4,5,6})==defaultNavigation,"Controls joins a saved order after Stats");
+        test(withPhone({4,0,1,2,7,3,5,6})==std::array<int,pageCount>{4,0,1,2,7,3,8,5,6}&&withPhone({0,0,1,2,3,4,5,6})==defaultNavigation&&validNavigation(defaultNavigation),"Phone joins a saved order after Focus");
         test(decodeChips(encodeChips(defaultChips))==defaultChips&&moveChip(defaultChips,0,2)==std::array<int,chipCount>{5,4,6,3,2,1,0}&&moveChip(moveChip(defaultChips,0,2),2,0)==defaultChips,"chips move and round-trip");
         test(!validChips({0,0,1,2,3,4,5})&&validChips(defaultChips),"a chip order has each chip once");
         std::stringstream v13("version 13\nnav0 1\nnav1 0\nnav2 2\nnav3 3\nnav4 5\nnav5 6\nnav6 4\n");auto s=Settings::parse(v13);
-        test(s.version==Settings::currentVersion&&s.navigation==std::array<int,pageCount>{1,0,2,7,3,5,6,4}&&s.chips==defaultChips&&!s.weather&&!s.siteIcons&&!s.sharing&&s.notifyStyle==1&&s.waveformStyle==1,"v13 settings gain Controls; online features stay off");
+        test(s.version==Settings::currentVersion&&s.navigation==std::array<int,pageCount>{1,0,2,7,3,8,5,6,4}&&s.chips==defaultChips&&!s.weather&&!s.siteIcons&&!s.sharing&&s.notifyStyle==1&&s.waveformStyle==1,"v13 settings gain Controls; online features stay off");
         Settings custom;custom.chips=moveChip(defaultChips,1,5);custom.sharing=true;custom.notifyStyle=0;std::stringstream io;custom.write(io);auto back=Settings::parse(io);
         test(back.chips==custom.chips&&back.sharing&&back.notifyStyle==0,"v14 settings round-trip");
         std::stringstream broken("version 14\nchip0 1\nchip1 1\n");test(Settings::parse(broken).chips==defaultChips,"a broken chip order falls back");}

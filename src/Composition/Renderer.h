@@ -48,6 +48,8 @@ struct ContentSnapshot {
     struct PhoneInfo{std::vector<std::pair<std::wstring,std::wstring>> values;double at=0;};std::map<std::string,PhoneInfo> phones;
     // 0.22: phones whose hotspot is on, and its name.
     std::map<std::string,std::wstring> hotspots;
+    // 0.23: the phone the Phone page shows, and the covers of what plays on each phone (from its readings).
+    std::string phonePage;std::map<std::string,std::shared_ptr<const Artwork>> phoneCovers;
     // 0.20.1: the pairing code on offer (until when), and its QR code: the link a phone's camera opens.
     struct Pairing{std::wstring code;double until=0;int size=0;std::vector<uint8_t> modules;} pairing;
     // Phase 5G: transfers under way (a Nearby row's progress and Stop, the compact island's chip), and the zone a drag

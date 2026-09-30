@@ -2,6 +2,7 @@
 #include "Common/Win32.h"
 #include <array>
 #include <atomic>
+#include <vector>
 #include <mutex>
 #include <thread>
 namespace nexus {
@@ -13,6 +14,8 @@ struct SystemSnapshot {
     std::array<float,40> cpuHistory{},downloadHistory{};unsigned samples=0;
     // GPU busy percentage (-1 when the counters are unavailable) and its history.
     double gpu=-1;std::array<float,40> gpuHistory{};
+    // 0.23: each logical processor's busy percentage (the first 64), for the phone's per-core bars.
+    std::vector<float> cores;
 };
 class SystemProvider {
     HWND window_;HANDLE stop_,wake_;std::thread worker_;std::atomic<bool> active_{false};std::mutex mutex_;SystemSnapshot current_;

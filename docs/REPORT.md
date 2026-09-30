@@ -336,3 +336,13 @@ Before 0.21, each command was two round trips plus a handshake.
 Sleep, restart and shut down wait 0.9 s, so the answer reaches the phone first.
 
 **Notices** gain `[0x30, 5, on, name, password]`, the phone's hotspot (name at most 32 bytes, password at most 64).
+
+## 0.23.0-preview.1
+
+**Revision 6.** Announced as `2.6`.
+- **Command 18, battery:** see `remoteBatteryAnswer` in ShareService.h.
+- **Stats** end with each core's load: u8 n, then n bytes of percent (255 unknown).
+- **Mode Q:** this PC asks a paired phone, on a connection it keeps open. Each request is `[0x80, command, payload]`, answered `[0x81, status, payload]`.
+  - **Command 1 (readings)** answers `[u32 n, lines]` and `[u32 n, cover JPEG]`.
+  - **Command 2 (the focus clock)** sends `[mode, running, finished, f64 shown, f64 duration, name]`.
+  - **Keeping it open:** a connection idle for 40 s is reopened (the phone closes one after a minute). A reused one gets 6 s to answer, then a fresh one is tried.

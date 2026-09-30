@@ -78,26 +78,29 @@ bool attempt(Wlan& w,const GUID& id,const std::wstring& ssidWide,const std::stri
 // A phone's hotspot came on (with its name and password) or went off.
 void IslandWindow::phoneHotspot(const std::string& peer,const std::wstring& phone,bool on,const std::wstring& ssid,const std::wstring& key){
     const double now=seconds();
-    if(!on){hotspots_.erase(peer);content_.hotspots.erase(peer);
+    if(!on){if(auto it=hotspots_.find(peer);it!=hotspots_.end()&&it->second.ssid==hotspotJoined_)hotspotJoined_.clear();hotspots_.erase(peer);content_.hotspots.erase(peer);
         if(state_==IslandState::Notification&&content_.notice.kind==21&&content_.notice.peer==peer){events_.dismiss(now);content_.activity.clear();transition(IslandState::Compact);}
         refresh();return;}
-    auto& h=hotspots_[peer];const bool fresh=h.ssid!=ssid||h.key!=key;h={ssid,key,now};content_.hotspots[peer]=ssid;refresh();
-    if(fresh&&settings_.phoneNotices)hotspotCard(peer,phone);
+    // 0.22.1: new whenever the island didn't know it was on (a phone that went away and came back says so again), except
+    // the hotspot this PC joined, while it's still on.
+    const auto was=hotspots_.find(peer);const bool fresh=was==hotspots_.end()||was->second.ssid!=ssid||was->second.key!=key;
+    hotspots_[peer]={ssid,key,now};content_.hotspots[peer]=ssid;refresh();
+    if(fresh&&ssid!=hotspotJoined_)hotspotCard(peer,phone);
 }
 // Its card: up longer when this PC has no internet of its own.
 void IslandWindow::hotspotCard(const std::string& peer,const std::wstring& phone){
     auto it=hotspots_.find(peer);if(it==hotspots_.end()||!renderer_)return;
     const bool offline=!share_||!share_->internet();
-    content_.notice={};content_.notice.kind=21;content_.notice.phone=true;content_.notice.peer=peer;content_.notice.app=phone+L"’s hotspot";
-    content_.notice.detail=it->second.ssid+(offline?L"  ·  this PC is offline":L"  ·  its internet, here");
-    content_.pinned=false;{const Activity a{ActivityKind::Notification,"hotspot",72,21.,2.4,offline?30.:14.};if(holdCard(a))return;events_.publish(a,seconds());}
+    content_.notice={};content_.notice.kind=21;content_.notice.phone=true;content_.notice.peer=peer;content_.notice.app=phone+L"\u2019s hotspot";
+    content_.notice.detail=it->second.ssid+(offline?L"  \u00b7  this PC is offline":L"  \u00b7  its internet, here");
+    content_.pinned=false;{const Activity a{ActivityKind::Notification,"hotspot",72,21.,2.4,offline?60.:30.};if(holdCard(a))return;events_.publish(a,seconds());}
     transition(IslandState::Notification);presentActivity();alertSplash();store_.log("Info","hotspot_card_shown");
 }
 // Joins it on a thread of its own (it takes a few seconds): the card says so, and then how it went.
 void IslandWindow::joinHotspot(const std::string& peer){
     auto it=hotspots_.find(peer);if(it==hotspots_.end()){shareCard(16,L"The hotspot is off",L"Turn it on on the phone first",{},4);return;}
     if(hotspotBusy_)return;hotspotBusy_=true;const std::wstring ssid=it->second.ssid,key=it->second.key;hotspotSsid_=ssid;
-    shareCard(16,L"Joining "+ssid+L"…",peerName(peer)+L"’s hotspot",{},25);store_.log("Info","hotspot_join");
+    shareCard(16,L"Joining "+ssid+L"\u2026",peerName(peer)+L"\u2019s hotspot",{},25);store_.log("Info","hotspot_join");
     std::thread([w=window_,ssid,key]{PostMessageW(w,HotspotMessage,WPARAM(IslandWindow::joinNetwork(ssid,key)),0);}).detach();
 }
 // 0 joined, 1 not in sight, 2 couldn't connect (the password, most likely), 3 no Wi-Fi here, 4 turned on but not ready.
@@ -142,10 +145,10 @@ int IslandWindow::joinNetwork(const std::wstring& ssidWide,const std::wstring& k
 void IslandWindow::hotspotMessage(WPARAM w,LPARAM){
     hotspotBusy_=false;const std::wstring ssid=hotspotSsid_;
     switch(int(w)){
-    case 0:shareCard(16,L"Connected to "+ssid,L"The phone’s internet, on this PC",{},4);store_.log("Info","hotspot_joined");break;
-    case 1:shareCard(16,L"Can’t see "+ssid+L" from here",L"Bring the phone closer, or check its hotspot name in the app",{},6);store_.log("Info","hotspot_not_seen");break;
-    case 3:shareCard(16,L"This PC has no Wi-Fi",L"It can’t join a hotspot",{},5);break;
-    case 4:shareCard(16,L"Wi-Fi isn’t ready",L"Try again in a moment",{},5);break;
-    default:shareCard(16,L"Couldn’t join "+ssid,L"Bring the phone closer, or check the hotspot’s password in the app",{},6);store_.log("Info","hotspot_failed");break;}
+    case 0:hotspotJoined_=ssid;shareCard(16,L"Connected to "+ssid,L"The phone\u2019s internet, on this PC",{},4);store_.log("Info","hotspot_joined");break;
+    case 1:shareCard(16,L"Can\u2019t see "+ssid+L" from here",L"Bring the phone closer, or check its hotspot name in the app",{},6);store_.log("Info","hotspot_not_seen");break;
+    case 3:shareCard(16,L"This PC has no Wi-Fi",L"It can\u2019t join a hotspot",{},5);break;
+    case 4:shareCard(16,L"Wi-Fi isn\u2019t ready",L"Try again in a moment",{},5);break;
+    default:shareCard(16,L"Couldn\u2019t join "+ssid,L"Bring the phone closer, or check the hotspot\u2019s password in the app",{},6);store_.log("Info","hotspot_failed");break;}
 }
 }

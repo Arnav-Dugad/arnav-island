@@ -123,6 +123,20 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
         content_.page=Page::Shelf;content_.shelfTab=2;content_.pinned=true;transition(IslandState::Expanded);refresh();}
     // --qa-hotspot: a made-up phone's hotspot card (a made-up network: Join says it can't be seen from here).
     if(testing_&&cmd.find(L"--qa-hotspot")!=std::wstring::npos){hotspots_["qa"]={L"QA hotspot 7F3K",L"not-a-real-password",seconds()};content_.hotspots["qa"]=L"QA hotspot 7F3K";hotspotCard("qa",L"Pixel 9");}
+    // --qa-phone: the Phone page with a made-up phone (its readings, a painted cover, its hotspot on); --qa-phone=away: gone.
+    if(testing_&&cmd.find(L"--qa-phone")!=std::wstring::npos){const bool away=cmd.find(L"--qa-phone=away")!=std::wstring::npos;settings_.sharing=true;settings_.relay=true;content_.settings=settings_;content_.shareName=L"Desk PC";content_.internet=true;
+        SharePeer p;p.id="qa-phone";p.name=L"Galaxy S24 Ultra";p.paired=true;p.online=!away;p.revision=shareRevision;p.phone=true;p.battery=64;p.charging=false;p.viaInternet=true;p.path=2;p.rtt=38;p.relays=3;p.v6=true;
+        SharePeer q=p;q.id="qa-phone-2";q.name=L"Pixel 9";q.online=false;content_.nearby={p,q};
+        auto& info=content_.phones["qa-phone"];info.at=seconds()-(away?600:0);
+        info.values={{L"Battery",L"64%"},{L"Charging",L"No"},{L"Temperature",L"31.4°C"},{L"Battery health",L"Good"},{L"Lasts until",L"11:15 pm"},{L"Power",L"Using 1.8 W"},
+            {L"Storage",L"118 GB free of 256 GB"},{L"Memory",L"4.2 GB free of 12 GB"},{L"Network",L"Wi-Fi  ·  ●●●○"},{L"Sound",L"Ring  ·  media 45%"},{L"Android",L"16"},
+            {L"Uptime",L"3 h 12 min"},{L"Model",L"Samsung SM-S928B"},{L"Playing",L"Blue in Green — Miles Davis"},{L"Screen",L"on"},{L"Brightness",L"62%"}};
+        // A painted cover: a deep blue to teal wash with a soft light.
+        auto art=std::make_shared<Artwork>();art->width=art->height=96;art->pixels.resize(96*96*4);art->accent=0x6ec6d8;
+        for(uint32_t y=0;y<96;++y)for(uint32_t x=0;x<96;++x){const double u=x/95.,v=y/95.,d=std::hypot(u-.3,v-.3);auto* px=&art->pixels[(y*96+x)*4];
+            px[0]=uint8_t(std::clamp(120+90*u-60*d,0.,255.));px[1]=uint8_t(std::clamp(60+110*v-50*d,0.,255.));px[2]=uint8_t(std::clamp(30+40*u*v,0.,255.));px[3]=255;}
+        content_.phoneCovers["qa-phone"]=art;if(!away)content_.hotspots["qa-phone"]=L"Galaxy S24 Ultra";
+        content_.phonePage="qa-phone";content_.page=Page::Phone;content_.pinned=true;transition(IslandState::Expanded);refresh();}
     // --qa-pair-code: the command bar taking another PC's pairing code, four of eight typed.
     if(testing_&&cmd.find(L"--qa-pair-code")!=std::wstring::npos){openPairCode();for(wchar_t ch:std::wstring(L"7K2P"))commandChar(ch);}
     // --qa-late (with --qa-share-card): the card comes 5 s after start (so a screen reader client is already listening).
@@ -697,6 +711,13 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
                         pass=pass&&content_.command.active&&content_.command.pairCode&&content_.command.text==L"7K2P"&&accessibleName(Action::PairTypeCode)==L"Type another PC’s pairing code";
                         commandKey(VK_BACK);pass=pass&&content_.command.text==L"7K2";for(wchar_t ch:std::wstring(L"PMX41O"))commandChar(ch);
                         pass=pass&&content_.command.active&&content_.command.text==L"7K2PMX4";closeCommand(false);pass=pass&&!content_.command.active;
+                        // 0.23: the Phone page (nine pages in the bar now), its name, and pairing from it when no phone is paired.
+                        {const auto keep=content_.nearby;content_.nearby.clear();perform(Action::PhonePage);
+                            const bool bar=std::count_if(renderer_->targets.begin(),renderer_->targets.end(),[](auto& t){return t.action==Action::PhonePage||t.action==Action::Overview||t.action==Action::Control;})>=3;
+                            pass=pass&&content_.page==Page::Phone&&content_.phonePage.empty()&&accessibleName(Action::PhonePage)==L"Phone"&&bar&&std::any_of(renderer_->targets.begin(),renderer_->targets.end(),[](auto& t){return t.action==Action::PhonePair;});
+                            SharePeer p;p.id="uitest-phone";p.name=L"Test phone";p.paired=true;p.online=true;p.phone=true;p.revision=shareRevision;content_.nearby={p};choosePhone(false);refresh();
+                            pass=pass&&content_.phonePage=="uitest-phone"&&std::any_of(renderer_->targets.begin(),renderer_->targets.end(),[](auto& t){return t.action==Action::PhoneRing;});
+                            content_.nearby=keep;content_.phonePage.clear();}
                         // 0.22: a phone's hotspot card waits for its answer; it goes when the hotspot does.
                         hotspots_["uitest"]={L"UI test hotspot",L"nothing-real",seconds()};content_.hotspots["uitest"]=L"UI test hotspot";hotspotCard("uitest",L"Test phone");
                         pass=pass&&state_==IslandState::Notification&&content_.notice.kind==21&&decisionShowing()&&accessAlert(content_.notice).find(L"UI test hotspot")!=std::wstring::npos&&accessibleName(Action::HotspotJoin)==L"Join the hotspot";
@@ -881,7 +902,7 @@ void IslandWindow::pushWaveform(float live){
         if(live>=0&&p.playing){int i=TrackWaveform::bucket(p.position+std::max(0.,seconds()-p.sampledAt),p.duration);heights[size_t(i)]=std::max(heights[size_t(i)],std::clamp(live,0.f,1.f));}}
     renderer_->waveform(heights,motion_.reduced);
 }
-void IslandWindow::refresh(){content_.settings=settings_;content_.reducedMotion=motion_.reduced;bool compact=state_==IslandState::Compact;{const double now=seconds();const bool still=motion_.height.settled(now)&&motion_.width.settled(now);renderer_->setRest(!compact&&still&&motion_.reveal.settled(now),compact&&still);}renderer_->redraw(content_,debug_,compact);contentDirty_=compact;if(!compact)pushWaveform();accessChanged();syncDropTimer();}
+void IslandWindow::refresh(){syncPhoneFocus();content_.settings=settings_;content_.reducedMotion=motion_.reduced;bool compact=state_==IslandState::Compact;{const double now=seconds();const bool still=motion_.height.settled(now)&&motion_.width.settled(now);renderer_->setRest(!compact&&still&&motion_.reveal.settled(now),compact&&still);}renderer_->redraw(content_,debug_,compact);contentDirty_=compact;if(!compact)pushWaveform();accessChanged();syncDropTimer();}
 // 0.18.1: the running drops step about four times a second, only while it rains on glass the island shows.
 void IslandWindow::syncDropTimer(){const bool on=renderer_&&renderer_->wantsDropSteps()&&IsWindowVisible(window_)&&!autoHide_.hidden&&!fullscreenHidden_;if(on==dropTimer_)return;dropTimer_=on;if(on)SetTimer(window_,DropTimer,250,nullptr);else KillTimer(window_,DropTimer);}
 void IslandWindow::clockTimer(){bool visible=state_!=IslandState::Compact&&IsWindowVisible(window_);
@@ -892,7 +913,9 @@ void IslandWindow::clockTimer(){bool visible=state_!=IslandState::Compact&&IsWin
     syncPeek();
     // The Controls page re-reads its switches every two seconds while it shows.
     if(visible&&!content_.live&&content_.page==Page::Control)SetTimer(window_,47,2000,nullptr);else KillTimer(window_,47);
-    if(battery_)battery_->setFast((state_==IslandState::Expanded&&content_.page==Page::System&&content_.statsTab==1)||(content_.card&&(content_.notice.kind==3||content_.notice.kind==4)));
+    // 0.23: the Phone page asks its phone for its readings every two seconds while it shows.
+    {const bool live=visible&&!content_.live&&content_.page==Page::Phone;if(live&&!phoneLive_){phoneLive_=true;SetTimer(window_,PhoneLiveTimer,2000,nullptr);askPhoneLive();}else if(!live&&phoneLive_){phoneLive_=false;KillTimer(window_,PhoneLiveTimer);}}
+    if(battery_)battery_->setFast((state_==IslandState::Expanded&&content_.page==Page::System&&content_.statsTab==1)||(content_.card&&(content_.notice.kind==3||content_.notice.kind==4))||seconds()<phoneStatsUntil_);
     bool hideActive=settings_.autoHide&&IsWindowVisible(window_)&&!testing_;if(hideActive!=autoHideTimer_){autoHideTimer_=hideActive;if(hideActive)SetTimer(window_,23,33,nullptr);else{KillTimer(window_,23);if(autoHide_.hidden||motion_.slide.target()!=0){autoHide_.hidden=false;if(motion_.reduced)motion_.slide.reset(0,seconds());else motion_.slide.retarget(0,seconds(),{.9,420,26});if(renderer_)animate();}}}}
 Action IslandWindow::hit(LPARAM l){double now=seconds();const double width=motion_.width.sample(now).position;auto origin=bodyAt(width,motion_.height.sample(now).position,motion_.drop.sample(now).position);
     const float x=float(GET_X_LPARAM(l)*96/dpi_-origin.x-motion_.dragX.sample(now).position),y=float(GET_Y_LPARAM(l)*96/dpi_-origin.y-motion_.dragY.sample(now).position);
@@ -1025,6 +1048,10 @@ void IslandWindow::perform(Action a){
     if(a==Action::BudPromote){promoteCard(true);return;}
     if(a>=Action::Overview&&a<=Action::Focus){if(Page next=Page(int(a)-int(Action::Overview));content_.page!=next&&state_==IslandState::Expanded&&!motion_.reduced){auto slot=[&](Page p){return int(std::find(settings_.navigation.begin(),settings_.navigation.end(),int(p))-settings_.navigation.begin());};motion_.swipe.reset(slot(next)>slot(content_.page)?22.:-22.,now);motion_.swipe.retarget(0,now,MotionTokens::content);}content_.page=Page(int(a)-int(Action::Overview));transition(IslandState::Expanded);}
         if(a==Action::Shelf||a==Action::Audio||a==Action::Control){content_.page=a==Action::Shelf?Page::Shelf:a==Action::Audio?Page::Audio:Page::Control;transition(IslandState::Expanded);if(a==Action::Control)controlJob(0,0);}
+        // 0.23: the Phone page: the phone it shows (the last one chosen while it's still paired, else the first here).
+        if(a==Action::PhonePage){content_.page=Page::Phone;choosePhone(false);transition(IslandState::Expanded);refresh();clockTimer();return;}
+        if(a==Action::PhoneNext){choosePhone(true);askPhoneLive();refresh();return;}
+        if(a==Action::PhonePair){content_.page=Page::Shelf;content_.shelfTab=2;content_.shelfDetail=-1;content_.phoneView={};content_.remote.open=false;if(share_)content_.nearby=share_->peers();perform(Action::PairAnywhere);return;}
         if(a>=Action::ControlWifi&&a<=Action::ControlMic){toggleControl(a);return;}
     // The privacy dots bring back the card for the most important use; its button opens that permission's page.
     if(a==Action::PrivacyShow){auto uses=privacyUses_;std::stable_sort(uses.begin(),uses.end(),[](auto& x,auto& y){auto rank=[](Capability c){return int(std::find(std::begin(capabilityOrder),std::end(capabilityOrder),c)-std::begin(capabilityOrder));};return rank(x.capability)<rank(y.capability);});

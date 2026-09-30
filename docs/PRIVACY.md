@@ -201,3 +201,17 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **The phone's hotspot:** its name and password come from the phone (typed there once), only while it's on. The island keeps them in memory and uses them only when you press Join. The Wi-Fi profile it makes is stored by Windows, like any network you join.
 - **Wi-Fi names count as location in Windows 11.** Nothing reads them until you press Join. Windows may then ask whether Arnav Island may use location. Without it, Join still works, without reading any network's name.
 - **The phone's battery forecast** is worked out on the phone from its own history, which stays there. The island receives only the forecast ("until 11 pm").
+
+## v0.23 your phone, at a glance
+
+- **The Phone page** asks your phone for its readings every two seconds while the page shows, and not otherwise:
+  - battery, power, temperature and health
+  - storage and memory
+  - network and signal
+  - sound mode
+  - whether the screen is on
+  - what plays on it, with a small cover (only with the app's notification access on the phone)
+
+  They come sealed end to end, only from your paired phones, and are kept in memory only.
+- **The focus clock** goes to your paired phones when it starts, pauses or stops, so their lock screens can show it.
+- **This PC's battery details** (capacity, cycles, the last day of its history) go to your phones only while their Island tab shows it, with *My phone can control this PC* on.

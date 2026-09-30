@@ -171,7 +171,7 @@ std::wstring IslandWindow::accessibleName(Action a)const{
     auto peer=[&](Action base)->std::wstring{const size_t i=row(base);return i<content_.nearby.size()?content_.nearby[i].name:std::wstring(L"that PC");};
     switch(a){
     // Navigation.
-    case Action::Overview:return L"Home";case Action::Media:return L"Media";case Action::System:return L"Stats";case Action::Focus:return L"Focus";case Action::Settings:return L"Settings";case Action::Shelf:return L"Shelf";case Action::Audio:return L"Audio";case Action::Control:return L"Controls";
+    case Action::Overview:return L"Home";case Action::Media:return L"Media";case Action::System:return L"Stats";case Action::Focus:return L"Focus";case Action::Settings:return L"Settings";case Action::Shelf:return L"Shelf";case Action::Audio:return L"Audio";case Action::Control:return L"Controls";case Action::PhonePage:return L"Phone";case Action::PhoneNext:return L"Next phone";case Action::PhonePair:return L"Pair a phone";
     case Action::Close:return L"Close";case Action::Pin:return content_.pinned?L"Unpin":L"Keep open";case Action::CommandOpen:return L"Search and commands";
     // Media.
     case Action::Play:return p.playing?L"Pause "+p.title:L"Play "+p.title;case Action::Previous:return L"Previous track";case Action::Next:return L"Next track";
