@@ -23,7 +23,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR command,int){
     // 0.18: started by an update (--after=<pid>): wait (up to 15 s) for the version it replaces to close first.
     if(command){const wchar_t* at=wcsstr(command,L"--after=");if(at){const DWORD pid=DWORD(_wtoi(at+8));if(HANDLE old=pid?OpenProcess(SYNCHRONIZE,FALSE,pid):nullptr){WaitForSingleObject(old,15000);CloseHandle(old);}}}
     // 0.27: --set-up-camera (as administrator): "Arnav Island Phone Camera" set up once for this PC, then done.
-    if(command&&wcsstr(command,L"--set-up-camera")){std::wstring said;const bool ok=nexus::mirror::PhoneCamera::setUp(said);MessageBoxW(nullptr,said.c_str(),L"Arnav Island",ok?MB_ICONINFORMATION:MB_ICONERROR);return ok?0:1;}
+    if(command&&wcsstr(command,L"--set-up-camera")){std::wstring said;const bool ok=nexus::mirror::PhoneCamera::setUp(said);if(!wcsstr(command,L"--quiet"))MessageBoxW(nullptr,said.c_str(),L"Arnav Island",ok?MB_ICONINFORMATION:MB_ICONERROR);return ok?0:1;}
     // 0.27: a capture run (tests only) has a lock of its own, so it can be taken beside the island in use.
     HANDLE single=CreateMutexW(nullptr,TRUE,command&&wcsstr(command,L"--capture")?L"Local\\ArnavIsland.Capture":L"Local\\ArnavIsland.App");
     if(GetLastError()==ERROR_ALREADY_EXISTS){

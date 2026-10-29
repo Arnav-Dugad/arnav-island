@@ -246,4 +246,4 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **The clipboard history** goes to your paired phone only when it asks, sealed; password-like copies are listed as hidden and never sent.
 - **Slides:** the running PowerPoint is read (the slide, its notes and its picture) only while the phone's presenter asks. PowerPoint is never started by it.
 - **Transfers that carry on** keep what arrived of an unfinished transfer for a day, then delete it.
-- **The phone's camera as a Windows camera** is set up only when you run `--set-up-camera`; its frames go straight from the phone to the apps that use the camera, never recorded or kept.
+- **The phone's camera as a Windows camera** is set up only when you allow it (0.27.1: the island asks Windows once, the first time the phone's camera starts); its frames go straight from the phone to the apps that use the camera, never recorded or kept.

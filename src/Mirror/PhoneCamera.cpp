@@ -3,17 +3,20 @@
 #include <mfapi.h>
 #include <mfidl.h>
 #include <sddl.h>
+#include <shellapi.h>
 #include <aclapi.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 
 namespace nexus::mirror {
-namespace {
-using namespace nexus::camera;
-// Windows 11's virtual camera (mfvirtualcamera.h, not in MinGW's headers), from mfsensorgroup.dll at run time.
+// Windows 11's virtual camera (mfvirtualcamera.h, not in MinGW's headers), from mfsensorgroup.dll at run time. Declared
+// outside the anonymous namespace on purpose: there GCC sees no class deriving from it and turns each virtual call on it
+// into a jump to nowhere (0.27's crash whenever a phone's camera started).
 struct IMFCameraSyncObject;
 struct IVirtualCamera : IMFAttributes {
     virtual HRESULT STDMETHODCALLTYPE AddDeviceSourceInfo(LPCWSTR) = 0; virtual HRESULT STDMETHODCALLTYPE AddProperty(const void*, ULONG, const BYTE*, ULONG) = 0;
@@ -23,6 +26,8 @@ struct IVirtualCamera : IMFAttributes {
     virtual HRESULT STDMETHODCALLTYPE CreateSyncEvent(REFGUID, ULONG, ULONG, HANDLE, IMFCameraSyncObject**) = 0;
     virtual HRESULT STDMETHODCALLTYPE CreateSyncSemaphore(REFGUID, ULONG, ULONG, HANDLE, LONG, IMFCameraSyncObject**) = 0; virtual HRESULT STDMETHODCALLTYPE Shutdown() = 0;
 };
+namespace {
+using namespace nexus::camera;
 // type 0 a software camera source; lifetime 0 this session; access 0 this user.
 using CreateCamera = HRESULT(WINAPI*)(int, int, int, LPCWSTR, LPCWSTR, const GUID*, ULONG, IVirtualCamera**);
 CreateCamera creator() { static const auto f = [] { HMODULE m = LoadLibraryExW(L"mfsensorgroup.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32); return m ? reinterpret_cast<CreateCamera>(reinterpret_cast<void*>(GetProcAddress(m, "MFCreateVirtualCamera"))) : nullptr; }(); return f; }
@@ -35,23 +40,7 @@ std::wstring userSid() {
 }
 void tell(WPARAM what, const std::wstring& text) { if (HWND island = FindWindowW(L"ArnavIsland.Surface", nullptr)) { auto* p = new std::wstring(text); if (!PostMessageW(island, PhoneCamera::message, what, LPARAM(p))) delete p; } }
 std::wstring hex(HRESULT hr) { wchar_t b[16]; swprintf(b, 16, L"0x%08lX", static_cast<unsigned long>(hr)); return b; }
-// The source where the Frame Server (Local Service) can read it, and only this user (and the system, administrators) can change
-// it: %PUBLIC%\Arnav Island. A copy is made when the island's own differs.
-std::wstring placeSource(std::wstring& why) {
-    namespace fs = std::filesystem; wchar_t exe[MAX_PATH]{}; GetModuleFileNameW(nullptr, exe, MAX_PATH); const fs::path from = fs::path(exe).parent_path() / L"ArnavIslandCamera.dll";
-    std::error_code e; if (!fs::exists(from, e)) { why = L"Its camera part (ArnavIslandCamera.dll) isn\u2019t beside the island"; return {}; }
-    wchar_t pub[MAX_PATH]{}; if (!GetEnvironmentVariableW(L"PUBLIC", pub, MAX_PATH)) { why = L"There\u2019s no shared folder for the camera"; return {}; }
-    const fs::path dir = fs::path(pub) / L"Arnav Island", to = dir / L"ArnavIslandCamera.dll"; const std::wstring sid = userSid();
-    const std::wstring sddl = L"D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" + (sid.empty() ? std::wstring() : L"(A;OICI;FA;;;" + sid + L")") + L"(A;OICI;0x1200a9;;;LS)";
-    PSECURITY_DESCRIPTOR sd = nullptr; if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.c_str(), SDDL_REVISION_1, &sd, nullptr)) { why = L"Couldn\u2019t prepare the camera\u2019s folder"; return {}; }
-    SECURITY_ATTRIBUTES sa{sizeof(sa), sd, FALSE}; CreateDirectoryW(dir.c_str(), &sa);
-    BOOL present = FALSE, defaulted = FALSE; PACL dacl = nullptr; GetSecurityDescriptorDacl(sd, &present, &dacl, &defaulted);
-    SetNamedSecurityInfoW(const_cast<LPWSTR>(dir.c_str()), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION, nullptr, nullptr, dacl, nullptr); LocalFree(sd);
-    const bool same = fs::exists(to, e) && fs::file_size(to, e) == fs::file_size(from, e) && fs::last_write_time(to, e) >= fs::last_write_time(from, e);
-    if (!same && !CopyFileW(from.c_str(), to.c_str(), FALSE) && !fs::exists(to, e)) { why = L"Couldn\u2019t put the camera where Windows can load it"; return {}; }
-    return to.wstring();
-}
-// The source's class, for this user (HKCU) or, set up once by an administrator, for the PC (HKLM).
+// The source's class, set up once by an administrator for the PC (HKLM): Windows' camera service reads no other.
 const std::wstring classKey = std::wstring(L"Software\\Classes\\CLSID\\") + sourceClsidText;
 bool registerSource(const std::wstring& path, HKEY root = HKEY_CURRENT_USER) {
     const std::wstring& key = classKey; HKEY k = nullptr, s = nullptr; bool ok = false;
@@ -67,6 +56,23 @@ bool registerSource(const std::wstring& path, HKEY root = HKEY_CURRENT_USER) {
 std::wstring machineSource() {
     wchar_t path[MAX_PATH]{}; DWORD n = sizeof(path); if (RegGetValueW(HKEY_LOCAL_MACHINE, (classKey + L"\\InprocServer32").c_str(), nullptr, RRF_RT_REG_SZ, nullptr, path, &n) != ERROR_SUCCESS) return {};
     std::error_code e; return std::filesystem::exists(path, e) ? std::wstring(path) : std::wstring();
+}
+std::wstring beside() { wchar_t exe[MAX_PATH]{}; GetModuleFileNameW(nullptr, exe, MAX_PATH); return (std::filesystem::path(exe).parent_path() / L"ArnavIslandCamera.dll").wstring(); }
+// Whether two files hold the same bytes (true when the first isn't there: nothing to bring up to date).
+bool sameFile(const std::wstring& a, const std::wstring& b) {
+    std::ifstream x(std::filesystem::path(a), std::ios::binary), y(std::filesystem::path(b), std::ios::binary); if (!x || !y) return !x;
+    return std::equal(std::istreambuf_iterator<char>(x), std::istreambuf_iterator<char>(), std::istreambuf_iterator<char>(y), std::istreambuf_iterator<char>());
+}
+std::atomic<bool> askedSetUp{false};
+void askSetUp() {
+    if (askedSetUp.exchange(true)) return;
+    std::thread([] {
+        wchar_t exe[MAX_PATH]{}; GetModuleFileNameW(nullptr, exe, MAX_PATH);
+        SHELLEXECUTEINFOW e{}; e.cbSize = sizeof(e); e.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI; e.lpVerb = L"runas"; e.lpFile = exe; e.lpParameters = L"--set-up-camera --quiet"; e.nShow = SW_HIDE;
+        if (!ShellExecuteExW(&e) || !e.hProcess) { tell(4, L"Not set up: allow Arnav Island on this PC next time"); return; }
+        WaitForSingleObject(e.hProcess, 5 * 60 * 1000); DWORD code = 1; GetExitCodeProcess(e.hProcess, &code); CloseHandle(e.hProcess);
+        tell(code == 0 && !machineSource().empty() ? 3 : 4, code == 0 ? L"Start it again from your phone to use it in any app" : L"Couldn\u2019t set it up");
+    }).detach();
 }
 double clockNow() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 }
@@ -86,17 +92,20 @@ bool PhoneCamera::setUp(std::wstring& why) {
 bool PhoneCamera::open(const std::wstring& phone, std::wstring& why) {
     close(); phone_ = phone;
     if (!supported()) { why = L"A camera other apps can pick needs Windows 11"; tell(2, why); return false; }
-    // Set up for the PC: that one. Otherwise for this user (which Windows' camera service doesn't see: said below).
+    // Windows' camera service sees only a camera set up for the PC. Not set up yet: it is asked for (once) and the camera
+    // shows in its window this time. Set up with an older camera part than the island's: brought up to date (asked once),
+    // the one there used meanwhile.
     const std::wstring machine = machineSource();
-    if (machine.empty()) { const std::wstring source = placeSource(why); if (source.empty()) { tell(2, why); return false; }
-        if (!registerSource(source)) { why = L"Couldn\u2019t register the camera for this user"; tell(2, why); return false; } }
+    if (machine.empty()) { askSetUp(); why = L"Setting up \u201cArnav Island Phone Camera\u201d: allow it on this PC"; tell(2, why); return false; }
+    if (!sameFile(beside(), machine)) askSetUp();
+    // 0.27 registered it for this user too (pointing into %PUBLIC%): gone, so this user's apps see the PC's one.
+    RegDeleteTreeW(HKEY_CURRENT_USER, classKey.c_str());
     CoInitializeEx(nullptr, COINIT_MULTITHREADED); MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET);
+    // Only a camera Windows made is touched (a failed call may leave anything in its out pointer).
     IVirtualCamera* camera = nullptr; HRESULT hr = creator()(0, 0, 0, L"Arnav Island Phone Camera", sourceClsidText, nullptr, 0, &camera);
-    if (SUCCEEDED(hr)) hr = camera->Start(nullptr);
-    if (FAILED(hr)) { if (camera) { camera->Shutdown(); camera->Release(); }
-        why = machine.empty() && (hr == HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND) || hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) || hr == REGDB_E_CLASSNOTREG) ?
-            std::wstring(L"Windows\u2019 camera service needs it set up once for this PC (as administrator: ArnavIsland.exe --set-up-camera)") : L"Windows didn\u2019t take the camera (" + hex(hr) + L")";
-        tell(2, why); return false; }
+    if (FAILED(hr)) camera = nullptr; else if (!camera) hr = E_POINTER;
+    if (camera) { hr = camera->Start(nullptr); if (FAILED(hr)) { camera->Shutdown(); camera->Release(); camera = nullptr; } }
+    if (!camera) { why = L"Windows didn\u2019t take the camera (" + hex(hr) + L")"; tell(2, why); return false; }
     camera_ = new Camera{camera}; stop_ = false; server_ = std::thread([this] { serve(); }); tell(1, phone); return true;
 }
 

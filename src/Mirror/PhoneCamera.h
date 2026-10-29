@@ -19,7 +19,7 @@ public:
     bool open(const std::wstring& phone, std::wstring& why) override;
     void frame(ID3D11Texture2D* nv12, UINT slice, int width, int height) override;
     void close() override;
-    // The island tells itself how a camera went (wParam 1 on, 0 off, 2 couldn't; lParam the phone's name or why, a
+    // The island tells itself how a camera went (wParam 1 on, 0 off, 2 couldn't, 3 set up for the PC, 4 not set up; lParam the phone's name or why, a
     // std::wstring owned from then on).
     static constexpr UINT message = WM_APP + 67;
     // Whether this Windows can have one at all (Windows 11's virtual cameras).

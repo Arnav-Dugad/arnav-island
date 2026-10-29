@@ -1,3 +1,15 @@
+# Arnav Island 0.27.1-preview.1 — the camera, fixed
+
+## Fixed
+- **The island closed whenever your phone's camera started.** Windows' camera interface was declared so that the compiler took every call on it as impossible and left a jump to nowhere in its place: the island crashed the moment Windows handed it the camera. It's now declared so the calls are made, and the island only touches a camera Windows actually made.
+- **"Arnav Island Phone Camera" now works in other apps** (Teams, Zoom, Meet, OBS, the Camera app). Windows' camera service only sees a camera set up for the whole PC, so the first time your phone's camera starts the island asks Windows for permission once (an administrator prompt) and sets it up. Start the camera again from your phone after that. When the island's camera part changes in an update, it asks once to bring it up to date.
+- **The island's file version** said 0.25 in Windows' file properties; it says its own version now.
+
+## Checks
+- **The camera end to end on a real Windows 11 PC:** a test picture fed to the camera as a phone's frames are, then the camera found among the PC's cameras and opened through Media Foundation as an app opens one: the picture arrives (within about a second of starting).
+- **No calls to nowhere left anywhere in the program** (checked in its machine code).
+- **Unit suites:** core, provider lifecycle, dashboard models, share loopback, phase models, live activity and microphone: all passing.
+
 # Arnav Island 0.27.0-preview.1 — on its way
 
 Made for Arnav Island for Android 1.9. With an older phone app, everything works as in 0.26.
