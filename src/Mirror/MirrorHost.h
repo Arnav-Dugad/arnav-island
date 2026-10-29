@@ -21,12 +21,17 @@ namespace nexus::mirror {
 // Controls: to this PC, [0xA9, an input frame (0x60 move, 0x61 button, 0x62 scroll, 0x63 text, 0x64 key, 0x65 point)];
 // to the phone, [0xA6, action (0 down, 1 move, 2 up), u16 x, u16 y (0-65535 across its screen)], [0xA7, key (1 back,
 // 2 home, 3 recent apps, 4 notifications)], [0xA8, text]. [0xAF] ends it, from either side.
+// Revision 9 (0.26): kind 3, the phone's camera to this PC, asked and sent exactly as kind 2 (shown in a window of the same
+// kind, named "<phone> camera", with nothing sent back but feedback and key-frame asks). Kind 4, the phone's microphone to
+// this PC: u32 sample rate (16000-48000), u8 channels (1 or 2), then its name; answered like the others (the encoder's name
+// is the sound device it plays into); then [0xAA, u32 number, u64 time (100 ns), 16-bit little-endian PCM], 20-40 ms
+// each, until [0xAF].
 constexpr uint8_t frameMirror = 0xA0, frameMirrorReply = 0xA1, frameVideo = 0xA2, frameFeedback = 0xA3, frameKeyframe = 0xA4, frameLimits = 0xA5,
-    frameTouch = 0xA6, frameButton = 0xA7, frameText = 0xA8, frameInput = 0xA9, frameStop = 0xAF;
+    frameTouch = 0xA6, frameButton = 0xA7, frameText = 0xA8, frameInput = 0xA9, frameAudio = 0xAA, frameStop = 0xAF;
 constexpr size_t videoChunk = 128 * 1024;
 
 
-struct MirrorRequest { int kind = 0, width = 0, height = 0, fps = 0; uint32_t bitrate = 0; std::wstring name; };
+struct MirrorRequest { int kind = 0, width = 0, height = 0, fps = 0, rate = 0, channels = 0; uint32_t bitrate = 0; std::wstring name; };
 bool readRequest(const std::vector<uint8_t>& frame, MirrorRequest& out);
 
 // What a screen comes from: this PC's monitor (ScreenCapture), or a made-up picture (tests).
@@ -66,8 +71,19 @@ struct MirrorReport { int frames = 0, keys = 0, width = 0, height = 0, fps = 0; 
 // onArea says which part of the virtual desktop the phone sees (for its taps).
 MirrorReport sendScreen(MirrorIo& io, const MirrorRequest& r, FrameSource& source, const std::function<void(const std::vector<uint8_t>&)>& onInput,
     const std::function<void(RECT)>& onArea, const std::atomic<bool>& stop);
-// The phone's screen to this PC, until either side ends it (or `stop`).
+// The phone's screen (or, kind 3, its camera) to this PC, until either side ends it (or `stop`).
 MirrorReport receiveScreen(MirrorIo& io, const MirrorRequest& r, FrameSink& sink, const std::atomic<bool>& stop);
+// Revision 9: what a phone's microphone goes to: a sound device (the island), or a count of frames (tests). begin is told
+// its rate, channels and name, and says which device it plays into; samples come as they arrive (interleaved).
+class AudioSink {
+public:
+    virtual ~AudioSink() = default;
+    virtual bool begin(int rate, int channels, const std::wstring& name, std::wstring& device) = 0;
+    virtual void samples(const int16_t* pcm, size_t frames, uint64_t time) = 0;
+    virtual void end() = 0;
+};
+// The phone's microphone to this PC, until either side ends it (or `stop`). frames: audio frames heard.
+MirrorReport receiveAudio(MirrorIo& io, const MirrorRequest& r, AudioSink& sink, const std::atomic<bool>& stop);
 // The answer to a request this PC won't take (status 1 not allowed, 2 unsupported, 3 failed).
 std::vector<uint8_t> refusal(int status);
 }

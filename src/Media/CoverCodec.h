@@ -11,12 +11,13 @@
 // initialised on their thread.
 namespace nexus {
 // At most `side` pixels on its longer side; empty when it couldn't be made (or would be over `limit` bytes).
-inline std::vector<uint8_t> encodeCover(const Artwork& art,UINT side,size_t limit,float quality=.84f){
+// 0.26: png, always a PNG (an app's icon for a phone).
+inline std::vector<uint8_t> encodeCover(const Artwork& art,UINT side,size_t limit,float quality=.84f,bool png=false){
     if(!art.width||!art.height||art.pixels.size()<size_t(art.width)*art.height*4)return {};
     ComPtr<IWICImagingFactory> factory;if(FAILED(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory))))return {};
     ComPtr<IWICBitmap> bitmap;if(FAILED(factory->CreateBitmapFromMemory(art.width,art.height,GUID_WICPixelFormat32bppPBGRA,art.width*4,UINT(art.pixels.size()),const_cast<BYTE*>(art.pixels.data()),&bitmap)))return {};
     const double k=std::min(1.,double(side)/double(std::max(art.width,art.height)));const UINT w=std::max(1u,UINT(art.width*k+.5)),h=std::max(1u,UINT(art.height*k+.5));
-    bool alpha=false;for(size_t i=3;i<art.pixels.size();i+=4)if(art.pixels[i]<250){alpha=true;break;}
+    bool alpha=png;for(size_t i=3;i<art.pixels.size()&&!alpha;i+=4)if(art.pixels[i]<250)alpha=true;
     ComPtr<IWICBitmapScaler> scaler;ComPtr<IWICFormatConverter> converter;WICPixelFormatGUID format=alpha?GUID_WICPixelFormat32bppBGRA:GUID_WICPixelFormat24bppBGR;
     if(FAILED(factory->CreateBitmapScaler(&scaler))||FAILED(scaler->Initialize(bitmap.Get(),w,h,WICBitmapInterpolationModeFant))||FAILED(factory->CreateFormatConverter(&converter))||
        FAILED(converter->Initialize(scaler.Get(),format,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom)))return {};

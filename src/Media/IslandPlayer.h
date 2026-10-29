@@ -33,6 +33,9 @@ public:
     // Up next: the songs after the one playing (at most `count`); a song moved within them (queue positions, both
     // after the one playing); and a jump to a song in the queue.
     std::vector<LibraryTrack> upNext(size_t count)const;bool move(size_t from,size_t to);void jump(size_t index);
+    // 0.26: shuffle (the songs after the one playing, in a new order; off puts the queue's own order back) and repeat
+    // (0 off, 1 the song, 2 the queue). A new queue starts unshuffled; repeat stays as it was.
+    void shuffle(bool on);bool shuffled()const;void repeat(int mode);int repeating()const;
     // Stops and forgets the queue (the session goes away).
     void stop();
     bool active()const;bool playing()const;

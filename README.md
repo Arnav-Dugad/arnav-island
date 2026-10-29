@@ -1,10 +1,12 @@
-# Arnav Island 0.25 — handed over
+# Arnav Island 0.26 — the phone, all the way
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.25.0-preview.1) · [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.7
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.26.0-preview.1) · [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.8
 
 **Your phone, anywhere.** Your phone and your PCs now reach each other on any network: another Wi-Fi, mobile data, anywhere. It’s free and end-to-end encrypted. To pair from far away, open **Shelf › Nearby › Pair with a code** and scan its QR code with the phone app (or type the code).
+
+**The phone, all the way (0.26).** With the phone app 1.8: shuffle, repeat and what plays next from your phone, each app's own volume, the music's live levels, and waking this PC from the phone. Use the phone as this PC's camera (in a window here) or its microphone (through VB-CABLE). Paused transfers wait.
 
 **Handed over (0.25).** Share from your phone to your PC's Shelf in one tap, and watch it arrive on the island. A photo you just took appears on the island, ready to paste. Web pages go from browser to phone and back at the same scroll position.
 

@@ -34,9 +34,16 @@ struct Controls : IInspectable {
     virtual HRESULT STDMETHODCALLTYPE ChannelUp(BYTE*)=0;virtual HRESULT STDMETHODCALLTYPE ChannelDown(BYTE*)=0;
     virtual HRESULT STDMETHODCALLTYPE Toggle(BYTE*)=0;virtual HRESULT STDMETHODCALLTYPE Shuffle(BYTE*)=0;virtual HRESULT STDMETHODCALLTYPE Repeat(BYTE*)=0;virtual HRESULT STDMETHODCALLTYPE Rate(BYTE*)=0;virtual HRESULT STDMETHODCALLTYPE Position(BYTE*)=0;
 };
+// IReference<bool>: its value is one byte.
+struct BoolReference : IInspectable {virtual HRESULT STDMETHODCALLTYPE get_Value(BYTE*)=0;};
 struct PlaybackInfo : IInspectable {
     virtual HRESULT STDMETHODCALLTYPE get_Controls(Controls**)=0;
     virtual HRESULT STDMETHODCALLTYPE get_Status(INT32*)=0;
+    // 0.26: shuffle and repeat (null when the player doesn't say).
+    virtual HRESULT STDMETHODCALLTYPE get_PlaybackType(EnumReference**)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_AutoRepeatMode(EnumReference**)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_PlaybackRate(IInspectable**)=0;
+    virtual HRESULT STDMETHODCALLTYPE get_IsShuffleActive(BoolReference**)=0;
 };
 struct Timeline : IInspectable {
     virtual HRESULT STDMETHODCALLTYPE get_Start(INT64*)=0;virtual HRESULT STDMETHODCALLTYPE get_End(INT64*)=0;

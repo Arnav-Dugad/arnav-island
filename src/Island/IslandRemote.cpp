@@ -2,10 +2,14 @@
 // thread waits up to 4 s for it) and says what the island has now; anything slow (radios, dark mode, the recycle bin) is
 // started on a worker and read back by the next ask. Sleeping, restarting and shutting down wait until the answer has
 // gone, so the phone hears that they started.
+// 0.26 (revision 9): shuffle, repeat and up next, each app's volume, the sound's levels, and the adapters to wake this PC.
+#include <winsock2.h>
 #include "Island/IslandWindow.h"
 #include "Settings/SettingsModel.h"
 #include "Productivity/CommandService.h"
 #include "Design/Accent.h"
+#include "Media/CoverCodec.h"
+#include <iphlpapi.h>
 #include <dxgi.h>
 #include <powrprof.h>
 #include <wrl/client.h>
@@ -195,6 +199,70 @@ std::vector<uint8_t> IslandWindow::remoteIsland(const std::vector<uint8_t>& payl
     static const Page pages[]={Page::Overview,Page::Media,Page::System,Page::Focus,Page::Settings,Page::Shelf,Page::Audio,Page::Control,Page::Phone};
     events_.dismiss(seconds());content_.activity.clear();content_.page=pages[page];content_.phoneView={};content_.remote.open=false;content_.pinned=true;transition(IslandState::Expanded);refresh();animate();
     store_.log("Info","phone_page");return {remoteOk};
+}
+// ---- 0.26 (revision 9) ----
+// Playback: the island's own player (its shuffle, repeat and queue), else the session showing (as its player says).
+std::vector<uint8_t> IslandWindow::remotePlayback(const std::vector<uint8_t>& payload){
+    RemoteReader in(payload);const int op=in.u8();if(!in.ok())return {remoteFailed};
+    const MediaSnapshot p=content_.playback;if(!p.available)return {remoteUnsupported};
+    const bool island=p.id==islandSessionId&&player_&&player_->active();int shuffle=p.shuffle,repeat=p.repeat;
+    if(op==1||op==2){const int value=in.u8();if(!in.ok())return {remoteFailed};
+        if(island){if(op==1)player_->shuffle(value!=0);else player_->repeat(value);playerArt();updateSessions();refresh();}
+        else{if((op==1?shuffle:repeat)<0||!media_)return {remoteUnsupported};
+            // Asked of the player on the media thread; answered as asked (the player's own word comes with its next change).
+            if(op==1)shuffle=value?1:0;else repeat=std::clamp(value,0,2);media_->control(op==1?6:7,p.source,p.id,op==1?shuffle:repeat);}
+        store_.log("Info","phone_playback");}
+    else if(op==3){const int index=in.u16();if(!in.ok())return {remoteFailed};if(!island)return {remoteUnsupported};
+        if(size_t(index)+1>=player_->size()-player_->index())return {remoteFailed};
+        pauseOthers();player_->jump(player_->index()+1+size_t(index));playerArt();updateSessions();playerTick();refresh();store_.log("Info","phone_up_next");}
+    else if(op!=0)return {remoteUnsupported};
+    RemotePlayback r;
+    if(island){r.island=r.shuffleSupported=r.repeatSupported=true;r.shuffle=player_->shuffled();r.repeat=player_->repeating();
+        for(auto& t:player_->upNext(50))r.upNext.push_back({t.title,t.artist.empty()?t.album:t.artist,t.duration});}
+    else{r.shuffleSupported=shuffle>=0;r.shuffle=shuffle==1;r.repeatSupported=repeat>=0;r.repeat=std::max(0,repeat);}
+    return remotePlaybackAnswer(r);
+}
+// The meters (the analyzer, the mixer's peaks) are back to what the island needs once the last phone's ask has run out.
+static UINT meterWait(double until,double now){return UINT(std::max(0.,until-now)*1000)+100;}
+// Mixer: the apps as the Audio page lists them; an app's volume or mute changed as its slider would.
+std::vector<uint8_t> IslandWindow::remoteMixer(const std::vector<uint8_t>& payload){
+    RemoteReader in(payload);const int op=in.u8();if(!in.ok())return {remoteFailed};if(!mixer_)return {remoteUnsupported};
+    const bool icons=op==0&&payload.size()>=2&&payload[1]!=0;
+    if(op==1||op==2){const DWORD pid=DWORD(uint32_t(in.i32()));const int value=in.u8();if(!in.ok())return {remoteFailed};
+        const auto list=mixer_->entries();if(std::none_of(list.begin(),list.end(),[&](auto& e){return e.pid==pid;}))return {remoteFailed};
+        if(op==1)mixer_->setVolume(pid,float(std::clamp(value,0,100))/100.f);else mixer_->setMute(pid,value!=0);store_.log("Info","phone_mixer");}
+    else if(op!=0)return {remoteUnsupported};
+    const double now=seconds();phoneMixerUntil_=now+3;updateProviders();SetTimer(window_,PhoneMeterTimer,meterWait(std::max(phoneMixerUntil_,phoneLevelsUntil_),now),nullptr);
+    std::vector<RemoteMixerEntry> out;std::map<DWORD,std::pair<const Artwork*,std::vector<uint8_t>>> kept;
+    for(auto& e:mixer_->entries()){if(out.size()>=24)break;RemoteMixerEntry r;r.pid=e.pid;r.name=e.name;r.volume=int(std::lround(e.volume*100));r.peak=int(std::lround(std::clamp(e.peak,0.f,1.f)*100));r.muted=e.muted;r.system=e.system;r.active=e.active;
+        // Each icon encoded once per picture, and kept while its app is listed.
+        if(e.icon){auto it=mixerIcons_.find(e.pid);if(it!=mixerIcons_.end()&&it->second.first==e.icon.get())kept[e.pid]=it->second;else kept[e.pid]={e.icon.get(),encodeCover(*e.icon,32,8*1024,.9f,true)};if(icons)r.icon=kept[e.pid].second;}
+        out.push_back(std::move(r));}
+    mixerIcons_=std::move(kept);return remoteMixerAnswer(out);
+}
+// Levels: the loopback analyzer's frame (it listens for 2 s after each ask; the phone asks about 12 times a second).
+std::vector<uint8_t> IslandWindow::remoteLevels(){
+    if(!analyzer_)return {remoteUnsupported};
+    const double now=seconds();phoneLevelsUntil_=now+2;updateProviders();SetTimer(window_,PhoneMeterTimer,meterWait(std::max(phoneMixerUntil_,phoneLevelsUntil_),now),nullptr);
+    const SpectrumFrame f=analyzer_->frame();std::vector<uint8_t> bands;for(float b:f.bands)bands.push_back(uint8_t(std::clamp(int(std::lround(b*255)),0,255)));
+    return remoteLevelsAnswer(int(std::lround(std::clamp(f.level,0.f,1.f)*255)),f.resting,bands);
+}
+// Machine: the wired and Wi-Fi adapters that are up with an IPv4 address (its MAC, for a magic packet; its subnet, to
+// broadcast it on).
+std::vector<uint8_t> IslandWindow::remoteMachine(){
+    ULONG size=16*1024;std::vector<uint8_t> table(size);const ULONG flags=GAA_FLAG_SKIP_ANYCAST|GAA_FLAG_SKIP_MULTICAST|GAA_FLAG_SKIP_DNS_SERVER;
+    ULONG r=GetAdaptersAddresses(AF_INET,flags,nullptr,reinterpret_cast<IP_ADAPTER_ADDRESSES*>(table.data()),&size);
+    if(r==ERROR_BUFFER_OVERFLOW){table.resize(size);r=GetAdaptersAddresses(AF_INET,flags,nullptr,reinterpret_cast<IP_ADAPTER_ADDRESSES*>(table.data()),&size);}
+    std::vector<PcAdapter> out;
+    if(r==NO_ERROR)for(auto* a=reinterpret_cast<IP_ADAPTER_ADDRESSES*>(table.data());a&&out.size()<8;a=a->Next){
+        if(a->OperStatus!=IfOperStatusUp||(a->IfType!=IF_TYPE_ETHERNET_CSMACD&&a->IfType!=IF_TYPE_IEEE80211)||a->PhysicalAddressLength!=6)continue;
+        for(auto* u=a->FirstUnicastAddress;u;u=u->Next){const sockaddr* sa=u->Address.lpSockaddr;if(!sa||sa->sa_family!=AF_INET)continue;
+            const auto* b=reinterpret_cast<const uint8_t*>(&reinterpret_cast<const sockaddr_in*>(sa)->sin_addr);
+            // A self-assigned address (169.254.x.x) has no network to wake it from.
+            if(b[0]==169&&b[1]==254)continue;
+            PcAdapter p;std::memcpy(p.mac,a->PhysicalAddress,6);p.name=a->FriendlyName?a->FriendlyName:L"";char ip[16];std::snprintf(ip,sizeof(ip),"%u.%u.%u.%u",b[0],b[1],b[2],b[3]);p.ipv4=ip;p.prefix=u->OnLinkPrefixLength;
+            out.push_back(std::move(p));break;}}
+    return remoteMachineAnswer(out);
 }
 // The phone's power request, once its answer has gone: 1 sleep, 2 restart, 3 shut down.
 void IslandWindow::phonePower(){

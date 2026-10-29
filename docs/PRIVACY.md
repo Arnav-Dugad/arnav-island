@@ -232,3 +232,10 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
   - a small picture of each new camera photo or screenshot, its name, size and shape come to your paired PCs
   - the photo itself comes only when you choose Paste or Shelf, and only for photos announced in the last ten minutes
 - **Pages:** handing a page over reads only the browser's address field and the page's scroll position, through Windows' accessibility interface, and only when you ask.
+
+## v0.26 the phone, all the way
+- **Live levels for the phone** read the output mix (WASAPI loopback, never the microphone) only for a couple of seconds after each ask. Each buffer is folded into levels and discarded; only those levels go to the phone, sealed.
+- **Each app's volume:** the names and small icons of the apps making sound go to your paired phone, sealed, when it asks. Their volumes change only when you move them there.
+- **Waking from the phone:** this PC tells your paired phones its network adapters' hardware addresses and IPv4 addresses, sealed, so they can wake it. Nothing else about the network is sent.
+- **The phone's camera** is shown in its window and nowhere else: never recorded, kept or sent on.
+- **The phone's microphone** is played into the chosen output as it arrives: never recorded, kept or sent on. It stops when the phone stops, or after ten seconds of silence from it.

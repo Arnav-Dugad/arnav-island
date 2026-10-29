@@ -70,6 +70,11 @@ int main(int argc,char** argv){
         if(r.kind==1){auto source=mirror::patternSource(1280,720);
             const auto rep=mirror::sendScreen(io,r,*source,[](const std::vector<uint8_t>& f){std::string h;static const char* d="0123456789abcdef";for(uint8_t b:f){h+=d[b>>4];h+=d[b&15];}say("MIRROR input "+h);},[](RECT){},stop);
             say("MIRROR sent "+std::to_string(rep.frames)+" "+std::to_string(rep.keys)+" "+std::to_string(rep.width)+"x"+std::to_string(rep.height)+" "+(rep.hardware?"gpu":"software"));say(std::string("MIRROR ended ")+rep.ended);}
+        // Revision 9: a phone's microphone, counted (never played): its rate and channels, frames and samples heard.
+        else if(r.kind==4){struct Counting:mirror::AudioSink{size_t heard=0;
+                bool begin(int rate,int channels,const std::wstring& n,std::wstring& device)override{say("MIC hearing "+std::to_string(rate)+" "+std::to_string(channels)+" "+narrow(n));device=L"Test cable";return true;}
+                void samples(const int16_t*,size_t frames,uint64_t)override{heard+=frames;}void end()override{}} sink;
+            const auto rep=mirror::receiveAudio(io,r,sink,stop);say("MIC heard "+std::to_string(rep.frames)+" "+std::to_string(sink.heard));say(std::string("MIC ended ")+rep.ended);}
         else{struct Counting:mirror::FrameSink{ComPtr<ID3D11Device> d;int frames=0;
                 ID3D11Device* device()override{if(!d&&SUCCEEDED(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,D3D11_CREATE_DEVICE_VIDEO_SUPPORT|D3D11_CREATE_DEVICE_BGRA_SUPPORT,nullptr,0,D3D11_SDK_VERSION,d.GetAddressOf(),nullptr,nullptr))){
                     // The decoder uses it from its own threads too (as the island's window does).
@@ -81,7 +86,10 @@ int main(int argc,char** argv){
     };
     // Revision 5: a made-up PC to control (its settings and controls remember what they're set to).
     struct Made{std::mutex m;double focusAt=0;std::map<std::string,int> settings{{"hoverOpen",1},{"autoHide",0},{"hoverDelay",180},{"uiMode",1},{"theme",0},{"accent",0},{"sounds",1},{"weather",1},{"sharing",1},{"phoneControl",1}};
-        PcControls controls;std::wstring output=L"speakers";};
+        PcControls controls;std::wstring output=L"speakers";
+        // Revision 9.
+        bool shuffle=false;int repeat=0;std::vector<RemoteTrack> upNext{{L"Northern Lines",L"Aurora Fields",201},{L"Paper Boats",L"Lumen Drive",187.5},{L"Slow Tide",L"Harbor Lights",0}};
+        std::vector<RemoteMixerEntry> mixer{{4242,L"Spotify",72,0,false,false,true,{}},{5150,L"Microsoft Edge",100,0,false,false,false,{}},{0,L"System sounds",64,0,false,true,false,{}}};};
     auto made=std::make_shared<Made>();made->controls.wifi=1;made->controls.bluetooth=1;made->controls.dark=1;made->controls.brightness=64;made->controls.volume=42;made->controls.micAvailable=true;made->controls.focusDuration=1500;made->controls.focusShown=1500;
     o.remote=[=](const std::string& peer,RemoteCommand c,const std::vector<uint8_t>& payload)->std::vector<uint8_t>{
         switch(c){
@@ -157,6 +165,27 @@ int main(int argc,char** argv){
             if(op==1){const std::wstring id=in.text(400);if(!in.ok())return {remoteFailed};made->output=id;say("OUTPUT "+narrow(id));return {remoteOk};}
             return remoteAudioAnswer({{L"speakers",L"Speakers (Realtek(R) Audio)",made->output==L"speakers",1},{L"buds",L"Galaxy Buds2 Pro",made->output==L"buds",3}});}
         case RemoteCommand::Island:{RemoteReader in(payload);const int op=in.u8();const int page=in.u8();say(op==1?std::string("ISLAND close"):"ISLAND page "+std::to_string(page));return {remoteOk};}
+        // Revision 9: made-up shuffle, repeat and up next (the island's own player); an app mixer that remembers its volumes;
+        // levels that move; one wired adapter.
+        case RemoteCommand::Playback:{RemoteReader in(payload);const int op=in.u8();std::lock_guard lock(made->m);
+            if(op==1){made->shuffle=in.u8()!=0;say("PLAYBACK shuffle "+std::to_string(made->shuffle));}
+            else if(op==2){made->repeat=std::clamp(in.u8(),0,2);say("PLAYBACK repeat "+std::to_string(made->repeat));}
+            else if(op==3){const int i=in.u16();if(!in.ok()||i<0||size_t(i)>=made->upNext.size())return {remoteFailed};say("PLAYBACK play "+std::to_string(i)+" "+narrow(made->upNext[size_t(i)].title));made->upNext.erase(made->upNext.begin(),made->upNext.begin()+i+1);}
+            else if(op!=0)return {remoteUnsupported};
+            if(!in.ok())return {remoteFailed};
+            RemotePlayback p;p.island=p.shuffleSupported=p.repeatSupported=true;p.shuffle=made->shuffle;p.repeat=made->repeat;p.upNext=made->upNext;return remotePlaybackAnswer(p);}
+        case RemoteCommand::Mixer:{RemoteReader in(payload);const int op=in.u8();std::lock_guard lock(made->m);
+            if(op==1||op==2){const uint32_t pid=uint32_t(in.i32());const int v=in.u8();if(!in.ok())return {remoteFailed};auto it=std::find_if(made->mixer.begin(),made->mixer.end(),[&](auto& e){return e.pid==pid;});
+                if(it==made->mixer.end())return {remoteFailed};if(op==1)it->volume=std::clamp(v,0,100);else it->muted=v!=0;say("MIXER "+std::to_string(op)+" "+std::to_string(pid)+" "+std::to_string(v));}
+            else if(op!=0)return {remoteUnsupported};
+            const double t=std::chrono::duration<double>(std::chrono::steady_clock::now()-began).count();auto list=made->mixer;
+            for(size_t i=0;i<list.size();++i)list[i].peak=list[i].active&&!list[i].muted?int(std::clamp(40+35*std::sin(t*3+double(i)),0.,100.)):0;
+            // A made-up icon (a few bytes, not a real picture) when icons are asked for.
+            const bool icons=op==0&&payload.size()>=2&&payload[1]!=0;if(icons)for(auto& e:list)e.icon={0x89,'P','N','G',0x0d,0x0a,0x1a,0x0a};
+            return remoteMixerAnswer(list);}
+        case RemoteCommand::Levels:{const double t=std::chrono::duration<double>(std::chrono::steady_clock::now()-began).count();std::vector<uint8_t> bands;
+            for(int b=0;b<24;++b)bands.push_back(uint8_t(std::clamp(140+90*std::sin(t*4+b*.5)-b*3,0.,255.)));return remoteLevelsAnswer(int(160+60*std::sin(t*2)),false,bands);}
+        case RemoteCommand::Machine:{PcAdapter a;const uint8_t mac[6]={0x00,0x1a,0x2b,0x3c,0x4d,0x5e};std::memcpy(a.mac,mac,6);a.name=L"Ethernet";a.ipv4="192.168.1.20";a.prefix=24;say("REMOTE machine");return remoteMachineAnswer({a});}
         case RemoteCommand::Lyrics:{say("REMOTE lyrics");std::vector<ShareLyricLine> lines{{12.5,L"Glass on the water",{{12.5,0},{13.1,6},{13.6,9}}},{16.25,L"Light in the rain",{}}};
             return remoteLyricsAnswer(2,L"Interop Song\tTest Artist",lines);}
         default:return {remoteUnsupported};}};

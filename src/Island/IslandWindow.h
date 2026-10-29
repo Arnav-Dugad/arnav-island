@@ -48,7 +48,8 @@ constexpr UINT ControlStateMessage=WM_APP+40,WallpaperLumaMessage=WM_APP+44;
 constexpr UINT RemoteMessage=WM_APP+46;
 // 0.22: how joining a phone's hotspot went (wParam: 0 joined, 1 not in sight, 2 couldn't connect, 3 no Wi-Fi, 4 not ready).
 constexpr UINT HotspotMessage=WM_APP+47;
-// 0.24: this screen on a phone (wParam 1: started, lParam the phone's name, owned from then on; 0: ended).
+// 0.24: this screen on a phone (wParam 1: started, lParam the phone's name, owned from then on; 0: ended). 0.26: a phone's
+// microphone (2 into VB-CABLE, 3 into the default output, lParam its name as above; 4 ended).
 constexpr UINT MirrorMessage=WM_APP+48;
 // 0.25: the page in the browser, read on a thread of its own (lParam a BrowserPage, owned from then on; wParam its phone's
 // index in pageAsks_).
@@ -165,6 +166,11 @@ class IslandWindow {
     void photoCard(const std::string& peer,const std::wstring& phone,uint64_t id,const std::wstring& name,uint32_t size,std::shared_ptr<const Artwork> picture);
     void arrivingCard(uint32_t transfer,const std::wstring& title,const std::wstring& detail,std::shared_ptr<const Artwork> picture);
     bool copyPhoto(const std::wstring& path);void pageMessage(WPARAM,LPARAM);void sendPageTo(const std::string& peer,HWND from);
+    // 0.26 (revision 9, IslandRemote.cpp): shuffle, repeat and up next; each app's volume (its icon encoded once per picture);
+    // the sound's levels; this PC's adapters, to wake it. The analyzer and the mixer's meters stay on a few seconds after a
+    // phone asks (PhoneMeterTimer turns them back to what the island needs).
+    std::vector<uint8_t> remotePlayback(const std::vector<uint8_t>&);std::vector<uint8_t> remoteMixer(const std::vector<uint8_t>&);std::vector<uint8_t> remoteLevels();std::vector<uint8_t> remoteMachine();
+    double phoneLevelsUntil_=-10,phoneMixerUntil_=-10;static constexpr UINT_PTR PhoneMeterTimer=90;std::map<DWORD,std::pair<const Artwork*,std::vector<uint8_t>>> mixerIcons_;
     std::shared_ptr<const WallpaperLuma> wallLuma_;bool wallLoading_=false,qaBackdrop_=false;void loadWallpaperLuma();void adaptBackdrop();bool backdropCovered()const;
     // The body's top-left in the canvas (DIPs), including how far a notification pill has dropped (drop: 0..1).
     // Phase 5H: spread side by side with a waiting alert, the pill sits further left.

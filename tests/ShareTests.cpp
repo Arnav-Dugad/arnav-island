@@ -46,6 +46,21 @@ int main(){
         st.cover.clear();CHECK(remoteStatusAnswer(st,hash)[22]==0);
         // 0.20: bit 9 says the universal clipboard is on.
         st.clipboard=true;{const auto c=remoteStatusAnswer(st,{});CHECK(uint16_t(c[1]|c[2]<<8)==(1|2|8|256|512));}}
+    // Revision 9: shuffle, repeat and up next; the mixer (icons only up to 8 KB); the levels; the adapters.
+    {auto u32=[](const std::vector<uint8_t>& b,size_t at){return uint32_t(b[at]|b[at+1]<<8|b[at+2]<<16|uint32_t(b[at+3])<<24);};
+        RemotePlayback p;p.island=p.shuffleSupported=p.repeatSupported=p.shuffle=true;p.repeat=5;for(int i=0;i<60;++i)p.upNext.push_back({L"Té",L"",i?180.5:-1});
+        const auto a=remotePlaybackAnswer(p);CHECK(a[0]==remoteOk&&a[1]==1&&a[2]==(1|2|4|8)&&a[3]==2&&(a[4]|a[5]<<8)==50);
+        CHECK(u32(a,6)==3&&a[10]=='T'&&u32(a,13)==0);double d=1;std::memcpy(&d,a.data()+17,8);CHECK(d==0);CHECK(a.size()==6+50*(4+3+4+8));
+        std::memcpy(&d,a.data()+36,8);CHECK(d==180.5);
+        RemotePlayback q;q.repeatSupported=true;q.repeat=1;const auto b=remotePlaybackAnswer(q);CHECK((b==std::vector<uint8_t>{remoteOk,1,4,1,0,0}));
+        std::vector<RemoteMixerEntry> m{{4242,L"Spotify",140,37,true,false,true,std::vector<uint8_t>(10,9)},{0,L"System sounds",50,0,false,true,false,std::vector<uint8_t>(9000,1)}};
+        const auto c=remoteMixerAnswer(m);CHECK(c[0]==remoteOk&&c[1]==1&&c[2]==2&&u32(c,3)==4242&&u32(c,7)==7&&std::string(c.begin()+11,c.begin()+18)=="Spotify");
+        CHECK(c[18]==100&&c[19]==37&&c[20]==(1|4)&&u32(c,21)==10&&c[25]==9);
+        CHECK(u32(c,35)==0&&u32(c,39)==13&&c[56]==50&&c[58]==2&&u32(c,59)==0&&c.size()==63);
+        const auto l=remoteLevelsAnswer(300,true,{1,2,3});CHECK((l==std::vector<uint8_t>{remoteOk,1,255,1,3,1,2,3}));
+        PcAdapter ad;const uint8_t mac[6]={1,2,3,4,5,6};std::memcpy(ad.mac,mac,6);ad.name=L"Wi-Fi";ad.ipv4="192.168.1.20";ad.prefix=24;
+        const auto w=remoteMachineAnswer({ad});CHECK(w[0]==remoteOk&&w[1]==1&&w[2]==1&&std::memcmp(w.data()+3,mac,6)==0&&u32(w,9)==5&&u32(w,18)==12&&std::string(w.begin()+22,w.begin()+34)=="192.168.1.20"&&w[34]==24&&w.size()==35);
+        CHECK(remoteMachineAnswer({}).size()==3);}
     // 0.20.1: the pairing link's QR code. The modules are those of the reference encoder (Nayuki's qrcodegen) for the same
     // text, version 3 at level M, and decode (zxing-cpp; and ZXing in the phone's own tests) to the link.
     {const auto q=qrEncode("arnavisland://pair/7K2PMX4Q");CHECK(q.size==29&&q.modules.size()==29u*29u);

@@ -2,6 +2,7 @@
 #include "IslandWindow.h"
 #include "Mirror/MirrorHost.h"
 #include "Mirror/MirrorWindow.h"
+#include "Mirror/PhoneMic.h"
 #include "Media/BrowserPage.h"
 #include <wincodec.h>
 #include <shlobj.h>
@@ -58,6 +59,12 @@ void IslandWindow::syncSharing(){
                 auto source=mirror::monitorSource({0,0});
                 mirror::sendScreen(io,r,*source,[allowed](const std::vector<uint8_t>& f){if(allowed->load())phoneInput(f);},[](RECT a){mirrorArea(&a);},*stop);
                 PostMessageW(window,MirrorMessage,0,0);return;}
+            // 0.26: a phone's microphone, played into VB-CABLE (or the default output); the card says which.
+            if(r.kind==4){struct Mic:mirror::PhoneMicrophone{HWND window=nullptr;std::wstring phone;
+                    bool begin(int rate,int channels,const std::wstring& n,std::wstring& device)override{if(!PhoneMicrophone::begin(rate,channels,n,device))return false;
+                        auto* p=new std::wstring(phone);if(!PostMessageW(window,MirrorMessage,cable()?2:3,LPARAM(p)))delete p;return true;}} mic;
+                mic.window=window;mic.phone=r.name.empty()?name:r.name;const std::atomic<bool> never{false};mirror::receiveAudio(io,r,mic,never);PostMessageW(window,MirrorMessage,4,0);return;}
+            // A phone's screen, or (0.26) its camera, in a window here.
             mirror::MirrorWindow shown;mirror::receiveScreen(io,r,shown,shown.closed);};
         share_=std::make_unique<ShareService>(window_,o);store_.log(share_->running()?"Info":"Warning",share_->running()?"share_started":"share_unavailable");
         content_.nearby=share_->peers();}
@@ -395,6 +402,11 @@ std::vector<uint8_t> IslandWindow::remoteAnswer(const std::string& peer,RemoteCo
     case RemoteCommand::Audio:return remoteAudio(payload);
     case RemoteCommand::Island:return remoteIsland(payload);
     case RemoteCommand::Battery:return remoteBattery();
+    // 0.26 (revision 9): shuffle, repeat and up next; the mixer; the levels; the adapters (IslandRemote.cpp).
+    case RemoteCommand::Playback:return remotePlayback(payload);
+    case RemoteCommand::Mixer:return remoteMixer(payload);
+    case RemoteCommand::Levels:return remoteLevels();
+    case RemoteCommand::Machine:return remoteMachine();
     case RemoteCommand::RingPC:{ringChimes_=8;playSound(Sound::Chime);SetTimer(window_,RingPCTimer,1400,nullptr);phoneCard(L"Here I am",from+L" is looking for this PC",from,nullptr,12);store_.log("Info","phone_find_pc");return {remoteOk};}
     // The song's lyrics, as the island has them (the phone shows them in time with the song).
     case RemoteCommand::Lyrics:{const std::wstring key=p.available?p.title+L"\t"+p.artist:std::wstring();int state=0;std::vector<ShareLyricLine> lines;
@@ -469,6 +481,7 @@ void IslandWindow::proximityCheck(){
 bool IslandWindow::shareTimer(UINT_PTR id){
     if(id==ProximityTimer){proximityCheck();return true;}
     if(id==PhoneStatsTimer){KillTimer(window_,PhoneStatsTimer);clockTimer();return true;}
+    if(id==PhoneMeterTimer){KillTimer(window_,PhoneMeterTimer);updateProviders();return true;}
     if(id==PhoneLiveTimer){askPhoneLive();return true;}
     if(id==PhonePowerTimer){KillTimer(window_,PhonePowerTimer);phonePower();return true;}
     if(id==RingPCTimer){const bool showing=state_==IslandState::Notification&&content_.notice.kind==19&&content_.notice.app==L"Here I am";
@@ -515,6 +528,10 @@ void IslandWindow::mirrorMessage(WPARAM w,LPARAM l){
         if(renderer_){content_.notice={};content_.notice.kind=22;content_.notice.app=L"Showing this screen on "+mirroring_;content_.notice.detail=L"Its taps and typing reach this PC";
             content_.pinned=false;{const Activity a{ActivityKind::Notification,"mirror",74,22.,2.4,8.};if(!holdCard(a)){events_.publish(a,seconds());transition(IslandState::Notification);presentActivity();alertSplash();}}}
         store_.log("Info","mirror_screen_started");return;}
+    // 0.26: a phone's microphone, into VB-CABLE (2) or, without it, the default output (3); and its end (4).
+    if((w==2||w==3)&&phone){phoneCard(L"Microphone from "+*phone,w==2?std::wstring(L"Into CABLE Input"):std::wstring(L"Install VB-CABLE to use it as a microphone"),*phone,nullptr,w==2?4:6);store_.log("Info",w==2?"phone_mic_cable":"phone_mic_speakers");return;}
+    if(w==4){if(state_==IslandState::Notification&&content_.notice.kind==19&&content_.notice.app.starts_with(L"Microphone from ")){events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);}
+        store_.log("Info","phone_mic_ended");return;}
     if(w==0){const std::wstring was=mirroring_;mirroring_.clear();updatePrivacy();
         if(state_==IslandState::Notification&&content_.notice.kind==22){events_.dismiss(seconds());content_.activity.clear();transition(IslandState::Compact);}
         if(!was.empty())shareCard(16,L"Stopped showing this screen",was,{},3);store_.log("Info","mirror_screen_ended");}

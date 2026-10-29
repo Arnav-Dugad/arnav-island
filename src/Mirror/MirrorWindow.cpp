@@ -172,6 +172,8 @@ LRESULT MirrorWindow::handle(HWND h, UINT msg, WPARAM w, LPARAM l) {
         const int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l); RECT c; GetClientRect(h, &c);
         if (y < strip && x >= c.right - 36) { closed = true; PostMessageW(h, WM_CLOSE, 0, 0); return 0; }
         if (y < strip && x >= c.right - 68) { pinned_ = !pinned_; SetWindowPos(h, pinned_ ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); present(); return 0; }
+        // 0.26: a camera (nothing goes back to the phone) is moved by dragging any part of it.
+        if (!send) { ReleaseCapture(); SendMessageW(h, WM_NCLBUTTONDOWN, HTCAPTION, 0); return 0; }
         dragging_ = true; SetCapture(h); touch(0, x, y); return 0;
     }
     case WM_LBUTTONUP: if (dragging_) { dragging_ = false; ReleaseCapture(); touch(2, GET_X_LPARAM(l), GET_Y_LPARAM(l)); } return 0;

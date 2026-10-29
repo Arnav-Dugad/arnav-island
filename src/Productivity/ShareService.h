@@ -35,7 +35,10 @@ constexpr UINT ShareMessage=WM_APP+45;
 // battery in full and each core's load for the phone; this PC asks a phone for its readings (mode Q, kept open) while
 // the Phone page shows, and tells it about the focus clock. Revision 7 (0.24): screens either way (mode V, a phone opens
 // it: see Mirror/MirrorHost.h).
-constexpr int shareProtocol=2,shareRevision=8;
+// Revision 9 (0.26): a phone's remote reaches further: shuffle, repeat and up next, each app's volume, the sound's levels
+// live, and this PC's network adapters (to wake it); a phone pauses a transfer either way (frame 8 while it sends, by not
+// reading while it receives, so this PC waits up to ten minutes); and its camera and microphone come to this PC (mode V).
+constexpr int shareProtocol=2,shareRevision=9;
 // Remote commands (mode R) and their answers.
 // Revision 3: RingPC (find this PC), Lyrics (the song's lines and word times, when the island has them).
 enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,ClipboardGet=6,ClipboardSet=7,Seek=8,Open=9,RingPC=10,Lyrics=11,
@@ -45,7 +48,9 @@ enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,Clipboa
     Battery=18,
     // Revision 8 (0.25): a web page to open here, where the phone had scrolled to (f32 how far down, 0..1, below 0
     // unknown; u32 n, its address; u32 n, its title).
-    Page=19};
+    Page=19,
+    // Revision 9 (0.26): shuffle, repeat and up next; each app's volume; the sound's levels; the network adapters.
+    Playback=20,Mixer=21,Levels=22,Machine=23};
 constexpr uint8_t remoteOk=0,remoteNotAllowed=1,remoteUnsupported=2,remoteFailed=3;
 // What the island reports to a phone's remote. cover: a small JPEG (at most shareCoverLimit bytes), or empty.
 // clipboard (0.20): the island's universal clipboard is on, so the phone sends its own copies over as it opens.
@@ -221,12 +226,31 @@ struct RemoteOutput{std::wstring id,name;bool current=false;int form=-1;};
 std::vector<uint8_t> remoteAudioAnswer(const std::vector<RemoteOutput>&);
 // Island: payload [0, page] opens one of its pages on the PC (Home, Media, Stats, Focus, Settings, Shelf, Audio,
 // Controls); [1] closes it.
+// ---- Revision 9 (0.26) ----
+// Playback: payload [0] reads; [1, u8 on] shuffle; [2, u8 mode] repeat (0 off, 1 one, 2 all); [3, u16 index] plays that
+// song in up next. Each answers u8 flags (1 shuffle supported, 2 shuffle on, 4 repeat supported, 8 the island's own player
+// plays, so up next is its queue), u8 repeat, u16 n (at most 50) and each song's title, artist and f64 length (0 unknown).
+struct RemoteTrack{std::wstring title,artist;double duration=0;};
+struct RemotePlayback{bool shuffleSupported=false,shuffle=false,repeatSupported=false,island=false;int repeat=0;std::vector<RemoteTrack> upNext;};
+std::vector<uint8_t> remotePlaybackAnswer(const RemotePlayback&);
+// Mixer: payload [0, u8 icons] reads; [1, u32 pid, u8 percent] sets an app's volume; [2, u32 pid, u8 muted] mutes it. Each
+// answers u8 n (at most 24) and each app's u32 pid, name, u8 volume, u8 peak, u8 flags (1 muted, 2 system sounds, 4 active
+// now) and its icon (u32 n and a 32-pixel PNG of at most 8 KB; empty unless asked for).
+struct RemoteMixerEntry{uint32_t pid=0;std::wstring name;int volume=0,peak=0;bool muted=false,system=false,active=false;std::vector<uint8_t> icon;};
+std::vector<uint8_t> remoteMixerAnswer(const std::vector<RemoteMixerEntry>&);
+// Levels (no payload): u8 level (0-255), u8 resting (1 when silent), u8 n and each band (0-255).
+std::vector<uint8_t> remoteLevelsAnswer(int level,bool resting,const std::vector<uint8_t>& bands);
+// Machine (no payload), to wake this PC: u8 n (at most 8) and each adapter's 6-byte MAC, name, IPv4 address (dotted) and
+// u8 prefix length.
+struct PcAdapter{uint8_t mac[6]{};std::wstring name;std::string ipv4;int prefix=0;};
+std::vector<uint8_t> remoteMachineAnswer(const std::vector<PcAdapter>&);
 // A request's payload, read in order; any read past its end fails (and so does everything after).
 class RemoteReader{const std::vector<uint8_t>& b_;size_t at_=0;bool ok_=true;
 public:
     explicit RemoteReader(const std::vector<uint8_t>& b):b_(b){}
     bool ok()const{return ok_;}
     int u8(){if(!ok_||at_+1>b_.size()){ok_=false;return 0;}return b_[at_++];}
+    int u16(){if(!ok_||at_+2>b_.size()){ok_=false;return 0;}const int v=b_[at_]|b_[at_+1]<<8;at_+=2;return v;}
     int i32(){if(!ok_||at_+4>b_.size()){ok_=false;return 0;}uint32_t v=0;for(int k=0;k<4;++k)v|=uint32_t(b_[at_+size_t(k)])<<(8*k);at_+=4;return int(v);}
     std::string bytes(size_t limit){const int n=i32();if(!ok_||n<0||size_t(n)>limit||at_+size_t(n)>b_.size()){ok_=false;return {};}std::string s(b_.begin()+long(at_),b_.begin()+long(at_+size_t(n)));at_+=size_t(n);return s;}
     std::wstring text(size_t limit);

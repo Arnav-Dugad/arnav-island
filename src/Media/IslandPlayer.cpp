@@ -74,6 +74,10 @@ struct IslandPlayer::Impl{
     ComPtr<ABI::Windows::Media::ISystemMediaTransportControls> smtc;EventRegistrationToken buttonsToken{},seeksToken{};bool buttonsOn=false,seeksOn=false;
     std::vector<LibraryTrack> queue;size_t at=0;std::shared_ptr<const Artwork> art;uint64_t revision=0;
     double crossfade=0,pendingFadeIn=0;bool muted=false;
+    // 0.26: the queue as it was before shuffling (empty while not shuffled), and repeat (0 off, 1 the song, 2 the queue).
+    std::vector<LibraryTrack> ordered;int repeat=0;
+    // The song after this one (with repeat on the queue, the first after the last), or none.
+    bool following(size_t& next)const{if(at+1<queue.size()){next=at+1;return true;}if(repeat==2&&!queue.empty()){next=0;return true;}return false;}
     explicit Impl(HWND w):window(w){
         started=SUCCEEDED(MFStartup(MF_VERSION,MFSTARTUP_LITE));if(!started)return;
         ComPtr<IMFMediaEngineClassFactory> factory;if(FAILED(CoCreateInstance(CLSID_MFMediaEngineClassFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory))))return;
@@ -130,7 +134,7 @@ struct IslandPlayer::Impl{
     void updateDisplay(){
         auto updater=displayUpdater();if(!updater)return;
         if(at>=queue.size()){updater->ClearAll();updater->Update();smtc->put_IsEnabled(FALSE);return;}
-        smtc->put_IsEnabled(TRUE);smtc->put_IsPlayEnabled(TRUE);smtc->put_IsPauseEnabled(TRUE);smtc->put_IsStopEnabled(TRUE);smtc->put_IsPreviousEnabled(TRUE);smtc->put_IsNextEnabled(at+1<queue.size());
+        smtc->put_IsEnabled(TRUE);smtc->put_IsPlayEnabled(TRUE);smtc->put_IsPauseEnabled(TRUE);smtc->put_IsStopEnabled(TRUE);smtc->put_IsPreviousEnabled(TRUE);smtc->put_IsNextEnabled(at+1<queue.size()||repeat==2);
         updater->put_Type(ABI::Windows::Media::MediaPlaybackType_Music);
         ComPtr<ABI::Windows::Media::IMusicDisplayProperties> music;
         if(SUCCEEDED(updater->get_MusicProperties(&music))&&music){const auto& t=queue[at];player::HString title(t.title),artist(t.artist),album(t.album);music->put_Title(title.h);music->put_Artist(artist.h);music->put_AlbumArtist(artist.h);}
@@ -155,16 +159,16 @@ IslandPlayer::IslandPlayer(HWND window):impl_(std::make_unique<Impl>(window)){}
 IslandPlayer::~IslandPlayer()=default;
 bool IslandPlayer::ready()const{return impl_->ready();}
 void IslandPlayer::play(std::vector<LibraryTrack> queue,size_t index,double start,bool playing){auto& i=*impl_;if(queue.empty()||!i.ready())return;
-    for(auto& d:i.decks)if(d.loaded||d.fading)i.empty(d);i.pendingFadeIn=0;i.queue=std::move(queue);i.at=std::min(index,i.queue.size()-1);i.setVolume(i.deck(),1);i.load(start,playing);}
+    for(auto& d:i.decks)if(d.loaded||d.fading)i.empty(d);i.pendingFadeIn=0;i.queue=std::move(queue);i.ordered.clear();i.at=std::min(index,i.queue.size()-1);i.setVolume(i.deck(),1);i.load(start,playing);}
 void IslandPlayer::toggle(){if(playing())pause();else resume();}
 void IslandPlayer::resume(){auto& i=*impl_;auto& d=i.deck();if(!d.engine||i.queue.empty())return;if(!d.loaded){d.wantPlay=true;return;}if(d.fading&&d.pauseAtEnd){d.fading=false;i.setVolume(d,1);}
     if(d.engine->IsEnded())d.engine->SetCurrentTime(0);d.engine->Play();++i.revision;i.updateStatus();}
 void IslandPlayer::pause(){auto& i=*impl_;auto& d=i.deck();if(!d.engine||i.queue.empty())return;i.settle();if(!d.loaded){d.wantPlay=false;return;}d.engine->Pause();++i.revision;i.updateStatus();}
-void IslandPlayer::next(){auto& i=*impl_;if(i.at+1>=i.queue.size())return;i.transition(i.at+1,false);}
+void IslandPlayer::next(){auto& i=*impl_;size_t n=0;if(!i.following(n))return;i.transition(n,false);}
 // Back to the start of the song, or to the one before when it has barely begun.
 void IslandPlayer::previous(){auto& i=*impl_;if(i.queue.empty())return;if(i.position()>3||i.at==0){seek(0);if(!playing())resume();return;}i.transition(i.at-1,false);}
 void IslandPlayer::seek(double s){auto& i=*impl_;auto& d=i.deck();if(!d.engine||i.queue.empty())return;i.settle();const double length=i.duration();s=std::clamp(s,0.,length>0?std::max(0.,length-.25):s);if(!d.loaded){d.pendingStart=s;return;}d.engine->SetCurrentTime(s);++i.revision;i.updateStatus();}
-void IslandPlayer::stop(){auto& i=*impl_;for(auto& d:i.decks)if(d.engine&&(d.loaded||d.fading||!i.queue.empty()))i.empty(d);i.pendingFadeIn=0;i.queue.clear();i.at=0;i.art.reset();++i.revision;i.updateDisplay();}
+void IslandPlayer::stop(){auto& i=*impl_;for(auto& d:i.decks)if(d.engine&&(d.loaded||d.fading||!i.queue.empty()))i.empty(d);i.pendingFadeIn=0;i.queue.clear();i.ordered.clear();i.at=0;i.art.reset();++i.revision;i.updateDisplay();}
 bool IslandPlayer::active()const{return !impl_->queue.empty();}
 void IslandPlayer::mute(bool muted){impl_->muted=muted;for(auto& d:impl_->decks)if(d.engine)d.engine->SetMuted(muted?TRUE:FALSE);}
 void IslandPlayer::crossfade(double seconds){impl_->crossfade=std::clamp(seconds,0.,12.);}
@@ -181,13 +185,22 @@ std::vector<LibraryTrack> IslandPlayer::upNext(size_t count)const{auto& i=*impl_
 bool IslandPlayer::move(size_t from,size_t to){auto& i=*impl_;if(from<=i.at||to<=i.at||from>=i.queue.size()||to>=i.queue.size()||from==to)return false;
     auto t=std::move(i.queue[from]);i.queue.erase(i.queue.begin()+long(from));i.queue.insert(i.queue.begin()+long(to),std::move(t));++i.revision;i.updateDisplay();return true;}
 void IslandPlayer::jump(size_t index){auto& i=*impl_;if(index>=i.queue.size()||index==i.at)return;i.transition(index,false);}
+// The songs after the one playing take a new order; off, the queue's own order comes back from the song playing on.
+void IslandPlayer::shuffle(bool on){auto& i=*impl_;if(i.queue.empty()||on==!i.ordered.empty())return;
+    if(on){i.ordered=i.queue;std::mt19937 random{uint32_t(GetTickCount64())};std::shuffle(i.queue.begin()+long(i.at+1),i.queue.end(),random);}
+    else{const std::wstring playing=i.queue[i.at].path;auto it=std::find_if(i.ordered.begin(),i.ordered.end(),[&](auto& t){return t.path==playing;});
+        if(it!=i.ordered.end()){i.at=size_t(it-i.ordered.begin());i.queue=std::move(i.ordered);}i.ordered.clear();}
+    ++i.revision;i.updateDisplay();}
+bool IslandPlayer::shuffled()const{return !impl_->ordered.empty();}
+void IslandPlayer::repeat(int mode){auto& i=*impl_;i.repeat=std::clamp(mode,0,2);++i.revision;if(!i.queue.empty())i.updateDisplay();}
+int IslandPlayer::repeating()const{return impl_->repeat;}
 double IslandPlayer::position()const{return impl_->position();}
 double IslandPlayer::duration()const{return impl_->duration();}
 void IslandPlayer::artwork(std::shared_ptr<const Artwork> art){if(art==impl_->art)return;impl_->art=std::move(art);++impl_->revision;impl_->updateDisplay();}
 std::shared_ptr<const Artwork> IslandPlayer::artwork()const{return impl_->art;}
 MediaSnapshot IslandPlayer::snapshot(double now)const{
     MediaSnapshot m;const auto* t=track();if(!t)return m;const auto& i=*impl_;
-    m.available=true;m.playing=playing();m.canToggle=true;m.canPrevious=true;m.canNext=i.at+1<i.queue.size();m.duration=duration();m.canSeek=m.duration>0;
+    m.available=true;m.playing=playing();m.canToggle=true;m.canPrevious=true;m.canNext=i.at+1<i.queue.size()||i.repeat==2;m.shuffle=shuffled()?1:0;m.repeat=i.repeat;m.duration=duration();m.canSeek=m.duration>0;
     m.title=t->title;m.artist=!t->artist.empty()?t->artist:!t->album.empty()?t->album:L"Unknown artist";m.source=islandSource;m.appName=L"Your music";m.kind=MediaKind::Music;m.artwork=i.art;
     m.position=std::min(position(),m.duration>0?m.duration:position());m.sampledAt=now;m.seekMin=0;m.seekMax=m.duration;m.id=islandSessionId;m.current=m.playing;m.revision=i.revision;
     return m;
@@ -200,10 +213,12 @@ int IslandPlayer::tick(bool& changed){
         if(p>=1){d.fading=false;if(d.emptyAtEnd)i.empty(d);else if(d.pauseAtEnd&&d.engine){d.engine->Pause();i.setVolume(d,1);if(k==i.cur){++i.revision;i.updateStatus();changed=true;}}}}
     // Near the end of a song (and with one after it, long enough to fade across), the next begins beneath it.
     auto& d=i.deck();
-    if(i.crossfade>0&&!d.fading&&i.deckPlaying(d)&&i.at+1<i.queue.size()){const double length=i.duration(),left=length-i.position();
-        if(length>i.crossfade*2+4&&left<=i.crossfade&&left>.2){i.transition(i.at+1,true);changed=true;}}
+    // 0.26: a song on repeat starts over instead (at its end); the last song with the queue on repeat fades into the first.
+    size_t following=0;const bool after=i.repeat!=1&&i.following(following)&&following!=i.at;
+    if(i.crossfade>0&&!d.fading&&i.deckPlaying(d)&&after){const double length=i.duration(),left=length-i.position();
+        if(length>i.crossfade*2+4&&left<=i.crossfade&&left>.2){i.transition(following,true);changed=true;}}
     if(i.decks[0].fading||i.decks[1].fading||i.pendingFadeIn>0)return 30;
-    return i.crossfade>0&&i.deckPlaying(d)&&i.at+1<i.queue.size()?(i.duration()-i.position()<i.crossfade+3?60:500):0;
+    return i.crossfade>0&&i.deckPlaying(d)&&after?(i.duration()-i.position()<i.crossfade+3?60:500):0;
 }
 bool IslandPlayer::handle(WPARAM kind,LPARAM value){
     auto& i=*impl_;if(!i.ready())return false;
@@ -220,7 +235,9 @@ bool IslandPlayer::handle(WPARAM kind,LPARAM value){
         if(d.wantPlay){d.engine->Play();if(i.pendingFadeIn>0){i.ramp(d,1,i.pendingFadeIn);i.pendingFadeIn=0;}}i.updateStatus();break;
     case MF_MEDIA_ENGINE_EVENT_PLAYING:case MF_MEDIA_ENGINE_EVENT_PAUSE:case MF_MEDIA_ENGINE_EVENT_SEEKED:case MF_MEDIA_ENGINE_EVENT_DURATIONCHANGE:i.updateStatus();break;
     // The queue plays on; at its end the last song rests, paused, at its start.
-    case MF_MEDIA_ENGINE_EVENT_ENDED:if(i.at+1<i.queue.size())i.transition(i.at+1,false);else{d.engine->Pause();d.engine->SetCurrentTime(0);i.updateStatus();}break;
+    // 0.26: a song on repeat starts over; the queue on repeat goes back to its first song.
+    case MF_MEDIA_ENGINE_EVENT_ENDED:{size_t n=0;if(i.repeat==1||(i.queue.size()==1&&i.repeat==2)){d.engine->SetCurrentTime(0);d.engine->Play();i.updateStatus();}
+        else if(i.following(n))i.transition(n,false);else{d.engine->Pause();d.engine->SetCurrentTime(0);i.updateStatus();}break;}
     // A song that can't be played is passed over.
     case MF_MEDIA_ENGINE_EVENT_ERROR:if(i.at+1<i.queue.size())i.transition(i.at+1,false);else{stop();}break;
     default:return false;}

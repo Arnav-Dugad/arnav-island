@@ -14,6 +14,7 @@ namespace nexus::mirror {
 // resize never waits on another thread. A click is a tap on the phone,
 // a drag a swipe, the wheel a scroll, the right button Back, the middle one Home, and typing goes to the phone (with the
 // phone app's control turned on there).
+// 0.26: a phone's camera too, in the same window: nothing goes back to the phone (send stays empty), so a drag moves it.
 class MirrorWindow : public FrameSink {
 public:
     explicit MirrorWindow(const std::atomic<bool>* islandStop = nullptr) : islandStop_(islandStop) {}

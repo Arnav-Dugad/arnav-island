@@ -1,3 +1,30 @@
+# Arnav Island 0.26.0-preview.1 — the phone, all the way
+
+Made for Arnav Island for Android 1.8. With an older phone app, everything works as in 0.25.
+
+## Your music from the phone
+- **Shuffle and repeat.** The phone's Remote shows them and changes them, for any player Windows can ask (Spotify, the Media Player and others that report them).
+- **The island's own player now shuffles and repeats.** Shuffle reorders what's left of the queue (turned off, the order comes back); repeat plays the song again or starts over at the end, crossfade included.
+- **Up next.** For music the island plays from your library, the phone shows what's next and jumps to any of it.
+- **Live levels.** The phone's cover has the music's own level bars under it. The sound is read only while the phone asks (a few seconds at a time), folded into levels and discarded.
+
+## Each app's own volume
+**The phone's Sound panel lists the apps making sound here**, each with its icon, its volume, a mute and its level now, as the island's mixer has them.
+
+## Wake this PC from your phone
+**While this PC is here, the phone learns its network adapters** (their hardware addresses). Later, when this PC sleeps or is off, the phone's Wake sends a Wake-on-LAN packet on the same network. Your adapter and firmware must allow Wake-on-LAN.
+
+## Your phone as this PC's camera and microphone
+- **Camera:** the phone's camera opens in a floating window here, titled "*phone* camera", keeping its shape. Drag the picture to move it. To use it in a video call, capture that window (OBS's virtual camera, for example).
+- **Microphone:** the phone's microphone plays into **VB-CABLE** when it's installed, so any app can choose **CABLE Output** as its microphone. Without it, it plays on the default output, and the island says how to set it up.
+
+## Transfers wait while you pause
+**A phone that pauses a transfer keeps it alive:** this PC waits up to ten minutes for it to carry on, both ways (sending, Shelf takes and music).
+
+## Checks
+- **Unit suites:** core, provider lifecycle, dashboard models, share loopback and phase models all passing; share tests 211 checks, 0 failures (the new answers' encoders among them).
+- **The phone 1.8 against this PC's engine** over the network: protocol, the whole island, screens both ways, photos and pages, all passing. The test peer answers the new commands, so the phone's shuffle, repeat, levels and app volumes were shown on the Android emulator against it.
+
 # Arnav Island 0.25.0-preview.1 — handed over
 
 ## Send to the Shelf, as AirDrop does it

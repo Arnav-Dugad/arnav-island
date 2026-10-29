@@ -133,6 +133,9 @@ unsigned get16(const uint8_t* p){return unsigned(p[0])|unsigned(p[1])<<8;}
 uint32_t get32(const uint8_t* p){return uint32_t(p[0])|uint32_t(p[1])<<8|uint32_t(p[2])<<16|uint32_t(p[3])<<24;}
 // Frames inside a transfer (all sealed): the offer, then per file its header, data and end, then the batch end.
 constexpr uint8_t frameData=1,frameEnd=2,frameHeader=3,frameBatchEnd=4,frameOffer=1,frameMusic=5,frameShelf=6,frameTake=7;
+// Revision 9: [8] alone, from a phone that has paused its send (at most every 10 s): nothing to do but keep waiting.
+constexpr uint8_t frameHold=8;
+bool openedPast(SOCKET s,Channel& c,Bytes& plain){for(;;){if(!opened(s,c,plain))return false;if(plain.size()!=1||plain[0]!=frameHold)return true;}}
 // A Shelf as listed to another PC: at most 32 items, each preview at most 6 KB.
 constexpr size_t shelfListMax=32,shelfPreviewLimit=6*1024;
 // Answers: 1 yes, 0 no, 2 (files) not enough space / (music) yes and send the song's file.
@@ -201,6 +204,9 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
     std::unique_ptr<Relay> relay;
     RelayPresence presence(const std::string& peer)const{return relay?relay->presence(peer):RelayPresence{};}
     RelayPath path(const std::string& peer)const{return relay?relay->path(peer):RelayPath{};}
+    // Revision 9: a phone pauses what it receives by not reading, so this PC's sends to it wait up to ten minutes.
+    int dataWait(const std::string& peer)const{std::lock_guard lock(m);auto it=peers.find(peer);if(it==peers.end())return 30000;const auto& p=it->second;
+        const RelayPresence r=p.online||p.key.empty()?RelayPresence{}:presence(peer);const int revision=r.here?r.revision:p.revision;return (p.phone||r.phone)&&revision>=9?600000:30000;}
     static std::wstring wideCode(const std::string& code){return std::wstring(code.begin(),code.end());}
     // The relay listens for every paired device: each pair's secret is the static ECDH of the two keys.
     void syncRelay(){
@@ -371,7 +377,7 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         std::error_code error;fs::create_directories(target.parent_path(),error);
         const fs::path part=uniquePath(target.parent_path(),target.filename().wstring()+L".arnavpart");bool done=false;
         {std::ofstream out(part,std::ios::binary|std::ios::trunc);Sha hash;uint64_t got=0;
-            while(out){if(stopped(transfer))break;Bytes f;if(!opened(s,c,f)||f.empty())break;
+            while(out){if(stopped(transfer))break;Bytes f;if(!openedPast(s,c,f)||f.empty())break;
                 if(f[0]==frameData){const size_t n=f.size()-1;if(got+n>size)break;out.write(reinterpret_cast<const char*>(f.data()+1),std::streamsize(n));hash.add(f.data()+1,n);got+=n;progress.add(n);}
                 else if(f[0]==frameEnd&&f.size()==1+8+32){done=get64(f.data()+1)==size&&got==size&&hash.done()==Bytes(f.begin()+9,f.end());break;}
                 else break;}
@@ -412,7 +418,7 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         timeout(s,30000);Progress progress{*this,{}};progress.base.peer=peer;progress.base.name=from;progress.base.file=title;progress.base.transfer=transfer;progress.base.count=count;progress.total=total;
         // Top-level folders get a free name in Downloads once ("Photos (2)"); files inside keep their paths.
         std::map<std::wstring,fs::path> tops;std::vector<fs::path> shown;uint32_t files=0;bool whole=false;std::wstring why;
-        for(;;){Bytes f;if(stopped(transfer)||!opened(s,ss.channel,f)||f.empty())break;
+        for(;;){Bytes f;if(stopped(transfer)||!openedPast(s,ss.channel,f)||f.empty())break;
             if(f[0]==frameBatchEnd){whole=files==count&&progress.done==total;break;}
             if(f[0]!=frameHeader||f.size()<10||files>=count)break;
             const uint64_t size=get64(f.data()+1);const auto parts=safeSharePath(wide(std::string(f.begin()+9,f.end())));if(parts.empty()||size>maxFile||progress.done+size>total)break;
@@ -468,7 +474,7 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         if(!sealed(s,ss.channel,offer)||!opened(s,ss.channel,reply)||reply.size()!=1)why=stopped(transfer)?L"You stopped it":name+L" didn't answer";
         else if(reply[0]==2)why=L"There isn't room on "+name+L" for "+sizeText(total);
         else if(reply[0]!=1)why=name+L" declined it";
-        else{timeout(s,30000);Progress progress{*this,{}};progress.base.peer=peer;progress.base.name=name;progress.base.file=title;progress.base.transfer=transfer;progress.base.count=uint32_t(items.size());progress.base.outgoing=true;progress.total=total;
+        else{timeout(s,dataWait(peer));Progress progress{*this,{}};progress.base.peer=peer;progress.base.name=name;progress.base.file=title;progress.base.transfer=transfer;progress.base.count=uint32_t(items.size());progress.base.outgoing=true;progress.total=total;
             bool flowing=true;for(auto& item:items)if(!streamFile(s,ss.channel,item,progress,transfer)){flowing=false;break;}
             Bytes ack;timeout(s,60000);const bool sent=flowing&&sealed(s,ss.channel,Bytes{frameBatchEnd})&&opened(s,ss.channel,ack)&&ack.size()==1&&ack[0]==1;
             if(!sent)why=stopped(transfer)?L"You stopped it":L"The transfer to "+name+L" didn't finish";return sent;}
@@ -542,7 +548,7 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
             Bytes reply;timeout(s,90000);
             if(!sealed(s,ss.channel,offer)||!opened(s,ss.channel,reply)||reply.size()!=1)why=target.name+L" didn't answer";
             else{code=reply[0]>2?0:reply[0];ShareEvent a;a.kind=ShareEvent::Kind::HandoffAnswered;a.peer=peer;a.name=target.name;a.code=uint32_t(code);a.transfer=transfer;a.outgoing=true;a.handoff=music;post(a);
-                if(code==2&&size){timeout(s,30000);Progress progress{*this,{}};progress.base.peer=peer;progress.base.name=target.name;progress.base.file=music.title;progress.base.transfer=transfer;progress.base.count=1;progress.base.outgoing=true;progress.total=size;
+                if(code==2&&size){timeout(s,dataWait(peer));Progress progress{*this,{}};progress.base.peer=peer;progress.base.name=target.name;progress.base.file=music.title;progress.base.transfer=transfer;progress.base.count=1;progress.base.outgoing=true;progress.total=size;
                     Item item{fs::path(file),utf8(fs::path(file).filename().wstring()),size};Bytes ack;
                     if(!streamFile(s,ss.channel,item,progress,transfer)||!sealed(s,ss.channel,Bytes{frameBatchEnd})||!opened(s,ss.channel,ack)||ack.size()!=1||ack[0]!=1)why=L"The song didn't reach "+target.name;}}}
         if(s!=INVALID_SOCKET){untrack(s);closesocket(s);}
@@ -565,7 +571,7 @@ struct ShareService::Core:std::enable_shared_from_this<Core>{
         if(!sealed(s,ss.channel,Bytes{uint8_t(code)})||code!=2){finish(transfer);return;}
         timeout(s,30000);Progress progress{*this,{}};progress.base.peer=peer;progress.base.name=from;progress.base.file=music.title;progress.base.transfer=transfer;progress.base.count=1;progress.total=size;
         Bytes f;fs::path saved;bool whole=false;
-        if(opened(s,ss.channel,f)&&f.size()>=10&&f[0]==frameHeader&&get64(f.data()+1)==size&&takeFile(s,ss.channel,size,dir/music.fileName,saved,progress,transfer)){Bytes end;whole=opened(s,ss.channel,end)&&end.size()==1&&end[0]==frameBatchEnd;}
+        if(openedPast(s,ss.channel,f)&&f.size()>=10&&f[0]==frameHeader&&get64(f.data()+1)==size&&takeFile(s,ss.channel,size,dir/music.fileName,saved,progress,transfer)){Bytes end;whole=openedPast(s,ss.channel,end)&&end.size()==1&&end[0]==frameBatchEnd;}
         if(whole)sealed(s,ss.channel,Bytes{1});
         finish(transfer);
         if(!whole){std::error_code e;if(!saved.empty())fs::remove(saved,e);fail(ShareEvent::Kind::Failed,peer,from,music.title,L"The song didn't arrive whole from "+from,transfer);return;}
@@ -846,5 +852,22 @@ std::vector<uint8_t> remoteLyricsAnswer(int state,const std::wstring& key,const 
         for(size_t w=0;w<words;++w){putF64(b,l.words[w].first);const uint32_t at=std::min<uint32_t>(l.words[w].second,65535);b.push_back(uint8_t(at&255));b.push_back(uint8_t(at>>8));}}
     return b;
 }
+// ---- Revision 9 ----
+std::vector<uint8_t> remotePlaybackAnswer(const RemotePlayback& p){
+    Bytes b{remoteOk,1,uint8_t((p.shuffleSupported?1:0)|(p.shuffle?2:0)|(p.repeatSupported?4:0)|(p.island?8:0)),uint8_t(std::clamp(p.repeat,0,2))};
+    const size_t n=std::min<size_t>(p.upNext.size(),50);putU16(b,unsigned(n));
+    for(size_t i=0;i<n;++i){const auto& t=p.upNext[i];putStr(b,t.title,512);putStr(b,t.artist,512);putF64(b,std::isfinite(t.duration)&&t.duration>0?t.duration:0);}
+    return b;}
+std::vector<uint8_t> remoteMixerAnswer(const std::vector<RemoteMixerEntry>& entries){
+    Bytes b{remoteOk,1};const size_t n=std::min<size_t>(entries.size(),24);b.push_back(uint8_t(n));
+    for(size_t i=0;i<n;++i){const auto& e=entries[i];put32(b,e.pid);putStr(b,e.name,200);b.push_back(uint8_t(std::clamp(e.volume,0,100)));b.push_back(uint8_t(std::clamp(e.peak,0,100)));
+        b.push_back(uint8_t((e.muted?1:0)|(e.system?2:0)|(e.active?4:0)));const size_t icon=e.icon.size()<=8*1024?e.icon.size():0;put32(b,uint32_t(icon));b.insert(b.end(),e.icon.begin(),e.icon.begin()+long(icon));}
+    return b;}
+std::vector<uint8_t> remoteLevelsAnswer(int level,bool resting,const std::vector<uint8_t>& bands){
+    Bytes b{remoteOk,1,uint8_t(std::clamp(level,0,255)),uint8_t(resting?1:0)};const size_t n=std::min<size_t>(bands.size(),64);b.push_back(uint8_t(n));b.insert(b.end(),bands.begin(),bands.begin()+long(n));return b;}
+std::vector<uint8_t> remoteMachineAnswer(const std::vector<PcAdapter>& adapters){
+    Bytes b{remoteOk,1};const size_t n=std::min<size_t>(adapters.size(),8);b.push_back(uint8_t(n));
+    for(size_t i=0;i<n;++i){const auto& a=adapters[i];b.insert(b.end(),a.mac,a.mac+6);putStr(b,a.name,120);putStr(b,a.ipv4.substr(0,15));b.push_back(uint8_t(std::clamp(a.prefix,0,32)));}
+    return b;}
 std::vector<ShareEvent> ShareService::take(){std::lock_guard lock(core_->m);std::vector<ShareEvent> out;out.swap(core_->events);return out;}
 }
