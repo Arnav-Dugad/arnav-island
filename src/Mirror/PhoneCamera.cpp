@@ -89,6 +89,20 @@ bool PhoneCamera::setUp(std::wstring& why) {
     why = L"Arnav Island Phone Camera is set up for this PC"; return true;
 }
 
+bool PhoneCamera::tearDown(std::wstring& why) {
+    // 0.28: what setUp did, undone (the uninstaller asks for it): the class goes from HKLM (and 0.27's from this user), then
+    // the copy in Program Files. Windows' camera service may still hold that copy open: it goes at the next restart instead.
+    RegDeleteTreeW(HKEY_CURRENT_USER, classKey.c_str());
+    const LSTATUS gone = RegDeleteTreeW(HKEY_LOCAL_MACHINE, classKey.c_str());
+    if (gone != ERROR_SUCCESS && gone != ERROR_FILE_NOT_FOUND) { why = L"Couldn’t remove the camera from this PC (run it as administrator)"; return false; }
+    wchar_t programs[MAX_PATH]{}; if (GetEnvironmentVariableW(L"ProgramFiles", programs, MAX_PATH)) {
+        const std::filesystem::path dir = std::filesystem::path(programs) / L"Arnav Island", dll = dir / L"ArnavIslandCamera.dll"; std::error_code e;
+        if (std::filesystem::exists(dll, e) && !DeleteFileW(dll.c_str())) { MoveFileExW(dll.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT); MoveFileExW(dir.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT); }
+        else RemoveDirectoryW(dir.c_str());
+    }
+    why = L"Arnav Island Phone Camera is removed from this PC"; return true;
+}
+
 bool PhoneCamera::open(const std::wstring& phone, std::wstring& why) {
     close(); phone_ = phone;
     if (!supported()) { why = L"A camera other apps can pick needs Windows 11"; tell(2, why); return false; }

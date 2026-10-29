@@ -1,6 +1,6 @@
 # Quick start
 
-1. Extract the ZIP into a folder you intend to keep. Run **ArnavIsland.exe**.
+1. Run **Arnav-Island-Setup-<version>.exe** (recommended): it installs the island for you only, no administrator needed, adds it to Start and to start at sign-in, and starts it. Over a copy you already use, it updates that copy where it is. Its one checkbox sets up the phone camera for other apps, which asks for administrator permission once. Prefer no installer? The ZIP still works: extract it into a folder you intend to keep and run **ArnavIsland.exe**. Either way the island updates itself.
 2. Hover over the top-center island to open it. Blank-space clicks do not expand or pin it; × or Escape closes it. Right-click opens the tray menu.
 3. Home shows media, CPU, memory, battery and volume. Media uses Windows media sessions; Stats provides real OS counters; Focus includes 25-minute focus, 5-minute break and stopwatch.
 4. Drag a file or text onto the island to open Shelf. Drag a shelf row back out. Transfers are copy-only. Scroll to reach additional rows; Clear forgets references. Quit clears the shelf.
@@ -13,7 +13,7 @@ Settings: `%LOCALAPPDATA%\ArnavIsland\settings.nexus`. Logs: same folder, `event
 
 Artwork appears only when Windows media metadata provides it. Use Media's Auto/Music/Video selector for ambiguous browser sessions. Play/previous/next are disabled when the player does not advertise the capability. The app does not suppress the normal Windows volume flyout.
 
-Remove sign-in startup before deleting the portable folder. No service, driver or Explorer modification is installed.
+To uninstall, use **Settings › Apps › Installed apps › Arnav Island › Uninstall** (or run `ArnavIsland.exe --uninstall` from the ZIP copy's folder): it closes the island and removes it, its Start menu shortcut and start at sign-in, and offers to remove the phone camera from the PC. Your settings stay unless you tick *Also remove my settings*. No service, driver or Explorer modification is installed.
 
 ## v0.4 preferences and controls
 

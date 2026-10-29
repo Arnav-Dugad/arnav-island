@@ -86,6 +86,51 @@ int main(){
         CHECK(remoteSpeedAnswer({0,0xe8,3,0,0}).size()==1002&&remoteSpeedAnswer({0,0xe0,0x93,4,0}).size()==200002);
         std::vector<uint8_t> up{1};up.resize(501,0x77);CHECK((remoteSpeedAnswer(up)==std::vector<uint8_t>{remoteOk,1,0xf4,1,0,0}));
         CHECK((remoteSpeedAnswer({})==std::vector<uint8_t>{remoteFailed}&&remoteSpeedAnswer({0,1})==std::vector<uint8_t>{remoteFailed}&&remoteSpeedAnswer({7})==std::vector<uint8_t>{remoteUnsupported}));}
+    // Revision 11: each new answer read back as written (and the bytes where a phone reads them first), and nothing read from
+    // an answer that isn't one.
+    {auto u32=[](const std::vector<uint8_t>& b,size_t at){return uint32_t(b[at]|b[at+1]<<8|b[at+2]<<16|uint32_t(b[at+3])<<24);};
+        std::vector<RemoteProcess> top{{4242,L"Spotify",L"Glass Horizons",12.5,512ull<<20,true,false,false,std::vector<uint8_t>(30,4)},{4,L"System",L"",0.25,1<<20,false,true,false,{}}};
+        {const auto a=remoteProcessesAnswer(top);std::vector<RemoteProcess> back;CHECK(readRemoteProcesses(a,back)&&back.size()==2);
+            if(back.size()==2){CHECK(back[0].pid==4242&&back[0].name==L"Spotify"&&back[0].title==L"Glass Horizons"&&back[0].cpu==12.5&&back[0].memory==512ull<<20&&back[0].window&&!back[0].locked&&back[0].icon==top[0].icon);
+                CHECK(back[1].pid==4&&back[1].cpu==.25&&back[1].locked&&!back[1].window&&back[1].icon.empty());}
+            CHECK(!readRemoteProcesses({remoteUnsupported},back)&&!readRemoteProcesses(std::vector<uint8_t>(a.begin(),a.end()-3),back));}
+        PcBatteryHealth h;h.present=true;h.designMwh=76000;h.fullMwh=66880;h.cycles=312;h.chemistry=L"Li-ion";h.manufacturer=L"ASUSTeK";h.name=L"A32N2105";h.currentMwh=51234;h.rateMw=-9850;h.voltageMv=15870;
+        {const auto a=remoteBatteryHealthAnswer(h);CHECK(a[0]==remoteOk&&a[1]==1&&a[2]==1&&u32(a,3)==76000&&u32(a,7)==66880&&u32(a,11)==312&&u32(a,15)==6&&std::string(a.begin()+19,a.begin()+25)=="Li-ion");
+            CHECK(u32(a,a.size()-12)==51234&&int32_t(u32(a,a.size()-8))==-9850&&u32(a,a.size()-4)==15870);
+            PcBatteryHealth back;CHECK(readRemoteBatteryHealth(a,back)&&back.present&&back.fullMwh==66880&&back.cycles==312&&back.manufacturer==L"ASUSTeK"&&back.name==L"A32N2105"&&back.rateMw==-9850&&back.voltageMv==15870);
+            const auto none=remoteBatteryHealthAnswer({});CHECK(none.size()==3+12+12+12&&none[2]==0&&u32(none,11)==0xFFFFFFFFu);}
+        PcStorage st;st.state=0;st.progress=140;st.drives={{L"C:\\",L"Windows",0,1000204886016ull,312400000000ull,true},{L"D:\\",L"Data",9,2000398934016ull,1500000000000ull,false}};st.groups={{L"Apps",0,96ull<<30},{L"Recycle bin",8,1234567}};
+        {const auto a=remoteStorageAnswer(st);CHECK(a[0]==remoteOk&&a[1]==1&&a[2]==0&&a[3]==100&&a[4]==2&&u32(a,5)==3&&std::string(a.begin()+9,a.begin()+12)=="C:\\");
+            PcStorage back;CHECK(readRemoteStorage(a,back)&&back.state==0&&back.progress==100&&back.drives.size()==2&&back.groups.size()==2);
+            if(back.drives.size()==2&&back.groups.size()==2){CHECK(back.drives[0].label==L"Windows"&&back.drives[0].total==1000204886016ull&&back.drives[0].free==312400000000ull&&back.drives[0].system&&back.drives[1].kind==3&&!back.drives[1].system);
+                CHECK(back.groups[0].name==L"Apps"&&back.groups[0].bytes==96ull<<30&&back.groups[1].kind==8&&back.groups[1].bytes==1234567);}
+            CHECK((remoteStorageAnswer({})==std::vector<uint8_t>{remoteOk,1,0,0,0,0}));}
+        std::vector<RemoteStartupApp> boot{{L"0:Spotify",L"Spotify",L"\"C:\\Users\\a\\AppData\\Roaming\\Spotify\\Spotify.exe\" /minimized",0,false,true,std::vector<uint8_t>(20,7)},{L"1:SecurityHealth",L"Windows Security notification icon",std::wstring(500,L'x'),1,true,false,{}}};
+        {const auto a=remoteStartupAnswer(boot);CHECK(a[0]==remoteOk&&a[1]==1&&a[2]==2&&u32(a,3)==9&&std::string(a.begin()+7,a.begin()+16)=="0:Spotify");
+            std::vector<RemoteStartupApp> back;CHECK(readRemoteStartup(a,back)&&back.size()==2);
+            if(back.size()==2){CHECK(back[0].id==L"0:Spotify"&&back[0].command==boot[0].command&&back[0].source==0&&!back[0].enabled&&back[0].canChange&&back[0].icon==boot[0].icon);
+                CHECK(back[1].source==1&&back[1].enabled&&!back[1].canChange&&back[1].command.size()==400&&back[1].icon.empty());}}
+        PcNetwork wifi;wifi.name=L"Wi-Fi";wifi.description=L"Intel(R) Wi-Fi 6E AX211 160MHz";wifi.kind=1;wifi.up=wifi.isDefault=true;wifi.mac="A4:6B:B6:12:34:56";wifi.speed=1201000000;wifi.ipv4={"192.168.1.20/24"};wifi.ipv6={"fe80::1c2d:3e4f:5a6b:7c8d"};
+        wifi.gateway="192.168.1.1";wifi.dns={"192.168.1.1","1.1.1.1"};wifi.ssid=L"Home-5G";wifi.signal=72;wifi.band="5 GHz";wifi.channel=44;wifi.security="WPA2-Personal";
+        PcNetwork wired;wired.name=L"Ethernet";wired.description=L"Realtek PCIe GbE Family Controller";wired.kind=0;wired.signal=300;
+        {const auto a=remoteNetworkAnswer({wifi,wired});CHECK(a[0]==remoteOk&&a[1]==1&&a[2]==2&&u32(a,3)==5&&std::string(a.begin()+7,a.begin()+12)=="Wi-Fi");
+            std::vector<PcNetwork> back;CHECK(readRemoteNetwork(a,back)&&back.size()==2);
+            if(back.size()==2){const auto& w=back[0];CHECK(w.kind==1&&w.up&&w.isDefault&&w.mac==wifi.mac&&w.speed==1201000000&&w.ipv4==wifi.ipv4&&w.ipv6==wifi.ipv6&&w.gateway=="192.168.1.1"&&w.dns==wifi.dns);
+                CHECK(w.ssid==L"Home-5G"&&w.signal==72&&w.band=="5 GHz"&&w.channel==44&&w.security=="WPA2-Personal");
+                CHECK(back[1].kind==0&&!back[1].up&&back[1].signal==255&&back[1].ssid.empty()&&back[1].ipv4.empty()&&back[1].channel==0);}}
+        PcUpdates up;up.state=2;up.checked=1761700000;up.installed=1761000000;up.updates={{L"2026-10 Cumulative Update for Windows 11 Version 25H2 for x64-based Systems (KB5070001)",0,786ull<<20,true,true},{L"Intel - Display - 32.0.101.6000",1,0,false,false}};
+        {const auto a=remoteUpdatesAnswer(up);uint64_t at=0;std::memcpy(&at,a.data()+3,8);CHECK(a[0]==remoteOk&&a[1]==1&&a[2]==2&&at==1761700000&&a[19]==2);
+            PcUpdates back;CHECK(readRemoteUpdates(a,back)&&back.state==2&&back.checked==1761700000&&back.installed==1761000000&&back.updates.size()==2);
+            if(back.updates.size()==2){CHECK(back.updates[0].title==up.updates[0].title&&back.updates[0].kind==0&&back.updates[0].size==786ull<<20&&back.updates[0].downloaded&&back.updates[0].restart);
+                CHECK(back.updates[1].kind==1&&back.updates[1].size==0&&!back.updates[1].downloaded&&!back.updates[1].restart);}
+            PcUpdates checking;checking.state=9;CHECK(remoteUpdatesAnswer(checking)[2]==4&&remoteUpdatesAnswer(checking).size()==20);}
+        std::vector<RemoteApp> apps{{L"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App",L"Calculator",std::vector<uint8_t>(40,2)},{L"{6D809377-6AF0-444B-8957-A3773F02200E}\\Microsoft VS Code\\Code.exe",L"Visual Studio Code",std::vector<uint8_t>(9000,1)}};
+        {const auto a=remoteAppsAnswer(apps);CHECK(a[0]==remoteOk&&a[1]==1&&(a[2]|a[3]<<8)==2&&u32(a,4)==apps[0].id.size());
+            std::vector<RemoteApp> back;CHECK(readRemoteApps(a,back)&&back.size()==2);
+            if(back.size()==2){CHECK(back[0].id==apps[0].id&&back[0].name==L"Calculator"&&back[0].icon==apps[0].icon&&back[1].id==apps[1].id&&back[1].icon.empty());}
+            CHECK((remoteAppsAnswer({})==std::vector<uint8_t>{remoteOk,1,0,0}));CHECK(!readRemoteApps({remoteOk,2,0,0},back));}
+        // Each reader reads the bytes the phone gets, and only those: one byte short fails.
+        {const auto a=remoteNetworkAnswer({wifi});std::vector<PcNetwork> back;CHECK(readRemoteNetwork(a,back));CHECK(!readRemoteNetwork(std::vector<uint8_t>(a.begin(),a.end()-1),back));}}
     // 0.20.1: the pairing link's QR code. The modules are those of the reference encoder (Nayuki's qrcodegen) for the same
     // text, version 3 at level M, and decode (zxing-cpp; and ZXing in the phone's own tests) to the link.
     {const auto q=qrEncode("arnavisland://pair/7K2PMX4Q");CHECK(q.size==29&&q.modules.size()==29u*29u);

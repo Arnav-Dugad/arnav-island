@@ -1,3 +1,26 @@
+# Arnav Island 0.28.0-preview.1 — the whole PC, at a glance
+
+Made for Arnav Island for Android 1.11. With an older phone app, everything works as in 0.27.
+
+## An installer
+**Arnav-Island-Setup-0.28.0-preview.1.exe:** one file that installs Arnav Island for you (no administrator needed) in `%LOCALAPPDATA%\Programs\Arnav Island`, or updates the copy you already have where it is. It closes the island first, adds it to the Start menu and to Settings › Apps (with an uninstaller), starts it at sign-in, and can set up the phone camera for other apps on the way (Windows asks once). `/S` installs silently. Uninstalling keeps your settings unless you ask. The zip still works as before, and updates still come by themselves.
+
+## Your PC, on the phone (with the phone app 1.11)
+- **Battery health:** how much the battery still holds against new, its charge cycles, chemistry and maker.
+- **Storage:** each drive, and on the Windows drive what fills it: apps, documents, downloads, pictures, videos, music, desktop, the recycle bin and the system. Measured in the background, never following links.
+- **Startup apps:** what starts with Windows (yours and the PC's, Store apps too), with a switch for each of yours, kept where Task Manager keeps it.
+- **Network:** each adapter: the Wi-Fi's name, signal, band, channel and security, the addresses, gateway, DNS, MAC and link speed.
+- **Windows Update:** up to date, updates waiting (with their kind and size) or a restart needed; check now, or open it on the PC. Nothing is ever installed from the phone.
+- **The apps using the most** processor or memory, read only.
+- **Open any app** from the Start menu, from the phone (and by voice: "open Spotify").
+
+## Checks
+- **Unit suites:** core, provider lifecycle, dashboard models, share loopback (287 checks), phase models, live activity and microphone, and the new installer plan: all passing.
+- **On this PC, read only:** each new reading taken from the island's own code: the network (Wi-Fi name, signal, band, channel, security), Windows Update (its real updates and dates), the startup list, storage, processes and the apps.
+- **The installer:** built, signed and trial-installed into a test folder, every file byte for byte the zip's, still signed. Updating a running copy in place.
+- **The phone 1.11 against this PC's engine** over the network: all passing; on the Android emulator, every new section against the test PC.
+- **Not yet tried:** toggling a startup app on a real PC's registry (tested against the test PC), and the installer's administrator camera step.
+
 # Arnav Island 0.27.1-preview.1 — the camera, fixed
 
 ## Fixed

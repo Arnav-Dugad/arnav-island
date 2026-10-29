@@ -247,3 +247,9 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **Slides:** the running PowerPoint is read (the slide, its notes and its picture) only while the phone's presenter asks. PowerPoint is never started by it.
 - **Transfers that carry on** keep what arrived of an unfinished transfer for a day, then delete it.
 - **The phone's camera as a Windows camera** is set up only when you allow it (0.27.1: the island asks Windows once, the first time the phone's camera starts); its frames go straight from the phone to the apps that use the camera, never recorded or kept.
+
+## v0.28 the whole PC, at a glance
+- **Battery health, storage, startup apps, the network and Windows Update** are read on this PC and go only to your paired phone when it asks, sealed, while "My phone can control this PC" is on. Storage is measured on this PC (sizes only; no file names leave it).
+- **Startup apps:** the phone can turn your own startup entries on and off (where Task Manager keeps that choice); the PC-wide ones only show.
+- **Windows Update:** reading it uses Windows' own update service (which may check Microsoft's servers, as Windows does); nothing is installed from the phone.
+- **The installer** writes only to your own account (its folder, the Start menu, Settings › Apps and start at sign-in) unless you let it set up the camera.

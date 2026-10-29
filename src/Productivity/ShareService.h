@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include "Mirror/MirrorIo.h"
 #include <memory>
@@ -45,7 +46,10 @@ constexpr UINT ShareMessage=WM_APP+45;
 // day (Resume/<token>). A phone's live activities (notice 7: a delivery, a ride, a timer) go to the island (options.live).
 // The remote gains this PC's temperatures (25), the island's clipboard history (27), the running PowerPoint show (29) and
 // a speed test (30); top apps (24), files (26) and screenshots (28) are reserved, answered unsupported for now.
-constexpr int shareProtocol=2,shareRevision=10;
+// Revision 11 (0.28): the remote reads this PC further: its top apps (24, list only), the battery's health (31), storage
+// (32), the apps that start with Windows (33, the user's own ones switched on or off as Task Manager does), the network
+// (34), Windows Update (35, read and checked, never installed) and the Start menu's apps (37, opened from the phone).
+constexpr int shareProtocol=2,shareRevision=11;
 // Remote commands (mode R) and their answers.
 // Revision 3: RingPC (find this PC), Lyrics (the song's lines and word times, when the island has them).
 enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,ClipboardGet=6,ClipboardSet=7,Seek=8,Open=9,RingPC=10,Lyrics=11,
@@ -59,7 +63,9 @@ enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,Clipboa
     // Revision 9 (0.26): shuffle, repeat and up next; each app's volume; the sound's levels; the network adapters.
     Playback=20,Mixer=21,Levels=22,Machine=23,
     // Revision 10 (0.27): top apps, temperatures, files, the clipboard history, a screenshot, slides, a speed test.
-    Processes=24,Sensors=25,Files=26,Clips=27,Screenshot=28,Slides=29,Speed=30};
+    Processes=24,Sensors=25,Files=26,Clips=27,Screenshot=28,Slides=29,Speed=30,
+    // Revision 11 (0.28): the battery's health, storage, startup apps, the network, Windows Update, the Start menu's apps.
+    BatteryHealth=31,Storage=32,Startup=33,Network=34,Updates=35,Apps=37};
 constexpr uint8_t remoteOk=0,remoteNotAllowed=1,remoteUnsupported=2,remoteFailed=3;
 // What the island reports to a phone's remote. cover: a small JPEG (at most shareCoverLimit bytes), or empty.
 // clipboard (0.20): the island's universal clipboard is on, so the phone sends its own copies over as it opens.
@@ -291,6 +297,42 @@ struct RemoteSlides{int state=0,index=0,count=0;std::wstring deck,title,notes;st
 std::vector<uint8_t> remoteSlidesAnswer(const RemoteSlides&);
 // Speed: payload [0, u32 bytes] is answered with that many bytes (at most 200000); [1, filler] with u32 how many arrived.
 std::vector<uint8_t> remoteSpeedAnswer(const std::vector<uint8_t>& payload);
+// ---- Revision 11 (0.28) ----
+// Each answer has a reader beside it (the tests' and the made-up PC's way back from bytes): false when the bytes aren't one.
+bool readRemoteProcesses(const std::vector<uint8_t>&,std::vector<RemoteProcess>&);
+// Battery health (no payload): u8 present, u32 design and full charge capacity (mWh), u32 cycles (0xFFFFFFFF unknown),
+// chemistry ("Li-ion", "LiP" or ""), manufacturer, device name, u32 capacity now (mWh), i32 rate (mW, + charging), u32 mV.
+struct PcBatteryHealth{bool present=false;uint32_t designMwh=0,fullMwh=0,cycles=0xFFFFFFFFu,currentMwh=0,voltageMv=0;int32_t rateMw=0;std::wstring chemistry,manufacturer,name;};
+std::vector<uint8_t> remoteBatteryHealthAnswer(const PcBatteryHealth&);bool readRemoteBatteryHealth(const std::vector<uint8_t>&,PcBatteryHealth&);
+// Storage: payload [u8 op] (0 read, 1 measure again). Answers u8 state (0 measuring, 1 ready), u8 progress, u8 n and each
+// drive's root, label, u8 kind (0 fixed, 1 removable, 2 network, 3 other), u64 total and free bytes and u8 system, then u8 m
+// and the system drive's groups: name, u8 kind (0 apps, 1 Windows, 2 documents, 3 downloads, 4 pictures, 5 videos, 6 music,
+// 7 desktop, 8 recycle bin, 9 other) and u64 bytes.
+struct PcDrive{std::wstring root,label;int kind=0;uint64_t total=0,free=0;bool system=false;};
+struct PcStorageGroup{std::wstring name;int kind=0;uint64_t bytes=0;};
+struct PcStorage{int state=0,progress=0;std::vector<PcDrive> drives;std::vector<PcStorageGroup> groups;};
+std::vector<uint8_t> remoteStorageAnswer(const PcStorage&);bool readRemoteStorage(const std::vector<uint8_t>&,PcStorage&);
+// Startup: payload [0] lists; [1, id, u8 enabled] switches one (only those with canChange). Both answer u8 n and each one's
+// id ("<source>:<value or file name>"), name, command (at most 400), u8 source (0 HKCU Run, 1 HKLM Run, 2 HKLM WOW6432 Run,
+// 3 the user's Startup folder, 4 the common one, 5 a Store app's startup task), u8 enabled, u8 canChange, blob icon (PNG).
+struct RemoteStartupApp{std::wstring id,name,command;int source=0;bool enabled=true,canChange=false;std::vector<uint8_t> icon;};
+std::vector<uint8_t> remoteStartupAnswer(const std::vector<RemoteStartupApp>&);bool readRemoteStartup(const std::vector<uint8_t>&,std::vector<RemoteStartupApp>&);
+// Network (no payload): u8 n and each adapter's name, description, u8 kind (0 Ethernet, 1 Wi-Fi, 2 other), u8 up, u8 default
+// route, MAC, u64 link speed (bits a second), u8 n4 and IPv4s ("192.168.1.20/24"), u8 n6 and IPv6s, gateway, u8 nDns and
+// DNS servers, SSID, u8 signal (percent, 255 unknown), band ("2.4 GHz", "5 GHz", "6 GHz" or ""), u16 channel, security.
+struct PcNetwork{std::wstring name,description,ssid;int kind=2,signal=255,channel=0;bool up=false,isDefault=false;uint64_t speed=0;std::string mac,gateway,band,security;std::vector<std::string> ipv4,ipv6,dns;};
+std::vector<uint8_t> remoteNetworkAnswer(const std::vector<PcNetwork>&);bool readRemoteNetwork(const std::vector<uint8_t>&,std::vector<PcNetwork>&);
+// Windows Update: payload [u8 op] (0 read, 1 check now, 2 open Windows Update here). Answers u8 state (0 unknown, 1 up to
+// date, 2 updates available, 3 restart required, 4 checking), u64 last checked and last installed (unix seconds, 0 unknown),
+// u8 n and each update's title (at most 200), u8 kind (0 quality, 1 driver, 2 feature, 3 definitions, 4 other), u64 size
+// (0 unknown), u8 downloaded, u8 needs a restart.
+struct PcUpdate{std::wstring title;int kind=4;uint64_t size=0;bool downloaded=false,restart=false;};
+struct PcUpdates{int state=0;uint64_t checked=0,installed=0;std::vector<PcUpdate> updates;};
+std::vector<uint8_t> remoteUpdatesAnswer(const PcUpdates&);bool readRemoteUpdates(const std::vector<uint8_t>&,PcUpdates&);
+// Apps: payload [0, u8 icons] lists the Start menu's apps (u16 n and each one's id, name and blob icon, a 48-pixel PNG when
+// asked), by name; [1, id] opens one (answered 1).
+struct RemoteApp{std::wstring id,name;std::vector<uint8_t> icon;};
+std::vector<uint8_t> remoteAppsAnswer(const std::vector<RemoteApp>&);bool readRemoteApps(const std::vector<uint8_t>&,std::vector<RemoteApp>&);
 // A request's payload, read in order; any read past its end fails (and so does everything after).
 class RemoteReader{const std::vector<uint8_t>& b_;size_t at_=0;bool ok_=true;
 public:
@@ -301,6 +343,10 @@ public:
     int i32(){if(!ok_||at_+4>b_.size()){ok_=false;return 0;}uint32_t v=0;for(int k=0;k<4;++k)v|=uint32_t(b_[at_+size_t(k)])<<(8*k);at_+=4;return int(v);}
     std::string bytes(size_t limit){const int n=i32();if(!ok_||n<0||size_t(n)>limit||at_+size_t(n)>b_.size()){ok_=false;return {};}std::string s(b_.begin()+long(at_),b_.begin()+long(at_+size_t(n)));at_+=size_t(n);return s;}
     std::wstring text(size_t limit);
+    // Revision 11: what answers carry as well.
+    uint64_t u64(){const uint64_t lo=uint32_t(i32()),hi=uint32_t(i32());return ok_?lo|hi<<32:0;}
+    double f32(){const uint32_t u=uint32_t(i32());float f=0;std::memcpy(&f,&u,4);return f;}
+    std::vector<uint8_t> blob(size_t limit){const std::string s=bytes(limit);return std::vector<uint8_t>(s.begin(),s.end());}
 };
 // "Photos", "notes.txt", or "notes.txt and 2 more", for a transfer of these top-level items.
 std::wstring shareTitle(const std::vector<std::wstring>& names);

@@ -183,6 +183,11 @@ class IslandWindow {
     // encoded once per copy) and the running PowerPoint show (asked on a worker, its slides' pictures kept there).
     std::vector<uint8_t> remoteSensors();std::vector<uint8_t> remoteClips(const std::vector<uint8_t>&);std::vector<uint8_t> remoteSlides(const std::vector<uint8_t>&);
     std::map<uint64_t,std::vector<uint8_t>> clipThumbs_;
+    // 0.28 (revision 11, IslandRemote.cpp): what only reads this PC (top apps, storage, startup apps, the network, Windows
+    // Update, the Start menu's apps) is answered on the network thread that asked (remoteSystem; empty for what this thread
+    // answers): the battery's health, an app opened as the command bar opens it, Windows Update's page shown here.
+    static std::vector<uint8_t> remoteSystem(RemoteCommand,const std::vector<uint8_t>&);
+    std::vector<uint8_t> remoteBatteryHealth();std::vector<uint8_t> remoteApps(const std::vector<uint8_t>&);std::vector<uint8_t> remoteUpdates(const std::vector<uint8_t>&);
     std::shared_ptr<const WallpaperLuma> wallLuma_;bool wallLoading_=false,qaBackdrop_=false;void loadWallpaperLuma();void adaptBackdrop();bool backdropCovered()const;
     // The body's top-left in the canvas (DIPs), including how far a notification pill has dropped (drop: 0..1).
     // Phase 5H: spread side by side with a waiting alert, the pill sits further left.

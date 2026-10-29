@@ -47,8 +47,11 @@ void IslandWindow::syncSharing(){
         o.folder=data.wstring();o.downloads=folderOf(FOLDERID_Downloads);if(o.downloads.empty())o.downloads=(data/L"Received").wstring();o.handoff=(data/L"Handoff").wstring();
         // 0.19: a phone's remote, answered on this thread (a phone gives up on an answer that takes over 4 s).
         // 0.27: the speed test is answered right here (it measures the network, not the island's thread).
+        // 0.28: and what only reads this PC (its folders' sizes, Windows Update, icons: slow, and none of it the island's).
         o.remote=[window=window_,allowed=inputAllowed_](const std::string& peer,RemoteCommand command,const std::vector<uint8_t>& payload){
-            if(command==RemoteCommand::Speed)return allowed->load()?remoteSpeedAnswer(payload):std::vector<uint8_t>{remoteNotAllowed};return remoteFromNetwork(window,peer,command,payload);};
+            if(command==RemoteCommand::Speed)return allowed->load()?remoteSpeedAnswer(payload):std::vector<uint8_t>{remoteNotAllowed};
+            if(allowed->load())if(auto here=remoteSystem(command,payload);!here.empty())return here;
+            return remoteFromNetwork(window,peer,command,payload);};
         // 0.27: a phone's live activities go to the island's thread as they come (it decides whether they show).
         o.live=[window=window_](const std::string& peer,const std::wstring& phone,const std::vector<uint8_t>& notice){
             auto call=std::make_shared<RemoteCall>();call->peer=peer;call->phone=phone;call->payload=notice;call->live=true;
@@ -416,11 +419,17 @@ std::vector<uint8_t> IslandWindow::remoteAnswer(const std::string& peer,RemoteCo
     case RemoteCommand::Levels:return remoteLevels();
     case RemoteCommand::Machine:return remoteMachine();
     // 0.27 (revision 10): temperatures, the clipboard history, the running show (IslandRemote.cpp) and the speed test (the
-    // network thread answers it first; this is the same answer). Top apps, files and screenshots aren't answered yet.
+    // network thread answers it first; this is the same answer). Files and screenshots aren't answered yet.
     case RemoteCommand::Sensors:return remoteSensors();
     case RemoteCommand::Clips:return remoteClips(payload);
     case RemoteCommand::Slides:return remoteSlides(payload);
     case RemoteCommand::Speed:return remoteSpeedAnswer(payload);
+    // 0.28 (revision 11): the battery's health, an app opened, Windows Update's page here; top apps, storage, startup apps
+    // and the network the network thread answers first (this is the same answer, should one come this way).
+    case RemoteCommand::BatteryHealth:return remoteBatteryHealth();
+    case RemoteCommand::Apps:return remoteApps(payload);
+    case RemoteCommand::Updates:return remoteUpdates(payload);
+    case RemoteCommand::Processes:case RemoteCommand::Storage:case RemoteCommand::Startup:case RemoteCommand::Network:return remoteSystem(command,payload);
     case RemoteCommand::RingPC:{ringChimes_=8;playSound(Sound::Chime);SetTimer(window_,RingPCTimer,1400,nullptr);phoneCard(L"Here I am",from+L" is looking for this PC",from,nullptr,12);store_.log("Info","phone_find_pc");return {remoteOk};}
     // The song's lyrics, as the island has them (the phone shows them in time with the song).
     case RemoteCommand::Lyrics:{const std::wstring key=p.available?p.title+L"\t"+p.artist:std::wstring();int state=0;std::vector<ShareLyricLine> lines;

@@ -1,10 +1,12 @@
-# Arnav Island 0.27 — on its way
+# Arnav Island 0.28 — the whole PC, at a glance
 
 A native Windows 11 island with physical spring motion, real system information and no cloud.
 
-[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.27.1-preview.1) · [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.10
+[Download the Windows x64 preview](https://github.com/Arnav-Dugad/arnav-island/releases/tag/v0.28.0-preview.1) · [Arnav Island for Android](https://github.com/Arnav-Dugad/arnav-island-android/releases/latest) 1.11
 
 **Your phone, anywhere.** Your phone and your PCs now reach each other on any network: another Wi-Fi, mobile data, anywhere. It’s free and end-to-end encrypted. To pair from far away, open **Shelf › Nearby › Pair with a code** and scan its QR code with the phone app (or type the code).
+
+**The whole PC, at a glance (0.28).** A proper installer (Arnav-Island-Setup), and with the phone app 1.11 the phone sees this PC's battery health, what fills its storage, its startup apps (and turns yours on and off), its network, Windows Update, the apps using the most, and opens any of its apps, by voice too.
 
 **On its way (0.27).** With the phone app 1.9: what's on its way to you (a Swiggy, Zomato or Blinkit order, a ride, a timer) shows on the island as a live activity, with its tracking line. Transfers carry on where a dropped connection left them. The phone sees this PC's temperatures, its clipboard history, PowerPoint's slides and notes, and the connection's speed. The phone's camera can be a real Windows camera, and its microphone comes over compressed.
 
@@ -48,12 +50,12 @@ A native Windows 11 island with physical spring motion, real system information 
 
 ![Up next, a song being dragged into place](docs/evidence/v0.17/up-next.png)
 
-No account, subscription, browser engine, driver or administrator access is required. Extract the ZIP and run ArnavIsland.exe. Only a few features go online, and all are off until you turn them on: synced lyrics, currency conversion, weather and site icons. Sharing talks only to your own devices: directly on your network, and through a public relay when they’re on different networks. The relay is end-to-end encrypted, and *Reach my devices anywhere* turns it off. the music library reads your Music folder on this PC only.
+No account, subscription, browser engine, driver or administrator access is required. Run **Arnav-Island-Setup-<version>.exe** from the release (recommended: it installs for you only, adds Start and start at sign-in, and Uninstall is in Settings › Apps), or extract the ZIP anywhere and run ArnavIsland.exe. Only a few features go online, and all are off until you turn them on: synced lyrics, currency conversion, weather and site icons. Sharing talks only to your own devices: directly on your network, and through a public relay when they’re on different networks. The relay is end-to-end encrypted, and *Reach my devices anywhere* turns it off. the music library reads your Music folder on this PC only.
 
 [Release notes](docs/RELEASE_NOTES.md) · [Quick start](docs/QUICK_START.md) · [Report](docs/REPORT.md) · [Feature limits](docs/FEATURE_MATRIX.md) · [Delivery phases](docs/DELIVERY_PHASES.md) · [Design system](docs/DESIGN_SYSTEM.md) · [Performance](docs/PERFORMANCE_RESULTS.md) · [Privacy](docs/PRIVACY.md)
 
 ## Build
 
-MinGW-w64 GCC 16 and CMake: `scripts/build.ps1 -Test` builds the app and runs the unit suites; `scripts/package.ps1` makes the release ZIP. Backend: Win32, DirectComposition, Direct2D/DirectWrite, Windows.UI.Composition for glass, Windows.Media.Ocr for text recognition, WIC for images, the Windows Search index (OLE DB) for files, Windows.Devices.Radios for Bluetooth and Wi-Fi, PDH performance counters for the GPU, UI Automation for screen readers, WinHTTP for the optional lyrics, exchange rates, weather and site icons, Winsock with Windows CNG (ECDH P-256, AES-GCM) and DPAPI for sharing between your PCs, and Media Foundation with Windows media transport controls for the island's own player. Unavailable values are shown as unavailable, never invented.
+MinGW-w64 GCC 16 and CMake: `scripts/build.ps1 -Test` builds the app and runs the unit suites; `scripts/package.ps1` signs the release and makes its ZIP and its installer (`Arnav-Island-Setup-<version>.exe`, built from `src/Setup` with the signed files inside, then signed). Backend: Win32, DirectComposition, Direct2D/DirectWrite, Windows.UI.Composition for glass, Windows.Media.Ocr for text recognition, WIC for images, the Windows Search index (OLE DB) for files, Windows.Devices.Radios for Bluetooth and Wi-Fi, PDH performance counters for the GPU, UI Automation for screen readers, WinHTTP for the optional lyrics, exchange rates, weather and site icons, Winsock with Windows CNG (ECDH P-256, AES-GCM) and DPAPI for sharing between your PCs, and Media Foundation with Windows media transport controls for the island's own player. Unavailable values are shown as unavailable, never invented.
 
 ![Your other PC's Shelf, one item on its way](docs/evidence/v0.17/other-pc-shelf.png)

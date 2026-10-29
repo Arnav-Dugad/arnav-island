@@ -1,5 +1,7 @@
 #include "Island/IslandWindow.h"
 #include "Mirror/PhoneCamera.h"
+#include "Setup/Install.h"
+#include "Version.h"
 // A crash leaves crash.txt next to the logs: the exception, and each stack frame as a module
 // and offset (no memory contents, file names or user data), so it can be mapped to source.
 static LONG WINAPI crashReport(EXCEPTION_POINTERS* info){
@@ -24,6 +26,10 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR command,int){
     if(command){const wchar_t* at=wcsstr(command,L"--after=");if(at){const DWORD pid=DWORD(_wtoi(at+8));if(HANDLE old=pid?OpenProcess(SYNCHRONIZE,FALSE,pid):nullptr){WaitForSingleObject(old,15000);CloseHandle(old);}}}
     // 0.27: --set-up-camera (as administrator): "Arnav Island Phone Camera" set up once for this PC, then done.
     if(command&&wcsstr(command,L"--set-up-camera")){std::wstring said;const bool ok=nexus::mirror::PhoneCamera::setUp(said);if(!wcsstr(command,L"--quiet"))MessageBoxW(nullptr,said.c_str(),L"Arnav Island",ok?MB_ICONINFORMATION:MB_ICONERROR);return ok?0:1;}
+    // 0.28: --uninstall (the Apps list's Uninstall, or the Start menu's): this copy, its shortcut and its start at sign-in go;
+    // --remove-camera (as administrator, asked for by the uninstaller) takes the phone camera back off the PC.
+    if(command&&wcsstr(command,L"--uninstall"))return nexus::setup::uninstall(command);
+    if(command&&wcsstr(command,L"--remove-camera")){std::wstring said;const bool ok=nexus::mirror::PhoneCamera::tearDown(said);if(!wcsstr(command,L"--quiet"))MessageBoxW(nullptr,said.c_str(),L"Arnav Island",ok?MB_ICONINFORMATION:MB_ICONERROR);return ok?0:1;}
     // 0.27: a capture run (tests only) has a lock of its own, so it can be taken beside the island in use.
     HANDLE single=CreateMutexW(nullptr,TRUE,command&&wcsstr(command,L"--capture")?L"Local\\ArnavIsland.Capture":L"Local\\ArnavIsland.App");
     if(GetLastError()==ERROR_ALREADY_EXISTS){
@@ -33,6 +39,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR command,int){
         else if(existing&&args.find(L"--expanded")!=std::wstring::npos)PostMessageW(existing,WM_APP+50,2,0);
         if(single)CloseHandle(single);return 0;
     }
+    // 0.28: installed with the setup and since updated by itself: the Apps list is told the version that's here now.
+    nexus::setup::refreshInstalledVersion(nexus::appVersion);
     HRESULT hr=OleInitialize(nullptr);
     int result=1;
     try{nexus::IslandWindow app;result=app.run(instance,command?command:L"");}

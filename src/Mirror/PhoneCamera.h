@@ -28,6 +28,8 @@ public:
     // registered for one user (HKCU) is refused at Start (0x80070003). This sets it up once for the PC (administrators only:
     // ArnavIsland.exe --set-up-camera): the source copied to Program Files and its class registered in HKLM, used from then on.
     static bool setUp(std::wstring& why);
+    // 0.28: and undone for the PC (ArnavIsland.exe --remove-camera, as administrator, when the island is uninstalled).
+    static bool tearDown(std::wstring& why);
 private:
     void serve();
     struct Camera; Camera* camera_ = nullptr;

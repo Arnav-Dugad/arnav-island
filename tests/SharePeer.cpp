@@ -109,7 +109,16 @@ int main(int argc,char** argv){
         bool shuffle=false;int repeat=0;std::vector<RemoteTrack> upNext{{L"Northern Lines",L"Aurora Fields",201},{L"Paper Boats",L"Lumen Drive",187.5},{L"Slow Tide",L"Harbor Lights",0}};
         std::vector<RemoteMixerEntry> mixer{{4242,L"Spotify",72,0,false,false,true,{}},{5150,L"Microsoft Edge",100,0,false,false,false,{}},{0,L"System sounds",64,0,false,true,false,{}}};
         // Revision 10: a clipboard history (a note, a link, an image, two files, a password-like copy kept hidden) and a deck.
-        std::vector<RemoteClip> clips;int slide=3;};
+        std::vector<RemoteClip> clips;int slide=3;
+        // Revision 11: startup apps that remember their switches, a storage measure and an update check that take a few
+        // seconds (from when asked; -1 never), when this PC last checked for updates.
+        std::vector<RemoteStartupApp> startup{{L"0:OneDrive",L"Microsoft OneDrive",L"\"C:\\Program Files\\Microsoft OneDrive\\OneDrive.exe\" /background",0,true,true,{}},
+            {L"0:Spotify",L"Spotify",L"\"C:\\Users\\Arnav\\AppData\\Roaming\\Spotify\\Spotify.exe\" /minimized",0,false,true,{}},
+            {L"0:ArnavIsland",L"Arnav Island",L"\"C:\\Users\\Arnav\\Desktop\\Arnav Island\\app\\ArnavIsland.exe\" --startup",0,true,true,{}},
+            {L"2:Steam",L"Steam",L"\"C:\\Program Files (x86)\\Steam\\steam.exe\" -silent",2,false,false,{}},
+            {L"1:SecurityHealth",L"Windows Security notification icon",L"%windir%\\system32\\SecurityHealthSystray.exe",1,true,false,{}},
+            {L"3:Ollama.lnk",L"Ollama",L"\"C:\\Users\\Arnav\\AppData\\Local\\Programs\\Ollama\\ollama app.exe\"",3,true,true,{}}};
+        double measuring=-1,checking=-1;uint64_t checked=0;};
     auto made=std::make_shared<Made>();
     {const uint64_t now=uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
         made->clips={{5,0,L"Ship 0.27 on Friday: resumable transfers, live activities",now-60000,true,{}},{4,0,L"https://github.com/arnavdugad/arnav-island/releases",now-90000,false,{}},
@@ -212,7 +221,7 @@ int main(int argc,char** argv){
         case RemoteCommand::Levels:{const double t=std::chrono::duration<double>(std::chrono::steady_clock::now()-began).count();std::vector<uint8_t> bands;
             for(int b=0;b<24;++b)bands.push_back(uint8_t(std::clamp(140+90*std::sin(t*4+b*.5)-b*3,0.,255.)));return remoteLevelsAnswer(int(160+60*std::sin(t*2)),false,bands);}
         // Revision 10: made-up temperatures, a clipboard history that remembers pins and deletes, a running show of twelve
-        // slides (pictures made here), and the speed test. Top apps, files and screenshots are reserved (unsupported).
+        // slides (pictures made here), and the speed test. Files and screenshots are reserved (unsupported).
         case RemoteCommand::Sensors:{const double t=std::chrono::duration<double>(std::chrono::steady_clock::now()-began).count();PcSensors s;s.cpu=std::round((58+6*std::sin(t*.4))*10)/10;s.gpu=std::round((47+5*std::sin(t*.3+1))*10)/10;
             s.zones={{L"Thermal zone THM0",s.cpu},{L"Thermal zone TZ01",44.5},{L"NVIDIA GeForce RTX 4060 Laptop GPU",s.gpu}};s.fans={{L"Graphics fan",1850}};say("REMOTE sensors");return remoteSensorsAnswer(s);}
         case RemoteCommand::Clips:{RemoteReader in(payload);const int op=in.u8();std::lock_guard lock(made->m);auto& list=made->clips;size_t most=40;bool thumbs=true;
@@ -231,7 +240,60 @@ int main(int argc,char** argv){
             if(op==0&&payload.size()>=2&&payload[1]){r.current=picture(640,360,colours[i%6],false,i);if(i<12)r.next=picture(480,270,colours[(i+1)%6],false,i+1);}
             return remoteSlidesAnswer(r);}
         case RemoteCommand::Speed:return remoteSpeedAnswer(payload);
-        case RemoteCommand::Processes:case RemoteCommand::Files:case RemoteCommand::Screenshot:return {remoteUnsupported};
+        case RemoteCommand::Files:case RemoteCommand::Screenshot:return {remoteUnsupported};
+        // Revision 11: top apps (read only; their CPU moves), a laptop's battery health, two drives (a measure again takes three
+        // seconds), startup apps (the user's own switch), an Ethernet and a Wi-Fi adapter, three updates (a check takes three
+        // seconds), and twelve Start menu apps to open. Icons are real PNGs made here.
+        case RemoteCommand::Processes:{RemoteReader in(payload);const int op=in.u8();if(op==1)return {remoteUnsupported};const int sort=in.u8(),most=in.u8(),icons=in.u8();
+            if(!in.ok())return {remoteFailed};if(op!=0)return {remoteUnsupported};
+            const double t=std::chrono::duration<double>(std::chrono::steady_clock::now()-began).count();auto wave=[&](double base,double spread,double phase){return std::max(0.,base+spread*std::sin(t*.7+phase));};
+            std::vector<RemoteProcess> list{{18244,L"Microsoft Edge",L"Arnav Island – GitHub – Microsoft Edge",wave(6.5,3,0),1890ull<<20,true,false,false,{}},{4242,L"Spotify",L"Glass Horizons – Aurora Fields",wave(2.1,1,1),412ull<<20,true,false,false,{}},
+                {9120,L"Visual Studio Code",L"IslandRemote.cpp – Arnav Island – Visual Studio Code",wave(4.2,2.5,2),1240ull<<20,true,false,false,{}},{2210,L"Arnav Island",L"",wave(.8,.4,3),61ull<<20,false,false,true,{}},
+                {6600,L"Windows Explorer",L"Downloads",wave(.6,.3,4),188ull<<20,true,false,false,{}},{4,L"System",L"",wave(1.4,.8,5),12ull<<20,false,true,false,{}},
+                {3312,L"Antimalware Service Executable",L"",wave(3,2.8,6),305ull<<20,false,true,false,{}},{7788,L"Discord",L"#general – Discord",wave(1.2,.6,7),356ull<<20,true,false,false,{}}};
+            if(icons){static const std::vector<std::vector<uint8_t>> made32{picture(32,32,0x0078d7,true),picture(32,32,0x1db954,true),picture(32,32,0x23a9f2,true),picture(32,32,0x5fd9b5,true),picture(32,32,0xf3c13a,true),picture(32,32,0x8e8e93,true),picture(32,32,0x2f6fdb,true),picture(32,32,0x5865f2,true)};
+                for(size_t i=0;i<list.size();++i)list[i].icon=made32[i];}
+            std::sort(list.begin(),list.end(),[&](auto& a,auto& b){return sort==1?a.memory>b.memory:a.cpu>b.cpu;});if(list.size()>size_t(std::min(most,30)))list.resize(size_t(std::min(most,30)));
+            say("REMOTE processes");return remoteProcessesAnswer(list);}
+        case RemoteCommand::BatteryHealth:{PcBatteryHealth h;h.present=true;h.designMwh=76000;h.fullMwh=66880;h.cycles=312;h.chemistry=L"Li-ion";h.manufacturer=L"ASUSTeK";h.name=L"A32N2105";h.currentMwh=54830;h.rateMw=-9850;h.voltageMv=15870;
+            say("REMOTE battery health");return remoteBatteryHealthAnswer(h);}
+        case RemoteCommand::Storage:{RemoteReader in(payload);const int op=in.u8();if(!in.ok())return {remoteFailed};if(op>1)return {remoteUnsupported};std::lock_guard lock(made->m);
+            const double t=std::chrono::duration<double>(std::chrono::steady_clock::now()-began).count();if(op==1&&(made->measuring<0||t-made->measuring>=3)){made->measuring=t;say("STORAGE measure");}
+            const double gone=made->measuring<0?3:t-made->measuring;PcStorage s;s.state=gone>=3?1:0;s.progress=s.state?100:int(gone/3*100);
+            s.drives={{L"C:\\",L"Windows",0,1000202039296ull,312461942784ull,true},{L"D:\\",L"Data",0,2000396746752ull,1210347384832ull,false}};
+            const std::vector<PcStorageGroup> all{{L"Apps",0,103079215104ull},{L"Documents",2,22548578304ull},{L"Downloads",3,36507222016ull},{L"Pictures",4,51539607552ull},{L"Videos",5,77309411328ull},{L"Music",6,12884901888ull},
+                {L"Desktop",7,6442450944ull},{L"Recycle bin",8,1395864371ull},{L"System",1,62277025792ull},{L"Other",9,315537291264ull}};
+            s.groups.assign(all.begin(),all.begin()+long(s.state?all.size():std::min(all.size(),size_t(gone/3*all.size()))));return remoteStorageAnswer(s);}
+        case RemoteCommand::Startup:{RemoteReader in(payload);const int op=in.u8();if(!in.ok())return {remoteFailed};std::lock_guard lock(made->m);
+            if(op==1){const std::wstring id=in.text(4096);const bool on=in.u8()!=0;if(!in.ok())return {remoteFailed};auto it=std::find_if(made->startup.begin(),made->startup.end(),[&](auto& a){return a.id==id;});
+                if(it==made->startup.end())return {remoteFailed};if(!it->canChange)return {remoteNotAllowed};it->enabled=on;say("STARTUP "+narrow(id)+" "+std::to_string(on));}
+            else if(op!=0)return {remoteUnsupported};
+            static const std::vector<std::vector<uint8_t>> made32{picture(32,32,0x0364b8,true),picture(32,32,0x1db954,true),picture(32,32,0x5fd9b5,true),picture(32,32,0x1b2838,true),picture(32,32,0x2f6fdb,true),picture(32,32,0xe5e5e5,true)};
+            auto list=made->startup;for(size_t i=0;i<list.size();++i)list[i].icon=made32[i%made32.size()];return remoteStartupAnswer(list);}
+        case RemoteCommand::Network:{PcNetwork e;e.name=L"Ethernet";e.description=L"Realtek PCIe GbE Family Controller";e.kind=0;e.up=e.isDefault=true;e.mac="CC:28:AA:4A:1B:C9";e.speed=1000000000;e.ipv4={"192.168.1.20/24"};
+            e.ipv6={"2401:4900:1f26:44e0:5c1a:2b3c:4d5e:6f70","fe80::2c4c:a9ed:e6e2:404a"};e.gateway="192.168.1.1";e.dns={"192.168.1.1","1.1.1.1"};
+            PcNetwork w;w.name=L"Wi-Fi";w.description=L"Intel(R) Wi-Fi 6E AX211 160MHz";w.kind=1;w.up=true;w.mac="A0:D3:65:02:C5:56";w.speed=866700000;w.ipv4={"192.168.1.34/24"};w.ipv6={"fe80::f49e:d787:a31:bc36"};
+            w.gateway="192.168.1.1";w.dns={"192.168.1.1"};w.ssid=L"Home-5G";w.signal=72;w.band="5 GHz";w.channel=44;w.security="WPA2-Personal";say("REMOTE network");return remoteNetworkAnswer({e,w});}
+        case RemoteCommand::Updates:{RemoteReader in(payload);const int op=in.u8();if(!in.ok())return {remoteFailed};if(op>2)return {remoteUnsupported};std::lock_guard lock(made->m);
+            const double t=std::chrono::duration<double>(std::chrono::steady_clock::now()-began).count();const uint64_t now=uint64_t(std::time(nullptr));if(!made->checked)made->checked=now-5400;
+            if(op==1&&(made->checking<0||t-made->checking>=3)){made->checking=t;say("UPDATES check");}if(op==2)say("UPDATES open");
+            if(made->checking>=0&&t-made->checking>=3){made->checking=-1;made->checked=now;}
+            PcUpdates u;u.state=made->checking>=0?4:2;u.checked=made->checked;u.installed=now-6*86400;
+            u.updates={{L"2026-10 Cumulative Update for Windows 11 Version 25H2 for x64-based Systems (KB5070001)",0,851443712ull,true,true},{L"Intel Corporation - Display - 32.0.101.6881",1,671088640ull,false,true},
+                {L"Security Intelligence Update for Microsoft Defender Antivirus - KB2267602 (Version 1.441.112.0)",3,12582912ull,true,false}};
+            return remoteUpdatesAnswer(u);}
+        case RemoteCommand::Apps:{RemoteReader in(payload);const int op=in.u8();if(!in.ok())return {remoteFailed};
+            static const std::vector<RemoteApp> apps{{L"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App",L"Calculator",{}},{L"microsoft.windowscommunicationsapps_8wekyb3d8bbwe!microsoft.windowslive.calendar",L"Calendar",{}},
+                {L"Discord",L"Discord",{}},{L"{6D809377-6AF0-444B-8957-A3773F02200E}\\Microsoft VS Code\\Code.exe",L"Visual Studio Code",{}},{L"Microsoft.Windows.Explorer",L"File Explorer",{}},
+                {L"MSEdge",L"Microsoft Edge",{}},{L"Microsoft.WindowsNotepad_8wekyb3d8bbwe!App",L"Notepad",{}},{L"Microsoft.Windows.Photos_8wekyb3d8bbwe!App",L"Photos",{}},
+                {L"windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel",L"Settings",{}},{L"Microsoft.ScreenSketch_8wekyb3d8bbwe!App",L"Snipping Tool",{}},
+                {L"Spotify.exe",L"Spotify",{}},{L"Microsoft.WindowsTerminal_8wekyb3d8bbwe!App",L"Terminal",{}}};
+            if(op==1){const std::wstring id=in.text(8192);if(!in.ok())return {remoteFailed};if(std::none_of(apps.begin(),apps.end(),[&](auto& a){return a.id==id;}))return {remoteFailed};say("APPS open "+narrow(id));return {remoteOk,1};}
+            if(op!=0)return {remoteUnsupported};const bool icons=in.u8()!=0;if(!in.ok())return {remoteFailed};auto list=apps;
+            if(icons){static const uint32_t colours[]={0x404040,0x0f6cbd,0x5865f2,0x23a9f2,0xf3c13a,0x0078d7,0x2b88d8,0xc239b3,0x6b6b6b,0xe74856,0x1db954,0x2d2d2d};
+                static const std::vector<std::vector<uint8_t>> made48=[]{std::vector<std::vector<uint8_t>> v;for(int i=0;i<12;++i)v.push_back(picture(48,48,colours[i],true,i));return v;}();
+                for(size_t i=0;i<list.size();++i)list[i].icon=made48[i];}
+            say("REMOTE apps");return remoteAppsAnswer(list);}
         case RemoteCommand::Machine:{PcAdapter a;const uint8_t mac[6]={0x00,0x1a,0x2b,0x3c,0x4d,0x5e};std::memcpy(a.mac,mac,6);a.name=L"Ethernet";a.ipv4="192.168.1.20";a.prefix=24;say("REMOTE machine");return remoteMachineAnswer({a});}
         case RemoteCommand::Lyrics:{say("REMOTE lyrics");std::vector<ShareLyricLine> lines{{12.5,L"Glass on the water",{{12.5,0},{13.1,6},{13.6,9}}},{16.25,L"Light in the rain",{}}};
             return remoteLyricsAnswer(2,L"Interop Song\tTest Artist",lines);}

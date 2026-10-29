@@ -1036,5 +1036,68 @@ std::vector<uint8_t> remoteSpeedAnswer(const std::vector<uint8_t>& payload){
     if(payload[0]==0){if(payload.size()<5)return {remoteFailed};const uint32_t n=std::min<uint32_t>(get32(payload.data()+1),200000);Bytes b{remoteOk,1};b.resize(2+n,0x5a);return b;}
     if(payload[0]==1){Bytes b{remoteOk,1};put32(b,uint32_t(payload.size()-1));return b;}
     return {remoteUnsupported};}
+// ---- Revision 11 ----
+namespace {
+// Past an answer's remoteOk and version byte, for its reader.
+bool answerOf(RemoteReader& in){const int ok=in.u8(),version=in.u8();return in.ok()&&ok==remoteOk&&version==1;}
+}
+bool readRemoteProcesses(const std::vector<uint8_t>& a,std::vector<RemoteProcess>& out){
+    RemoteReader in(a);out.clear();if(!answerOf(in))return false;const int n=in.u8();
+    for(int i=0;i<n&&in.ok();++i){RemoteProcess p;p.pid=uint32_t(in.i32());p.name=in.text(4096);p.title=in.text(4096);p.cpu=in.f32();p.memory=in.u64();const int f=in.u8();p.window=f&1;p.locked=f&2;p.island=f&4;p.icon=in.blob(64*1024);out.push_back(std::move(p));}
+    return in.ok();}
+std::vector<uint8_t> remoteBatteryHealthAnswer(const PcBatteryHealth& h){
+    Bytes b{remoteOk,1,uint8_t(h.present?1:0)};put32(b,h.designMwh);put32(b,h.fullMwh);put32(b,h.cycles);putStr(b,h.chemistry,16);putStr(b,h.manufacturer,80);putStr(b,h.name,80);
+    put32(b,h.currentMwh);putI32(b,h.rateMw);put32(b,h.voltageMv);return b;}
+bool readRemoteBatteryHealth(const std::vector<uint8_t>& a,PcBatteryHealth& h){
+    RemoteReader in(a);h={};if(!answerOf(in))return false;h.present=in.u8()!=0;h.designMwh=uint32_t(in.i32());h.fullMwh=uint32_t(in.i32());h.cycles=uint32_t(in.i32());
+    h.chemistry=in.text(1024);h.manufacturer=in.text(1024);h.name=in.text(1024);h.currentMwh=uint32_t(in.i32());h.rateMw=in.i32();h.voltageMv=uint32_t(in.i32());return in.ok();}
+std::vector<uint8_t> remoteStorageAnswer(const PcStorage& s){
+    Bytes b{remoteOk,1,uint8_t(std::clamp(s.state,0,1)),uint8_t(std::clamp(s.progress,0,100))};const size_t n=std::min<size_t>(s.drives.size(),26);b.push_back(uint8_t(n));
+    for(size_t i=0;i<n;++i){const auto& d=s.drives[i];putStr(b,d.root,260);putStr(b,d.label,120);b.push_back(uint8_t(std::clamp(d.kind,0,3)));put64(b,d.total);put64(b,d.free);b.push_back(d.system?1:0);}
+    const size_t m=std::min<size_t>(s.groups.size(),16);b.push_back(uint8_t(m));
+    for(size_t i=0;i<m;++i){const auto& g=s.groups[i];putStr(b,g.name,60);b.push_back(uint8_t(std::clamp(g.kind,0,9)));put64(b,g.bytes);}
+    return b;}
+bool readRemoteStorage(const std::vector<uint8_t>& a,PcStorage& s){
+    RemoteReader in(a);s={};if(!answerOf(in))return false;s.state=in.u8();s.progress=in.u8();const int n=in.u8();
+    for(int i=0;i<n&&in.ok();++i){PcDrive d;d.root=in.text(4096);d.label=in.text(4096);d.kind=in.u8();d.total=in.u64();d.free=in.u64();d.system=in.u8()!=0;s.drives.push_back(std::move(d));}
+    const int m=in.u8();for(int i=0;i<m&&in.ok();++i){PcStorageGroup g;g.name=in.text(1024);g.kind=in.u8();g.bytes=in.u64();s.groups.push_back(std::move(g));}
+    return in.ok();}
+std::vector<uint8_t> remoteStartupAnswer(const std::vector<RemoteStartupApp>& list){
+    Bytes b{remoteOk,1};const size_t n=std::min<size_t>(list.size(),100);b.push_back(uint8_t(n));
+    for(size_t i=0;i<n;++i){const auto& e=list[i];putStr(b,e.id,600);putStr(b,e.name,120);putStr(b,e.command,400);b.push_back(uint8_t(std::clamp(e.source,0,5)));b.push_back(e.enabled?1:0);b.push_back(e.canChange?1:0);putBlob(b,e.icon,8*1024);}
+    return b;}
+bool readRemoteStartup(const std::vector<uint8_t>& a,std::vector<RemoteStartupApp>& out){
+    RemoteReader in(a);out.clear();if(!answerOf(in))return false;const int n=in.u8();
+    for(int i=0;i<n&&in.ok();++i){RemoteStartupApp e;e.id=in.text(4096);e.name=in.text(4096);e.command=in.text(4096);e.source=in.u8();e.enabled=in.u8()!=0;e.canChange=in.u8()!=0;e.icon=in.blob(64*1024);out.push_back(std::move(e));}
+    return in.ok();}
+std::vector<uint8_t> remoteNetworkAnswer(const std::vector<PcNetwork>& list){
+    Bytes b{remoteOk,1};const size_t n=std::min<size_t>(list.size(),16);b.push_back(uint8_t(n));
+    auto strings=[&](const std::vector<std::string>& v,size_t most){const size_t k=std::min(v.size(),most);b.push_back(uint8_t(k));for(size_t i=0;i<k;++i)putStr(b,v[i].substr(0,64));};
+    for(size_t i=0;i<n;++i){const auto& a=list[i];putStr(b,a.name,120);putStr(b,a.description,200);b.push_back(uint8_t(std::clamp(a.kind,0,2)));b.push_back(a.up?1:0);b.push_back(a.isDefault?1:0);putStr(b,a.mac.substr(0,32));put64(b,a.speed);
+        strings(a.ipv4,16);strings(a.ipv6,16);putStr(b,a.gateway.substr(0,64));strings(a.dns,8);putStr(b,a.ssid,32);b.push_back(a.signal<0||a.signal>100?255:uint8_t(a.signal));putStr(b,a.band.substr(0,16));
+        putU16(b,unsigned(std::clamp(a.channel,0,65535)));putStr(b,a.security.substr(0,40));}
+    return b;}
+bool readRemoteNetwork(const std::vector<uint8_t>& a,std::vector<PcNetwork>& out){
+    RemoteReader in(a);out.clear();if(!answerOf(in))return false;const int n=in.u8();
+    auto strings=[&](std::vector<std::string>& v){const int k=in.u8();for(int i=0;i<k&&in.ok();++i)v.push_back(in.bytes(256));};
+    for(int i=0;i<n&&in.ok();++i){PcNetwork p;p.name=in.text(4096);p.description=in.text(4096);p.kind=in.u8();p.up=in.u8()!=0;p.isDefault=in.u8()!=0;p.mac=in.bytes(256);p.speed=in.u64();
+        strings(p.ipv4);strings(p.ipv6);p.gateway=in.bytes(256);strings(p.dns);p.ssid=in.text(1024);p.signal=in.u8();p.band=in.bytes(256);p.channel=in.u16();p.security=in.bytes(256);out.push_back(std::move(p));}
+    return in.ok();}
+std::vector<uint8_t> remoteUpdatesAnswer(const PcUpdates& u){
+    Bytes b{remoteOk,1,uint8_t(std::clamp(u.state,0,4))};put64(b,u.checked);put64(b,u.installed);const size_t n=std::min<size_t>(u.updates.size(),100);b.push_back(uint8_t(n));
+    for(size_t i=0;i<n;++i){const auto& e=u.updates[i];putStr(b,e.title,200);b.push_back(uint8_t(std::clamp(e.kind,0,4)));put64(b,e.size);b.push_back(e.downloaded?1:0);b.push_back(e.restart?1:0);}
+    return b;}
+bool readRemoteUpdates(const std::vector<uint8_t>& a,PcUpdates& u){
+    RemoteReader in(a);u={};if(!answerOf(in))return false;u.state=in.u8();u.checked=in.u64();u.installed=in.u64();const int n=in.u8();
+    for(int i=0;i<n&&in.ok();++i){PcUpdate e;e.title=in.text(4096);e.kind=in.u8();e.size=in.u64();e.downloaded=in.u8()!=0;e.restart=in.u8()!=0;u.updates.push_back(std::move(e));}
+    return in.ok();}
+std::vector<uint8_t> remoteAppsAnswer(const std::vector<RemoteApp>& list){
+    Bytes b{remoteOk,1};const size_t n=std::min<size_t>(list.size(),2000);putU16(b,unsigned(n));
+    for(size_t i=0;i<n;++i){const auto& e=list[i];putStr(b,e.id,2000);putStr(b,e.name,200);putBlob(b,e.icon,8*1024);}
+    return b;}
+bool readRemoteApps(const std::vector<uint8_t>& a,std::vector<RemoteApp>& out){
+    RemoteReader in(a);out.clear();if(!answerOf(in))return false;const int n=in.u16();
+    for(int i=0;i<n&&in.ok();++i){RemoteApp e;e.id=in.text(8192);e.name=in.text(4096);e.icon=in.blob(64*1024);out.push_back(std::move(e));}
+    return in.ok();}
 std::vector<ShareEvent> ShareService::take(){std::lock_guard lock(core_->m);std::vector<ShareEvent> out;out.swap(core_->events);return out;}
 }
