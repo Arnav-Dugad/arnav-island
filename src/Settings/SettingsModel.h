@@ -153,6 +153,7 @@ inline std::vector<SettingItem> settingItems(int monitors=1){
     toggle(8,L"My PCs can take from the Shelf",L"Your paired PCs can see this Shelf in Shelf › Nearby and take a copy of what is on it","shelfOpen",&Settings::shelfOpen);
     toggle(8,L"My phone can control this PC",L"Arnav Island for Android shows what plays here and can play, skip, seek, change the volume, lock this PC and share the clipboard","phoneControl",&Settings::phoneControl);
     toggle(8,L"My phone’s notifications",L"A paired phone’s notifications and battery show on the island. Kept in memory only","phoneNotices",&Settings::phoneNotices);
+    toggle(8,L"Live activities from my phone",L"A delivery, a ride, navigation or a timer on your phone shows on the island while it lasts, with your phone’s notifications","phoneLive",&Settings::phoneLive);
     toggle(8,L"Reach my devices anywhere",L"Your phone and PCs connect through the internet when they aren’t on this network. End-to-end encrypted; a free public relay passes it on without being able to read it","relay",&Settings::relay);
     toggle(8,L"Universal clipboard",L"What you copy here is on your phone’s clipboard a moment later. Password-like copies are marked private there","universalClipboard",&Settings::universalClipboard);
     toggle(8,L"Photos from my phone go on the Shelf",L"A photo you take for this PC with Arnav Island on your phone lands on the Shelf without asking","continuity",&Settings::continuity);

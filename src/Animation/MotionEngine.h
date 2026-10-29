@@ -186,6 +186,8 @@ struct MotionEngine {
     Spring width{196},height{34},radius{17},lift{0},reveal{0},volume{.5},dragX{0},dragY{0};
     SpringSpec body=preset(MotionPreset::Balanced);
     bool reduced=false,live=false,card=false;int edge=0;double compactWidth=196,corner=22,commandHeight=224;
+    // 0.27: a card's height (a live activity's card is taller than an alert's 92).
+    double cardHeight=92;
     Spring artX{12},artY{6},artSize{22},artOpacity{0},pulse{0},hoverX{20},hoverY{38},hoverW{40},hoverH{26},hoverOpacity{0},contentShift{0},swipe{0},level{0},slide{0};
     // The drop pill: 0 merged, 1 dropped dropDistance below the edge. The stub is the compact island left docked meanwhile.
     Spring drop{0};double stubWidth=196,stubHeight=34,stubRadius=17;
@@ -202,7 +204,7 @@ struct MotionEngine {
         if(compactHeader)return {1-gate,-speed};return {gate*a.position,speed*a.position+gate*a.velocity};
     }
     void target(IslandState state,double now,bool hover=false,bool pressed=false) {
-        auto g=geometry(state);if(state==IslandState::Compact)g=edge?Geometry{64,150,22}:Geometry{compactWidth,34,17};else if(state==IslandState::Expanded||state==IslandState::Dashboard)g={420,334,corner};else if(state==IslandState::Command)g.height=commandHeight;
+        auto g=geometry(state);if(state==IslandState::Compact)g=edge?Geometry{64,150,22}:Geometry{compactWidth,34,17};else if(state==IslandState::Expanded||state==IslandState::Dashboard)g={420,334,corner};else if(state==IslandState::Command)g.height=commandHeight;else if(state==IslandState::Notification)g.height=cardHeight;
         if(reduced){width.reset(g.width,now);height.reset(g.height,now);radius.reset(g.radius,now);reveal.retarget(state!=IslandState::Compact&&g.height>80?1:0,now,{1,1800,85});return;}
         auto s=reduced?SpringSpec{1,1800,85}:body;
         // Liquid morph: the growing dimension leads on a stiffer spring and the other follows

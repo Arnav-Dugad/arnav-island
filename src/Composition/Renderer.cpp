@@ -124,7 +124,9 @@ void Renderer::surface(ComPtr<IDCompositionSurface>& s,int w,int h,std::function
         auto properties=D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),dpi_,dpi_);
         ComPtr<ID2D1RenderTarget> rt;check(d2d_->CreateDxgiSurfaceRenderTarget(dx.Get(),&properties,&rt));
         rt->BeginDraw();rt->SetTransform(D2D1::Matrix3x2F::Translation(offset.x/scale_,offset.y/scale_));
-        rt->PushAxisAlignedClip(D2D1::RectF(0,0,float(w),float(h)),D2D1_ANTIALIAS_MODE_ALIASED);rt->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);if(textParams_)rt->SetTextRenderingParams(textParams_.Get());rt->Clear(D2D1::ColorF(0,0));draw(rt.Get());rt->PopAxisAlignedClip();check(rt->EndDraw());
+        // 0.27: the clear reaches the surface's last (partial) pixel row and column too, which would otherwise keep whatever the
+        // compositor's atlas held there (a hairline at the edge of a surface whose size isn't a whole number of pixels).
+        rt->PushAxisAlignedClip(D2D1::RectF(0,0,std::ceil(w*scale_)/scale_,std::ceil(h*scale_)/scale_),D2D1_ANTIALIAS_MODE_ALIASED);rt->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);if(textParams_)rt->SetTextRenderingParams(textParams_.Get());rt->Clear(D2D1::ColorF(0,0));draw(rt.Get());rt->PopAxisAlignedClip();check(rt->EndDraw());
     }catch(...){s->EndDraw();throw;}
     check(s->EndDraw());++redraws;
 }
@@ -254,6 +256,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             // Level indicator: icon, compositor-driven bar (hudTrack_/hudFill_) and value.
             float x=std::max(236.f,width)/2-109;bool brightness=s.hud==2,app=s.hud==3;int level=app?s.appVolume:brightness?s.brightness:(s.muted?0:s.volume);
             if(app&&(s.playback.appIcon||!s.playback.service.empty()))identity(rt,s.playback,x-1,7,20,solidRaised);else drawIcon(rt,d2d_.Get(),brightness?Icon::Brightness:level==0?Icon::Muted:Icon::Volume,x,8,18,ink);headerSpots_.push_back({1,level>=0?std::to_wstring(level):L"—",x+218,0,11.5f,DWRITE_FONT_WEIGHT_SEMI_BOLD,ink,34,true});return;}
+        // 0.27: a phone's live activity takes the compact island while it runs.
+        if(s.liveCompact()){activityCompact(rt,s,ink,muted,track,accent,solidRaised);return;}
         // Bars at the end, unless the spectrum ring around the cover shows the sound instead.
         const bool bars=s.settings.waveform&&s.playback.playing&&s.waveform&&s.settings.compactMedia&&(s.settings.uiMode==0||s.settings.waveformStyle==0);
         // Privacy dots: green camera, orange microphone, purple screen capture, blue location (in that order, once each).
@@ -308,7 +312,7 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
         // A new label eases in, except a line of lyrics after another or a tick of the timer, which move on their own.
         const std::wstring labelKey=sung?L"\x1fsung":rolling?L"\x1ftimer":label;
         if(labelKey!=headerLabel_){if(restCompact_&&!s.expanded&&!s.reducedMotion&&!headerLabel_.empty()){headerEntrance_=seconds();auto a=entrance(headerEntrance_,.35f);headerEffect_->SetOpacity(a.Get());}headerLabel_=labelKey;}
-    });header_->SetContent(headerSurface_.Get());placeOdometers(headerSpots_,{1,6,7,8,9,10,11,12},header_.Get(),s.reducedMotion);lineLyric(compactLyric_,header_.Get(),s,lyricOn,sungX,0,sungW,34,11.5f,ink,s.reducedMotion);adapt_=nullptr;if(headerOnly){updateWeatherGlass(s);commit();return;}
+    });header_->SetContent(headerSurface_.Get());placeOdometers(headerSpots_,{1,6,7,8,9,10,11,12,13},header_.Get(),s.reducedMotion);lineLyric(compactLyric_,header_.Get(),s,lyricOn,sungX,0,sungW,34,11.5f,ink,s.reducedMotion);adapt_=nullptr;if(headerOnly){updateWeatherGlass(s);commit();return;}
     drawingContent_=true;nowCurve_={};iconRequests_.clear();caretTarget_=42;answerY_=-1;answerText_.clear();contentSpots_.clear();bool liveLyricOn=false;
     // Four DIPs wider and taller than the bands show: a band sampled at its edge (a sub-pixel offset while a
     // spring settles) then reads this surface's own clear pixels, not whatever the compositor packed beside it.
@@ -405,6 +409,8 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
             if(n.actions.size()==1)button(Action::NoticeActionBase,n.actions[0].first,256,14,76,28,true);
             else if(n.actions.size()>=2){button(Action::NoticeActionBase,n.actions[0].first,256,4,76,26,true);button(Action(int(Action::NoticeActionBase)+1),n.actions[1].first,256,34,76,22);}
             return;}
+        // 0.27: a phone's live activity, opened.
+        if(s.card&&s.notice.kind==25&&s.liveNow()){activityCard(rt,s,ink,muted,track,accent,raised,raisedAlpha);return;}
         // 0.25: a photo just taken on a phone: Paste (where you are) or the Shelf.
         if(s.card&&s.notice.kind==24){const auto& n=s.notice;text(rt,n.app,72,6,176,14,ink,DWRITE_FONT_WEIGHT_SEMI_BOLD);text(rt,n.detail,72,30,176,11,muted);
             button(Action::PhotoPaste,L"Paste",256,4,76,26,true);button(Action::PhotoShelf,L"Shelf",256,34,76,22);return;}
@@ -1066,10 +1072,10 @@ void Renderer::redraw(const ContentSnapshot& s,bool debug,bool headerOnly) {
     });drawingContent_=false;
     // (Its surfaces are drawn once the content surface is closed: one surface draws at a time.)
     if(skyWanted_)skyScene(s,skyX_);else skyHide();
-    updateWeatherGlass(s);updateNowMarker(accent);
+    updateWeatherGlass(s);updateNowMarker(accent);updateActivity(s,ink,track,accent,solidRaised);
     updateCaret(s,caretTarget_,accent);lineLyric(liveLyric_,content_.Get(),s,liveLyricOn&&s.live&&!s.card,68,21,250,20,11.5f,ink,s.reducedMotion);
     if(answerY_>=0&&!answerText_.empty()&&s.command.active)contentSpots_.push_back({0,answerText_,46,answerY_,17,DWRITE_FONT_WEIGHT_SEMI_BOLD,ink,0,false,true});
-    placeOdometers(contentSpots_,{0,2,3,4,5},content_.Get(),s.reducedMotion);for(auto request:iconRequests_)icon(request.action,request.glyph,request.x,request.y,request.size,request.color,request.slot,request.celebrate);for(auto& b:bands_)b.visual->SetContent(contentSurface_.Get());for(auto& item:icons_)if(!item.used)item.effect->SetOpacity(0.f);placeNav(seconds(),navY);commit();
+    placeOdometers(contentSpots_,{0,2,3,4,5,14},content_.Get(),s.reducedMotion);for(auto request:iconRequests_)icon(request.action,request.glyph,request.x,request.y,request.size,request.color,request.slot,request.celebrate);for(auto& b:bands_)b.visual->SetContent(contentSurface_.Get());for(auto& item:icons_)if(!item.used)item.effect->SetOpacity(0.f);placeNav(seconds(),navY);commit();
 }
 
 ComPtr<IDCompositionAnimation> Renderer::animation(const Spring& s,double now,float factor,float bias) {

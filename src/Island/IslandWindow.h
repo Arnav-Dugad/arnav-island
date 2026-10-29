@@ -166,11 +166,23 @@ class IslandWindow {
     void photoCard(const std::string& peer,const std::wstring& phone,uint64_t id,const std::wstring& name,uint32_t size,std::shared_ptr<const Artwork> picture);
     void arrivingCard(uint32_t transfer,const std::wstring& title,const std::wstring& detail,std::shared_ptr<const Artwork> picture);
     bool copyPhoto(const std::wstring& path);void pageMessage(WPARAM,LPARAM);void sendPageTo(const std::string& peer,HWND from);
+    // 0.27 (revision 10, IslandLive.cpp): a phone's live activity (notice 7's bytes after the notice kind).
+    void phoneLiveNotice(const std::string& peer,const std::wstring& phone,const std::vector<uint8_t>& notice);
+    // 0.27: what live activities take first (the hover that opens their card, a click on it, the wheel), their card (shown for a
+    // while), the compact width and card height they need, their once-a-second clock (the ETA, a phone gone, a finish shown).
+    bool liveMessage(UINT,WPARAM,LPARAM);bool liveAction(Action);bool liveAllowed()const;void liveShow(double duration,bool glint=false);void liveNotice();void liveLayout();void liveTick();void liveRemove(size_t index);void livePick(int delta);void qaActivity(const std::wstring& cmd);
+    double livePickedAt_=-100,liveWheel_=0;bool liveWidened_=false,liveTimer_=false;std::wstring liveEtaShown_;static constexpr UINT_PTR LiveTimer=97;
+    // 0.27 (IslandCamera.cpp): a phone's camera as a camera any app can pick (Windows 11): offered at start, and its cards.
+    void cameraSetup();void cameraMessage(WPARAM,LPARAM);
     // 0.26 (revision 9, IslandRemote.cpp): shuffle, repeat and up next; each app's volume (its icon encoded once per picture);
     // the sound's levels; this PC's adapters, to wake it. The analyzer and the mixer's meters stay on a few seconds after a
     // phone asks (PhoneMeterTimer turns them back to what the island needs).
     std::vector<uint8_t> remotePlayback(const std::vector<uint8_t>&);std::vector<uint8_t> remoteMixer(const std::vector<uint8_t>&);std::vector<uint8_t> remoteLevels();std::vector<uint8_t> remoteMachine();
     double phoneLevelsUntil_=-10,phoneMixerUntil_=-10;static constexpr UINT_PTR PhoneMeterTimer=90;std::map<DWORD,std::pair<const Artwork*,std::vector<uint8_t>>> mixerIcons_;
+    // 0.27 (revision 10, IslandRemote.cpp): this PC's temperatures, the clipboard history for a phone (each image's thumbnail
+    // encoded once per copy) and the running PowerPoint show (asked on a worker, its slides' pictures kept there).
+    std::vector<uint8_t> remoteSensors();std::vector<uint8_t> remoteClips(const std::vector<uint8_t>&);std::vector<uint8_t> remoteSlides(const std::vector<uint8_t>&);
+    std::map<uint64_t,std::vector<uint8_t>> clipThumbs_;
     std::shared_ptr<const WallpaperLuma> wallLuma_;bool wallLoading_=false,qaBackdrop_=false;void loadWallpaperLuma();void adaptBackdrop();bool backdropCovered()const;
     // The body's top-left in the canvas (DIPs), including how far a notification pill has dropped (drop: 0..1).
     // Phase 5H: spread side by side with a waiting alert, the pill sits further left.

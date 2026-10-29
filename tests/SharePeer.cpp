@@ -14,6 +14,8 @@
 #include "Productivity/ShareService.h"
 #include "Mirror/MirrorHost.h"
 #include "Mirror/MirrorWindow.h"
+#include <wincodec.h>
+#include <algorithm>
 #include <cstring>
 #include <exception>
 #include <ctime>
@@ -38,6 +40,22 @@ void say(const std::string& line){std::lock_guard lock(out);std::cout<<line<<std
 std::mutex shownLock;nexus::mirror::FrameSink* shown=nullptr;
 std::string narrow(const std::wstring& w){if(w.empty())return {};const int n=WideCharToMultiByte(CP_UTF8,0,w.data(),int(w.size()),nullptr,0,nullptr,nullptr);std::string s(size_t(n),'\0');WideCharToMultiByte(CP_UTF8,0,w.data(),int(w.size()),s.data(),n,nullptr,nullptr);return s;}
 std::wstring widen(const std::string& s){if(s.empty())return {};const int n=MultiByteToWideChar(CP_UTF8,0,s.data(),int(s.size()),nullptr,0);std::wstring w(size_t(n),L'\0');MultiByteToWideChar(CP_UTF8,0,s.data(),int(s.size()),w.data(),n);return w;}
+// Revision 9/10: a made-up picture, made here with WIC: a rounded square in a colour, lighter towards the top, with a
+// light disc (an app's icon as a PNG with its corners clear), or the whole frame (a JPEG: a slide, a copied image).
+std::vector<uint8_t> picture(UINT w,UINT h,uint32_t rgb,bool png,int mark=0){
+    CoInitializeEx(nullptr,COINIT_MULTITHREADED);std::vector<uint8_t> px(size_t(w)*h*4);const double r=png?w*.22:0;
+    for(UINT y=0;y<h;++y)for(UINT x=0;x<w;++x){uint8_t* p=&px[(size_t(y)*w+x)*4];const double lift=.35*(1-double(y)/h);
+        const double dx=std::max(0.,std::max(r-x-.5,x+.5-(w-r))),dy=std::max(0.,std::max(r-y-.5,y+.5-(h-r)));const bool inside=!png||dx*dx+dy*dy<=r*r;
+        const double cx=x+.5-w*(.5+.18*(mark%3-1)),cy=y+.5-h*.5;const bool disc=cx*cx+cy*cy<=(w*.18)*(w*.18);
+        for(int c=0;c<3;++c){const double v=((rgb>>(8*c))&255)/255.;p[c]=uint8_t(std::clamp(disc?255*(.85+.15*v):255*(v+(1-v)*lift),0.,255.));}p[3]=inside?255:0;}
+    ComPtr<IWICImagingFactory> f;ComPtr<IWICBitmap> bitmap;ComPtr<IWICFormatConverter> converter;ComPtr<IStream> out;ComPtr<IWICBitmapEncoder> encoder;ComPtr<IWICBitmapFrameEncode> frame;ComPtr<IPropertyBag2> options;
+    WICPixelFormatGUID format=png?GUID_WICPixelFormat32bppBGRA:GUID_WICPixelFormat24bppBGR;
+    if(FAILED(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&f)))||FAILED(f->CreateBitmapFromMemory(w,h,GUID_WICPixelFormat32bppBGRA,w*4,UINT(px.size()),px.data(),&bitmap))||
+       FAILED(f->CreateFormatConverter(&converter))||FAILED(converter->Initialize(bitmap.Get(),format,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom))||FAILED(CreateStreamOnHGlobal(nullptr,TRUE,&out))||
+       FAILED(f->CreateEncoder(png?GUID_ContainerFormatPng:GUID_ContainerFormatJpeg,nullptr,&encoder))||FAILED(encoder->Initialize(out.Get(),WICBitmapEncoderNoCache))||FAILED(encoder->CreateNewFrame(&frame,&options))||
+       FAILED(frame->Initialize(options.Get()))||FAILED(frame->SetSize(w,h))||FAILED(frame->SetPixelFormat(&format))||FAILED(frame->WriteSource(converter.Get(),nullptr))||FAILED(frame->Commit())||FAILED(encoder->Commit()))return {};
+    STATSTG st{};if(FAILED(out->Stat(&st,STATFLAG_NONAME)))return {};std::vector<uint8_t> bytes(size_t(st.cbSize.QuadPart));LARGE_INTEGER zero{};ULONG got=0;
+    if(FAILED(out->Seek(zero,STREAM_SEEK_SET,nullptr))||FAILED(out->Read(bytes.data(),ULONG(bytes.size()),&got))||got!=bytes.size())return {};return bytes;}
 }
 // A crash says what and where (tests), so a failure on another thread is never silent.
 LONG WINAPI crashed(EXCEPTION_POINTERS* e){
@@ -85,12 +103,18 @@ int main(int argc,char** argv){
             const auto rep=mirror::receiveScreen(io,r,sink,stop);say("MIRROR shown "+std::to_string(rep.frames)+" "+std::to_string(rep.keys));say(std::string("MIRROR ended ")+rep.ended);}
     };
     // Revision 5: a made-up PC to control (its settings and controls remember what they're set to).
-    struct Made{std::mutex m;double focusAt=0;std::map<std::string,int> settings{{"hoverOpen",1},{"autoHide",0},{"hoverDelay",180},{"uiMode",1},{"theme",0},{"accent",0},{"sounds",1},{"weather",1},{"sharing",1},{"phoneControl",1}};
+    struct Made{std::mutex m;double focusAt=0;std::map<std::string,int> settings{{"hoverOpen",1},{"autoHide",0},{"hoverDelay",180},{"uiMode",1},{"theme",0},{"accent",0},{"sounds",1},{"weather",1},{"sharing",1},{"phoneControl",1},{"phoneLive",1}};
         PcControls controls;std::wstring output=L"speakers";
         // Revision 9.
         bool shuffle=false;int repeat=0;std::vector<RemoteTrack> upNext{{L"Northern Lines",L"Aurora Fields",201},{L"Paper Boats",L"Lumen Drive",187.5},{L"Slow Tide",L"Harbor Lights",0}};
-        std::vector<RemoteMixerEntry> mixer{{4242,L"Spotify",72,0,false,false,true,{}},{5150,L"Microsoft Edge",100,0,false,false,false,{}},{0,L"System sounds",64,0,false,true,false,{}}};};
-    auto made=std::make_shared<Made>();made->controls.wifi=1;made->controls.bluetooth=1;made->controls.dark=1;made->controls.brightness=64;made->controls.volume=42;made->controls.micAvailable=true;made->controls.focusDuration=1500;made->controls.focusShown=1500;
+        std::vector<RemoteMixerEntry> mixer{{4242,L"Spotify",72,0,false,false,true,{}},{5150,L"Microsoft Edge",100,0,false,false,false,{}},{0,L"System sounds",64,0,false,true,false,{}}};
+        // Revision 10: a clipboard history (a note, a link, an image, two files, a password-like copy kept hidden) and a deck.
+        std::vector<RemoteClip> clips;int slide=3;};
+    auto made=std::make_shared<Made>();
+    {const uint64_t now=uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+        made->clips={{5,0,L"Ship 0.27 on Friday: resumable transfers, live activities",now-60000,true,{}},{4,0,L"https://github.com/arnavdugad/arnav-island/releases",now-90000,false,{}},
+            {3,1,L"Image  ·  640 × 480",now-300000,false,{}},{2,2,L"Quarterly review.pptx\nBudget 2026.xlsx",now-900000,false,{}},{1,0,L"•••••• · hidden",now-1200000,false,{}}};}
+    made->controls.wifi=1;made->controls.bluetooth=1;made->controls.dark=1;made->controls.brightness=64;made->controls.volume=42;made->controls.micAvailable=true;made->controls.focusDuration=1500;made->controls.focusShown=1500;
     o.remote=[=](const std::string& peer,RemoteCommand c,const std::vector<uint8_t>& payload)->std::vector<uint8_t>{
         switch(c){
         case RemoteCommand::Status:{RemoteStatus st;st.available=st.canNext=st.canPrevious=st.canToggle=st.canSeek=true;st.playing=*playing;st.position=61.5;st.duration=200;st.volume=*volume;st.muted=*muted;st.battery=77;st.batteryPresent=true;st.cpu=13;st.clipboard=true;
@@ -137,6 +161,7 @@ int main(int argc,char** argv){
             {RemoteSetting r;r.section=2;r.control=4;r.key="accent";r.title=L"Accent";r.detail=L"Used when artwork colors are off";r.hi=4;r.options={L"Mint",L"Sky",L"Lilac",L"Peach",L"Wallpaper"};r.colours={0x5fd9b5,0x5eaaff,0xb58cff,0xffa37a,0x8ea3c2};r.value=v["accent"];items.push_back(r);}
             items.push_back(toggle(5,L"Sounds",L"A soft chime for alerts","sounds"));items.push_back(toggle(7,L"Weather",L"The weather where you are, on Home","weather"));
             items.push_back(toggle(8,L"Share with my PCs",L"Send files between your PCs and phones","sharing"));items.push_back(toggle(8,L"My phone can control this PC",L"The remote, the trackpad and more","phoneControl"));
+            items.push_back(toggle(8,L"Live activities from my phone",L"A delivery, a ride or a timer on your phone shows on the island","phoneLive"));
             {RemoteSetting r;r.section=9;r.control=5;r.title=L"Updates";r.detail=L"Arnav Island looks for new versions";r.options={L"Check now"};r.action=18;items.push_back(r);}
             return remoteSettingsAnswer({L"General",L"Island",L"Appearance",L"Motion",L"Compact",L"Media & sound",L"Devices & power",L"Home & navigation",L"Privacy & productivity",L"About"},items);}
         case RemoteCommand::Controls:{RemoteReader in(payload);const int op=in.u8();std::lock_guard lock(made->m);auto& k=made->controls;
@@ -180,11 +205,33 @@ int main(int argc,char** argv){
             else if(op!=0)return {remoteUnsupported};
             const double t=std::chrono::duration<double>(std::chrono::steady_clock::now()-began).count();auto list=made->mixer;
             for(size_t i=0;i<list.size();++i)list[i].peak=list[i].active&&!list[i].muted?int(std::clamp(40+35*std::sin(t*3+double(i)),0.,100.)):0;
-            // A made-up icon (a few bytes, not a real picture) when icons are asked for.
-            const bool icons=op==0&&payload.size()>=2&&payload[1]!=0;if(icons)for(auto& e:list)e.icon={0x89,'P','N','G',0x0d,0x0a,0x1a,0x0a};
+            // Real 32-pixel PNGs (made once, an app's colour each) when icons are asked for.
+            const bool icons=op==0&&payload.size()>=2&&payload[1]!=0;
+            if(icons){static const std::vector<std::vector<uint8_t>> made32{picture(32,32,0x1db954,true),picture(32,32,0x0078d7,true),picture(32,32,0x8e8e93,true)};for(size_t i=0;i<list.size();++i)list[i].icon=made32[i%3];}
             return remoteMixerAnswer(list);}
         case RemoteCommand::Levels:{const double t=std::chrono::duration<double>(std::chrono::steady_clock::now()-began).count();std::vector<uint8_t> bands;
             for(int b=0;b<24;++b)bands.push_back(uint8_t(std::clamp(140+90*std::sin(t*4+b*.5)-b*3,0.,255.)));return remoteLevelsAnswer(int(160+60*std::sin(t*2)),false,bands);}
+        // Revision 10: made-up temperatures, a clipboard history that remembers pins and deletes, a running show of twelve
+        // slides (pictures made here), and the speed test. Top apps, files and screenshots are reserved (unsupported).
+        case RemoteCommand::Sensors:{const double t=std::chrono::duration<double>(std::chrono::steady_clock::now()-began).count();PcSensors s;s.cpu=std::round((58+6*std::sin(t*.4))*10)/10;s.gpu=std::round((47+5*std::sin(t*.3+1))*10)/10;
+            s.zones={{L"Thermal zone THM0",s.cpu},{L"Thermal zone TZ01",44.5},{L"NVIDIA GeForce RTX 4060 Laptop GPU",s.gpu}};s.fans={{L"Graphics fan",1850}};say("REMOTE sensors");return remoteSensorsAnswer(s);}
+        case RemoteCommand::Clips:{RemoteReader in(payload);const int op=in.u8();std::lock_guard lock(made->m);auto& list=made->clips;size_t most=40;bool thumbs=true;
+            if(op==0){most=size_t(std::clamp(in.u8(),0,40));thumbs=in.u8()!=0;if(!in.ok())return {remoteFailed};}
+            else if(op>=1&&op<=4){const uint32_t id=uint32_t(in.i32());auto it=std::find_if(list.begin(),list.end(),[&](auto& c){return c.id==id;});if(!in.ok()||it==list.end())return {remoteFailed};
+                if(op==4){if(id==1)return {remoteNotAllowed};say("CLIPS bring "+std::to_string(id));return remoteClipAnswer(it->kind,it->kind==1?std::wstring():it->text,it->kind==1?picture(640,480,0x7a5cff,false,1):std::vector<uint8_t>{});}
+                if(op==1){say("CLIPS copy "+std::to_string(id));}else if(op==2){it->pinned=in.u8()!=0;say("CLIPS pin "+std::to_string(id)+" "+std::to_string(it->pinned));}else{list.erase(it);say("CLIPS delete "+std::to_string(id));}}
+            else return {remoteUnsupported};
+            std::vector<RemoteClip> out;for(int pinned=1;pinned>=0;--pinned)for(auto& c:list)if(c.pinned==(pinned!=0)&&out.size()<most){out.push_back(c);if(thumbs&&c.kind==1)out.back().thumb=picture(96,72,0x7a5cff,false,1);}
+            return remoteClipsAnswer(out);}
+        case RemoteCommand::Slides:{RemoteReader in(payload);const int op=in.u8();std::lock_guard lock(made->m);if(!in.ok())return {remoteFailed};
+            if(op==1){const int i=in.u16();if(!in.ok()||i<1||i>12)return {remoteFailed};made->slide=i;say("SLIDES go "+std::to_string(i));}else if(op!=0)return {remoteUnsupported};
+            static const uint32_t colours[]={0x3b82f6,0x10b981,0xf59e0b,0xef4444,0x8b5cf6,0x06b6d4};const int i=made->slide;
+            RemoteSlides r;r.state=2;r.index=i;r.count=12;r.deck=L"Quarterly review";r.title=i==1?std::wstring(L"Quarterly review"):L"Slide "+std::to_wstring(i)+L": "+(i%2?L"What shipped":L"What’s next");
+            r.notes=L"Open with the numbers.\nThen the two launches, and thank the team.";r.seconds=uint32_t(std::chrono::duration<double>(std::chrono::steady_clock::now()-began).count());
+            if(op==0&&payload.size()>=2&&payload[1]){r.current=picture(640,360,colours[i%6],false,i);if(i<12)r.next=picture(480,270,colours[(i+1)%6],false,i+1);}
+            return remoteSlidesAnswer(r);}
+        case RemoteCommand::Speed:return remoteSpeedAnswer(payload);
+        case RemoteCommand::Processes:case RemoteCommand::Files:case RemoteCommand::Screenshot:return {remoteUnsupported};
         case RemoteCommand::Machine:{PcAdapter a;const uint8_t mac[6]={0x00,0x1a,0x2b,0x3c,0x4d,0x5e};std::memcpy(a.mac,mac,6);a.name=L"Ethernet";a.ipv4="192.168.1.20";a.prefix=24;say("REMOTE machine");return remoteMachineAnswer({a});}
         case RemoteCommand::Lyrics:{say("REMOTE lyrics");std::vector<ShareLyricLine> lines{{12.5,L"Glass on the water",{{12.5,0},{13.1,6},{13.6,9}}},{16.25,L"Light in the rain",{}}};
             return remoteLyricsAnswer(2,L"Interop Song\tTest Artist",lines);}

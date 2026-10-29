@@ -1,4 +1,5 @@
 #include "Mirror/MirrorHost.h"
+#include "Mirror/AudioCodec.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -75,8 +76,13 @@ bool readRequest(const Bytes& f, MirrorRequest& r) {
     if (r.kind == 1) { if (f.size() < 11) return false; r.bitrate = get32(&f[7]); return true; }
     if (r.kind == 2 || r.kind == 3) { if (f.size() < 11) return false; const uint32_t n = get32(&f[7]); if (n > 1024 || 11 + size_t(n) > f.size()) return false; r.name = wide(std::string(f.begin() + 11, f.begin() + long(11 + n))); return r.width > 0 && r.height > 0; }
     // 0.26: the microphone: u32 rate, u8 channels, its name.
-    if (r.kind == 4) { if (f.size() < 11) return false; r.width = r.height = r.fps = 0; r.rate = int(get32(&f[2])); r.channels = f[6]; const uint32_t n = get32(&f[7]); if (n > 1024 || 11 + size_t(n) > f.size()) return false;
-        r.name = wide(std::string(f.begin() + 11, f.begin() + long(11 + n))); return r.rate >= 16000 && r.rate <= 48000 && (r.channels == 1 || r.channels == 2); }
+    // 0.27: then (revision 10) u8 codec before the name. An older phone's request has none: there the name's length fills the
+    // rest exactly when read from byte 7. (Read from byte 8 an older one never fits: its name's first byte lands in the length's
+    // top byte. The other way round a codec of 1 with no name would, so the newer layout is tried first.)
+    if (r.kind == 4) { if (f.size() < 11) return false; r.width = r.height = r.fps = 0; r.rate = int(get32(&f[2])); r.channels = f[6]; size_t at = 7;
+        if (f.size() >= 12 && 12 + size_t(get32(&f[8])) == f.size()) { r.codec = f[7]; at = 8; }
+        const uint32_t n = get32(&f[at]); if (n > 1024 || at + 4 + size_t(n) > f.size()) return false;
+        r.name = wide(std::string(f.begin() + long(at + 4), f.begin() + long(at + 4 + n))); return r.rate >= 16000 && r.rate <= 48000 && (r.channels == 1 || r.channels == 2); }
     return false;
 }
 Bytes refusal(int status) { Bytes b{frameMirrorReply, uint8_t(status)}; put16(b, 0); put16(b, 0); b.push_back(0); put32(b, 0); put32(b, 0); return b; }
@@ -164,6 +170,8 @@ MirrorReport receiveScreen(MirrorIo& io, const MirrorRequest& r, FrameSink& sink
     // 0.26: a camera is named for its phone, and only watched (no taps or keys go back).
     const bool camera = r.kind == 3;
     if (!sink.begin(r.width, r.height, camera ? (r.name.empty() ? std::wstring(L"Your phone") : r.name) + L" camera" : r.name) || !decoder.open(sink.device())) { io.send(refusal(3)); sink.end(); return report; }
+    // 0.27: and, where the island has one, a camera any app can pick (the window is then only its preview).
+    std::unique_ptr<CameraOutlet> outlet; if (camera && cameraOutlets()) { outlet = cameraOutlets()(); std::wstring why; if (outlet && outlet->open(r.name.empty() ? std::wstring(L"Your phone") : r.name, why)) report.camera = L"camera"; else { report.camera = why.empty() ? std::wstring(L"unavailable") : why; outlet.reset(); } }
     { Bytes reply{frameMirrorReply, 0}; put16(reply, unsigned(r.width)); put16(reply, unsigned(r.height)); reply.push_back(uint8_t(r.fps)); put32(reply, 0); put32(reply, 0); if (!io.send(reply)) { sink.end(); return report; } }
     if (!camera) sink.send = [&](const Bytes& b) { io.send(b); };
     Bytes f, frame; uint32_t current = 0, last = 0; bool waitingKey = true; int silent = 0; auto told = Clock::now(); uint64_t bytesSince = 0; double decodeMs = 0; int shown = 0;
@@ -174,7 +182,7 @@ MirrorReport receiveScreen(MirrorIo& io, const MirrorRequest& r, FrameSink& sink
         fb.push_back(uint8_t(std::min(255, int(shown / since(told))))); io.send(fb); told = Clock::now(); bytesSince = 0; shown = 0;
     };
     report.ended = "stopped";
-    while (!stop) {
+    while (!stop || outlet) {
         tell();
         if (!io.receive(f, 250)) { if (++silent >= 40) { report.ended = "quiet"; break; } continue; }
         silent = 0; if (f.empty()) continue;
@@ -190,30 +198,34 @@ MirrorReport receiveScreen(MirrorIo& io, const MirrorRequest& r, FrameSink& sink
         if (waitingKey && !(flags & 1)) continue;
         waitingKey = false;
         const auto t0 = Clock::now();
-        const bool ok = decoder.decode(frame.data(), frame.size(), pts, [&](ID3D11Texture2D* t, UINT slice, int w, int h) { sink.frame(t, slice, w, h); ++report.frames; ++shown; });
+        const bool ok = decoder.decode(frame.data(), frame.size(), pts, [&](ID3D11Texture2D* t, UINT slice, int w, int h) { if (!stop) sink.frame(t, slice, w, h); if (outlet) outlet->frame(t, slice, w, h); ++report.frames; ++shown; });
         decodeMs = decodeMs * .8 + since(t0) * 1000 * .2;
         if (flags & 1) ++report.keys; report.bytes += frame.size();
         if (!ok) { decoder.open(sink.device()); waitingKey = true; io.send(Bytes{frameKeyframe}); }
     }
-    io.send(Bytes{frameStop}); sink.send = nullptr; sink.end();
+    io.send(Bytes{frameStop}); sink.send = nullptr; if (outlet) outlet->close(); sink.end();
     return report;
 }
 
 // ---- 0.26: the phone's microphone to this PC ----
 MirrorReport receiveAudio(MirrorIo& io, const MirrorRequest& r, AudioSink& sink, const std::atomic<bool>& stop) {
     MirrorReport report; std::wstring device;
+    // 0.27: the codec: the best this PC can decode, no better than the phone offered (PCM for an older phone); PCM again if its
+    // decoder won't open.
+    int codec = r.codec < 0 ? micPcm : acceptMicCodec(r.codec); MicDecoder decoder; if (!decoder.open(codec, r.rate, r.channels)) { codec = micPcm; decoder.open(codec, r.rate, r.channels); }
     if (r.kind != 4 || !sink.begin(r.rate, r.channels, r.name, device)) { io.send(refusal(3)); sink.end(); return report; }
-    { Bytes reply{frameMirrorReply, 0}; put16(reply, 0); put16(reply, 0); reply.push_back(0); put32(reply, 0); const std::string n = utf8(device); put32(reply, uint32_t(n.size())); reply.insert(reply.end(), n.begin(), n.end());
+    { Bytes reply{frameMirrorReply, 0}; put16(reply, 0); put16(reply, 0); reply.push_back(uint8_t(codec)); put32(reply, 0); const std::string n = utf8(device); put32(reply, uint32_t(n.size())); reply.insert(reply.end(), n.begin(), n.end());
       if (!io.send(reply)) { sink.end(); return report; } }
-    report.encoder = device; report.ended = "stopped";
-    const size_t block = size_t(r.channels) * 2; Bytes f; std::vector<int16_t> pcm; int silent = 0;
+    report.encoder = device + L"  ·  " + micCodecName(codec); report.ended = "stopped";
+    const size_t block = size_t(r.channels) * 2; Bytes f; std::vector<int16_t> pcm; int silent = 0, refused = 0;
     while (!stop) {
         if (!io.receive(f, 250)) { if (++silent >= 40) { report.ended = "quiet"; break; } continue; }
         silent = 0; if (f.empty()) continue;
         if (f[0] == frameStop) { report.ended = "their end"; break; }
-        if (f[0] != frameAudio || f.size() < 13 + block) continue;
-        const size_t frames = (f.size() - 13) / block; pcm.resize(frames * size_t(r.channels)); std::memcpy(pcm.data(), f.data() + 13, frames * block);
-        sink.samples(pcm.data(), frames, get64(&f[5])); ++report.frames; report.bytes += frames * block;
+        if (f[0] != frameAudio || f.size() < 13 + (codec == micPcm ? block : 1)) continue;
+        // 0.27: a packet decoded first (a decoder that refuses one is opened again; a few in a row and it's PCM's silence).
+        pcm.clear(); if (!decoder.decode(f.data() + 13, codec == micPcm ? (f.size() - 13) / block * block : f.size() - 13, get64(&f[5]), pcm)) { if (++refused % 8 == 0) decoder.open(codec, r.rate, r.channels); continue; }
+        refused = 0; ++report.frames; report.bytes += f.size() - 13; const size_t frames = pcm.size() / size_t(r.channels); if (frames) sink.samples(pcm.data(), frames, get64(&f[5]));
     }
     io.send(Bytes{frameStop}); sink.end();
     return report;

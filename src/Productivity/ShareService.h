@@ -4,6 +4,7 @@
 #include <functional>
 #include "Mirror/MirrorIo.h"
 #include <memory>
+#include <limits>
 #include <string>
 #include <vector>
 namespace nexus {
@@ -38,7 +39,13 @@ constexpr UINT ShareMessage=WM_APP+45;
 // Revision 9 (0.26): a phone's remote reaches further: shuffle, repeat and up next, each app's volume, the sound's levels
 // live, and this PC's network adapters (to wake it); a phone pauses a transfer either way (frame 8 while it sends, by not
 // reading while it receives, so this PC waits up to ten minutes); and its camera and microphone come to this PC (mode V).
-constexpr int shareProtocol=2,shareRevision=9;
+// Revision 10 (0.27): transfers pick up where they left off when a connection drops (offer flag 16 and a token; the answer
+// [1, u32 file, u64 offset] says what the receiver kept; frame 9 [9, u64 offset] after that file's header), and this PC
+// sends again with the same token when the device is back (up to five times in a day); what it receives it keeps for a
+// day (Resume/<token>). A phone's live activities (notice 7: a delivery, a ride, a timer) go to the island (options.live).
+// The remote gains this PC's temperatures (25), the island's clipboard history (27), the running PowerPoint show (29) and
+// a speed test (30); top apps (24), files (26) and screenshots (28) are reserved, answered unsupported for now.
+constexpr int shareProtocol=2,shareRevision=10;
 // Remote commands (mode R) and their answers.
 // Revision 3: RingPC (find this PC), Lyrics (the song's lines and word times, when the island has them).
 enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,ClipboardGet=6,ClipboardSet=7,Seek=8,Open=9,RingPC=10,Lyrics=11,
@@ -50,7 +57,9 @@ enum class RemoteCommand:uint8_t{Status=1,Media=2,Volume=3,Mute=4,Lock=5,Clipboa
     // unknown; u32 n, its address; u32 n, its title).
     Page=19,
     // Revision 9 (0.26): shuffle, repeat and up next; each app's volume; the sound's levels; the network adapters.
-    Playback=20,Mixer=21,Levels=22,Machine=23};
+    Playback=20,Mixer=21,Levels=22,Machine=23,
+    // Revision 10 (0.27): top apps, temperatures, files, the clipboard history, a screenshot, slides, a speed test.
+    Processes=24,Sensors=25,Files=26,Clips=27,Screenshot=28,Slides=29,Speed=30};
 constexpr uint8_t remoteOk=0,remoteNotAllowed=1,remoteUnsupported=2,remoteFailed=3;
 // What the island reports to a phone's remote. cover: a small JPEG (at most shareCoverLimit bytes), or empty.
 // clipboard (0.20): the island's universal clipboard is on, so the phone sends its own copies over as it opens.
@@ -108,7 +117,10 @@ struct ShareOptions{uint16_t tcpPort=47820,udpPort=47821;bool discovery=true,loo
     std::function<void(const std::string& peer,const std::vector<uint8_t>& frame)> input;
     // Revision 7: a screen, either way, on a connection a paired phone opens (mode V): its first frame, its name and the
     // connection. Called on a network thread; returns when the screen ends. Unset: refused as unsupported.
-    std::function<void(const std::string& peer,const std::wstring& name,const std::vector<uint8_t>& request,mirror::MirrorIo& io)> mirror;};
+    std::function<void(const std::string& peer,const std::wstring& name,const std::vector<uint8_t>& request,mirror::MirrorIo& io)> mirror;
+    // Revision 10: a phone's live activity (notice 7's bytes after the notice kind: op, key and the rest), called on a network
+    // thread. Unset: acked and dropped.
+    std::function<void(const std::string& peer,const std::wstring& phone,const std::vector<uint8_t>& notice)> live;};
 class ShareService{
 public:
     // notify: posted ShareMessage whenever events are waiting (null: poll take()).
@@ -244,6 +256,41 @@ std::vector<uint8_t> remoteLevelsAnswer(int level,bool resting,const std::vector
 // u8 prefix length.
 struct PcAdapter{uint8_t mac[6]{};std::wstring name;std::string ipv4;int prefix=0;};
 std::vector<uint8_t> remoteMachineAnswer(const std::vector<PcAdapter>&);
+// ---- Revision 10 (0.27) ----
+// Processes: payload [0, u8 sort (0 CPU, 1 memory), u8 max, u8 icons] lists the top apps; [1, u32 pid] ends one (asked to
+// close, then ended after 3 s). Both answer u8 n (at most 30) and each app's u32 pid, name, window title (at most 200), f32 CPU
+// (percent of the whole PC), u64 working set, u8 flags (1 a visible window, 2 protected, 4 the island) and its icon (a blob:
+// a 32-pixel PNG, only when asked).
+struct RemoteProcess{uint32_t pid=0;std::wstring name,title;double cpu=0;uint64_t memory=0;bool window=false,locked=false,island=false;std::vector<uint8_t> icon;};
+std::vector<uint8_t> remoteProcessesAnswer(const std::vector<RemoteProcess>&);
+// Sensors (no payload): f32 CPU and GPU °C (NaN unknown), u8 n and each sensor's name and f32 °C, u8 m and each fan's name
+// and u16 rpm.
+struct PcSensors{double cpu=std::numeric_limits<double>::quiet_NaN(),gpu=std::numeric_limits<double>::quiet_NaN();std::vector<std::pair<std::wstring,double>> zones;std::vector<std::pair<std::wstring,int>> fans;};
+std::vector<uint8_t> remoteSensorsAnswer(const PcSensors&);
+// Files: payload [0, path, u8 sort, u16 offset, u16 max, u8 thumbs] lists a folder ("" the places, "shelf:" the Shelf);
+// [1, path, u32 ask] sends a file or folder to the phone as an asked transfer (answered 1). The list: its path, title and
+// parent, u32 how many in all, u16 n and each entry's name, path, u8 kind (0 file, 1 folder, 2 drive, 3 place), u64 size
+// (a drive's free bytes), u64 modified (unix seconds) and a blob thumbnail (a small JPEG, or empty).
+struct RemoteFile{std::wstring name,path;int kind=0;uint64_t size=0,modified=0;std::vector<uint8_t> thumb;};
+struct RemoteFolder{std::wstring path,title,parent;uint32_t total=0;std::vector<RemoteFile> entries;};
+std::vector<uint8_t> remoteFilesAnswer(const RemoteFolder&);
+// Clips: payload [0, u8 max, u8 thumbs] lists the clipboard history; [1, u32 id] copies one here, [2, u32 id, u8 on] pins it,
+// [3, u32 id] deletes it (each answered with the list: u8 n and each copy's u32 id, u8 kind (0 text, 1 image, 2 files), text
+// (at most 1000), u64 when (unix ms), u8 pinned and a blob thumbnail); [4, u32 id] brings it to the phone (u8 kind, its text
+// up to 60000 and a blob JPEG for an image).
+struct RemoteClip{uint32_t id=0;int kind=0;std::wstring text;uint64_t at=0;bool pinned=false;std::vector<uint8_t> thumb;};
+std::vector<uint8_t> remoteClipsAnswer(const std::vector<RemoteClip>&);
+std::vector<uint8_t> remoteClipAnswer(int kind,const std::wstring& text,const std::vector<uint8_t>& image);
+// Screenshot: payload [u8 what (0 every screen, 1 the one under the pointer, 2 the active window), u32 ask]; the picture
+// follows as an asked transfer. Answers u16 width and height.
+std::vector<uint8_t> remoteScreenshotAnswer(int width,int height);
+// Slides: payload [0, u8 thumbs] reads; [1, u16 index] goes to that slide of the running show. Answers u8 state (0 PowerPoint
+// isn't running, 1 open without a show, 2 a show runs), u16 index and count, the deck's and the slide's titles, its notes (at
+// most 4000), blobs of this slide's and the next one's pictures (JPEG) and u32 seconds since the show started.
+struct RemoteSlides{int state=0,index=0,count=0;std::wstring deck,title,notes;std::vector<uint8_t> current,next;uint32_t seconds=0;};
+std::vector<uint8_t> remoteSlidesAnswer(const RemoteSlides&);
+// Speed: payload [0, u32 bytes] is answered with that many bytes (at most 200000); [1, filler] with u32 how many arrived.
+std::vector<uint8_t> remoteSpeedAnswer(const std::vector<uint8_t>& payload);
 // A request's payload, read in order; any read past its end fails (and so does everything after).
 class RemoteReader{const std::vector<uint8_t>& b_;size_t at_=0;bool ok_=true;
 public:

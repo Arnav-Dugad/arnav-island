@@ -3,6 +3,7 @@
 // started on a worker and read back by the next ask. Sleeping, restarting and shutting down wait until the answer has
 // gone, so the phone hears that they started.
 // 0.26 (revision 9): shuffle, repeat and up next, each app's volume, the sound's levels, and the adapters to wake this PC.
+// 0.27 (revision 10): this PC's temperatures, the island's clipboard history, and the PowerPoint show that runs here.
 #include <winsock2.h>
 #include "Island/IslandWindow.h"
 #include "Settings/SettingsModel.h"
@@ -13,6 +14,17 @@
 #include <dxgi.h>
 #include <powrprof.h>
 #include <wrl/client.h>
+#include <pdh.h>
+#include <pdhmsg.h>
+#include <oleauto.h>
+#include <chrono>
+#include <cmath>
+#include <ctime>
+#include <filesystem>
+#include <fstream>
+#include <future>
+#include <limits>
+#include <mutex>
 namespace nexus {
 namespace {
 std::wstring regText(HKEY root,const wchar_t* path,const wchar_t* name){
@@ -269,5 +281,167 @@ void IslandWindow::phonePower(){
     const int what=pendingPower_;pendingPower_=0;
     if(what==1){SetSuspendState(FALSE,FALSE,FALSE);return;}
     if(what==2||what==3){powerPrivilege();ExitWindowsEx(what==2?EWX_REBOOT:(EWX_SHUTDOWN|EWX_POWEROFF|EWX_HYBRID_SHUTDOWN),SHTDN_REASON_MAJOR_OTHER|SHTDN_REASON_MINOR_OTHER|SHTDN_REASON_FLAG_PLANNED);}
+}
+// ---- 0.27 (revision 10) ----
+namespace {
+const double unknownTemperature=std::numeric_limits<double>::quiet_NaN();
+std::wstring wideOf(const char* s){std::wstring w;const int n=MultiByteToWideChar(CP_UTF8,0,s,-1,nullptr,0);if(n>1){w.resize(size_t(n-1));MultiByteToWideChar(CP_UTF8,0,s,-1,w.data(),n);}return w;}
+// The ACPI thermal zones through PDH ("High Precision Temperature" in tenths of a kelvin, else "Temperature" in kelvin; no
+// admin rights needed). The query is made once; zones reading nothing sensible are left out.
+struct ThermalZones{PDH_HQUERY query=nullptr;PDH_HCOUNTER precise=nullptr,plain=nullptr;bool tried=false;
+    ~ThermalZones(){if(query)PdhCloseQuery(query);}
+    void read(std::vector<std::pair<std::wstring,double>>& out){
+        if(!tried){tried=true;if(PdhOpenQueryW(nullptr,0,&query)!=ERROR_SUCCESS)query=nullptr;
+            else{if(PdhAddEnglishCounterW(query,L"\\Thermal Zone Information(*)\\High Precision Temperature",0,&precise)!=ERROR_SUCCESS)precise=nullptr;
+                if(PdhAddEnglishCounterW(query,L"\\Thermal Zone Information(*)\\Temperature",0,&plain)!=ERROR_SUCCESS)plain=nullptr;}}
+        if(!query||PdhCollectQueryData(query)!=ERROR_SUCCESS)return;
+        auto take=[&](PDH_HCOUNTER counter,double scale){if(!counter)return false;DWORD size=0,count=0;const DWORD format=PDH_FMT_DOUBLE|PDH_FMT_NOCAP100;
+            if(PdhGetFormattedCounterArrayW(counter,format,&size,&count,nullptr)!=PDH_MORE_DATA||!size)return false;
+            std::vector<uint8_t> buffer(size);auto* items=reinterpret_cast<PDH_FMT_COUNTERVALUE_ITEM_W*>(buffer.data());if(PdhGetFormattedCounterArrayW(counter,format,&size,&count,items)!=ERROR_SUCCESS)return false;
+            bool any=false;
+            for(DWORD i=0;i<count&&out.size()<24;++i){const auto& v=items[i].FmtValue;if(v.CStatus!=PDH_CSTATUS_VALID_DATA&&v.CStatus!=PDH_CSTATUS_NEW_DATA)continue;
+                const double c=v.doubleValue*scale-273.15;if(!(c>-40&&c<150))continue;
+                std::wstring name=items[i].szName?items[i].szName:L"";if(const auto cut=name.find_last_of(L".\\");cut!=std::wstring::npos)name=name.substr(cut+1);
+                out.push_back({L"Thermal zone "+name,std::round(c*10)/10});any=true;}
+            return any;};
+        if(!take(precise,.1))take(plain,1);}};
+// NVIDIA's own library (nvml.dll, which its driver puts in System32), loaded once when it's there.
+struct Nvml{bool tried=false,ok=false;int(*count)(unsigned*)=nullptr;int(*handle)(unsigned,void**)=nullptr;int(*temperature)(void*,int,unsigned*)=nullptr;int(*name)(void*,char*,unsigned)=nullptr;
+    double read(std::wstring& label){
+        if(!tried){tried=true;HMODULE dll=LoadLibraryExW(L"nvml.dll",nullptr,LOAD_LIBRARY_SEARCH_SYSTEM32);wchar_t files[MAX_PATH]{};
+            if(!dll&&GetEnvironmentVariableW(L"ProgramW6432",files,MAX_PATH))dll=LoadLibraryExW((std::wstring(files)+L"\\NVIDIA Corporation\\NVSMI\\nvml.dll").c_str(),nullptr,LOAD_WITH_ALTERED_SEARCH_PATH);
+            if(dll){auto get=[&](auto& f,const char* n){f=reinterpret_cast<std::remove_reference_t<decltype(f)>>(reinterpret_cast<void*>(GetProcAddress(dll,n)));};int(*init)()=nullptr;
+                get(init,"nvmlInit_v2");get(count,"nvmlDeviceGetCount_v2");get(handle,"nvmlDeviceGetHandleByIndex_v2");get(temperature,"nvmlDeviceGetTemperature");get(name,"nvmlDeviceGetName");
+                ok=init&&count&&handle&&temperature&&init()==0;}}
+        if(!ok)return unknownTemperature;unsigned n=0;if(count(&n)!=0)return unknownTemperature;double best=unknownTemperature;
+        for(unsigned i=0;i<n&&i<8;++i){void* device=nullptr;unsigned t=0;if(handle(i,&device)!=0||temperature(device,0,&t)!=0||!t||t>150)continue;
+            if(!(best>=double(t))){best=t;char text[96]{};if(name&&name(device,text,sizeof(text))==0)label=wideOf(text);}}
+        return best;}};
+// Any WDDM 2.4 adapter's own reading: D3DKMT's adapter performance data (KMTQAITYPE_ADAPTERPERFDATA, 62: tenths of a degree,
+// and its fan), through gdi32. The structures as the WDK has them.
+struct KmtOpen{LUID luid;UINT adapter;};struct KmtQuery{UINT adapter;UINT type;void* data;UINT size;};struct KmtClose{UINT adapter;};
+struct KmtPerf{UINT32 physical;ULONGLONG memoryFrequency,maxMemoryFrequency,maxMemoryFrequencyOC,memoryBandwidth,pcieBandwidth;ULONG fanRpm,power,temperature;UCHAR powerStateOverride;};
+double adapterTemperature(std::wstring& label,int& fan){
+    HMODULE gdi=GetModuleHandleW(L"gdi32.dll");if(!gdi)return unknownTemperature;
+    auto get=[&](auto& f,const char* n){f=reinterpret_cast<std::remove_reference_t<decltype(f)>>(reinterpret_cast<void*>(GetProcAddress(gdi,n)));};
+    LONG(APIENTRY* open)(KmtOpen*)=nullptr;LONG(APIENTRY* query)(const KmtQuery*)=nullptr;LONG(APIENTRY* close)(const KmtClose*)=nullptr;
+    get(open,"D3DKMTOpenAdapterFromLuid");get(query,"D3DKMTQueryAdapterInfo");get(close,"D3DKMTCloseAdapter");if(!open||!query||!close)return unknownTemperature;
+    Microsoft::WRL::ComPtr<IDXGIFactory1> factory;if(FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))return unknownTemperature;double best=unknownTemperature;
+    for(UINT i=0;i<8;++i){Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;if(factory->EnumAdapters1(i,&adapter)==DXGI_ERROR_NOT_FOUND)break;DXGI_ADAPTER_DESC1 d{};
+        if(FAILED(adapter->GetDesc1(&d))||(d.Flags&DXGI_ADAPTER_FLAG_SOFTWARE)||d.VendorId==0x1414)continue;
+        KmtOpen o{d.AdapterLuid,0};if(open(&o)<0)continue;KmtPerf perf{};const KmtQuery q{o.adapter,62,&perf,UINT(sizeof(perf))};
+        if(query(&q)>=0){if(perf.temperature>0&&perf.temperature<1500&&!(best>=perf.temperature/10.)){best=perf.temperature/10.;label=d.Description;}if(perf.fanRpm>0&&perf.fanRpm<20000)fan=std::max(fan,int(perf.fanRpm));}
+        const KmtClose c{o.adapter};close(&c);}
+    return best;}
+}
+// Sensors: each thermal zone, the hottest of them as the CPU's; the GPU from NVML (NVIDIA), else its adapter's own reading,
+// with its fan when it says. NaN when nothing says.
+std::vector<uint8_t> IslandWindow::remoteSensors(){
+    static ThermalZones zones;static Nvml nvml;PcSensors s;zones.read(s.zones);
+    for(auto& [name,c]:s.zones)if(!(s.cpu>=c))s.cpu=c;
+    std::wstring gpu,adapter;int fan=0;s.gpu=nvml.read(gpu);const double own=adapterTemperature(adapter,fan);if(std::isnan(s.gpu)){s.gpu=own;gpu=adapter;}
+    if(!std::isnan(s.gpu))s.zones.push_back({gpu.empty()?std::wstring(L"Graphics"):gpu,s.gpu});if(fan>0)s.fans.push_back({L"Graphics fan",fan});
+    return remoteSensorsAnswer(s);
+}
+// Clips: the island's clipboard history as the Shelf's Clipboard tab lists it (pinned first, then the newest); one copied
+// here again, pinned, deleted, or brought to the phone. With "hide secrets" on, a password-like copy lists as dots and
+// never leaves this PC.
+std::vector<uint8_t> IslandWindow::remoteClips(const std::vector<uint8_t>& payload){
+    RemoteReader in(payload);const int op=in.u8();if(!in.ok())return {remoteFailed};
+    auto secret=[&](const ClipEntry& e){return settings_.hideSecrets&&e.kind==ClipEntry::Kind::Text&&looksSecret(e.text);};
+    auto kindOf=[](const ClipEntry& e){return e.kind==ClipEntry::Kind::Image?1:e.kind==ClipEntry::Kind::Files?2:0;};
+    auto names=[](const ClipEntry& e){std::wstring t;for(auto& f:e.files){const auto cut=f.find_last_of(L"\\/");if(!t.empty())t+=L"\n";t+=cut==std::wstring::npos?f:f.substr(cut+1);}return t;};
+    size_t most=40;bool thumbs=true;
+    if(op==0){most=size_t(std::clamp(in.u8(),0,40));thumbs=in.u8()!=0;if(!in.ok())return {remoteFailed};}
+    else if(op>=1&&op<=4){const uint64_t id=uint32_t(in.i32());if(!in.ok())return {remoteFailed};const ClipEntry* e=clips_.find(id);if(!e)return {remoteFailed};
+        if(op==4){if(secret(*e))return {remoteNotAllowed};std::vector<uint8_t> image;
+            if(e->kind==ClipEntry::Kind::Image&&!e->dib.empty())if(auto art=dibThumbnail(e->dib,1280)){for(auto [side,quality]:{std::pair{1280u,.8f},std::pair{960u,.7f},std::pair{640u,.6f}})if(image.empty())image=encodeCover(*art,side,180*1024,quality);}
+            store_.log("Info","phone_clip_taken");
+            return remoteClipAnswer(kindOf(*e),e->kind==ClipEntry::Kind::Files?names(*e):e->kind==ClipEntry::Kind::Image?std::wstring():e->text,image);}
+        if(op==1){for(size_t i=0;i<content_.clips.size();++i)if(content_.clips[i].id==id){copyClip(i);break;}}
+        else if(op==2){const bool on=in.u8()!=0;if(!in.ok())return {remoteFailed};if(e->pinned!=on&&!clips_.togglePin(id))return {remoteFailed};clipViews();savePinnedClips();}
+        else{const bool pinned=e->pinned;clips_.remove(id);clipViews();if(pinned)savePinnedClips();}
+        store_.log("Info","phone_clip");refresh();}
+    else return {remoteUnsupported};
+    // The list, each image's thumbnail made once per copy (and only so many, so the answer fits one frame).
+    const double now=seconds();const int64_t wall=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    std::map<uint64_t,std::vector<uint8_t>> kept;for(auto& [id,t]:clipThumbs_)if(clips_.find(id))kept[id]=t;
+    std::vector<const ClipEntry*> order;for(auto& e:clips_.entries())if(e.pinned)order.push_back(&e);for(auto& e:clips_.entries())if(!e.pinned)order.push_back(&e);
+    std::vector<RemoteClip> out;size_t budget=160*1024;
+    for(auto* p:order){if(out.size()>=most)break;const auto& e=*p;RemoteClip c;c.id=uint32_t(e.id);c.kind=kindOf(e);c.pinned=e.pinned;c.at=uint64_t(std::max<int64_t>(0,wall-int64_t(std::llround((now-e.time)*1000))));
+        if(secret(e))c.text=L"•••••• · hidden";
+        else if(e.kind==ClipEntry::Kind::Files)c.text=names(e);
+        else if(e.kind==ClipEntry::Kind::Image)c.text=L"Image  ·  "+std::to_wstring(e.imageWidth)+L" × "+std::to_wstring(e.imageHeight);
+        else c.text=e.text.substr(0,1000);
+        if(thumbs&&e.kind==ClipEntry::Kind::Image&&e.thumbnail){auto it=kept.find(e.id);
+            if(it==kept.end()){std::vector<uint8_t> t=encodeCover(*e.thumbnail,96,6*1024,.75f);if(t.empty())t=encodeCover(*e.thumbnail,64,6*1024,.6f);it=kept.emplace(e.id,std::move(t)).first;}
+            if(!it->second.empty()&&it->second.size()<=budget){c.thumb=it->second;budget-=c.thumb.size();}}
+        out.push_back(std::move(c));}
+    clipThumbs_=std::move(kept);return remoteClipsAnswer(out);
+}
+// ---- Slides: the PowerPoint that runs here, by late binding (GetActiveObject: it's never started from here) ----
+namespace {
+struct Var{VARIANT v;Var(){VariantInit(&v);}~Var(){VariantClear(&v);}Var(const Var&)=delete;Var& operator=(const Var&)=delete;};
+VARIANT number(long n){VARIANT v;VariantInit(&v);v.vt=VT_I4;v.lVal=n;return v;}
+// A property or method of a late-bound object, by its name (arguments in their order).
+bool invoke(IDispatch* d,const wchar_t* name,WORD flags,Var& out,std::vector<VARIANT> args={}){
+    if(!d)return false;DISPID id=0;LPOLESTR n=const_cast<LPOLESTR>(name);if(FAILED(d->GetIDsOfNames(IID_NULL,&n,1,LOCALE_USER_DEFAULT,&id)))return false;
+    std::reverse(args.begin(),args.end());DISPPARAMS p{args.empty()?nullptr:args.data(),nullptr,UINT(args.size()),0};
+    return SUCCEEDED(d->Invoke(id,IID_NULL,LOCALE_USER_DEFAULT,flags,&p,&out.v,nullptr,nullptr));}
+Microsoft::WRL::ComPtr<IDispatch> object(IDispatch* d,const wchar_t* name,std::vector<VARIANT> args={}){
+    Var v;Microsoft::WRL::ComPtr<IDispatch> r;if(invoke(d,name,DISPATCH_PROPERTYGET|DISPATCH_METHOD,v,std::move(args))&&v.v.vt==VT_DISPATCH&&v.v.pdispVal)r=v.v.pdispVal;return r;}
+double real(IDispatch* d,const wchar_t* name){Var v;if(!invoke(d,name,DISPATCH_PROPERTYGET,v)||FAILED(VariantChangeType(&v.v,&v.v,0,VT_R8)))return std::numeric_limits<double>::quiet_NaN();return v.v.dblVal;}
+int whole(IDispatch* d,const wchar_t* name){const double v=real(d,name);return std::isfinite(v)&&std::abs(v)<1e9?int(v):0;}
+std::wstring words(IDispatch* d,const wchar_t* name){Var v;if(!invoke(d,name,DISPATCH_PROPERTYGET,v)||FAILED(VariantChangeType(&v.v,&v.v,0,VT_BSTR))||!v.v.bstrVal)return {};
+    std::wstring t(v.v.bstrVal,SysStringLen(v.v.bstrVal));for(auto& c:t)if(c==L'\r'||c==L'\v')c=L'\n';while(!t.empty()&&(t.back()==L'\n'||t.back()==L' '))t.pop_back();return t;}
+// A shape's text (its TextFrame's TextRange), empty when it has none.
+std::wstring shapeText(IDispatch* shape){auto frame=object(shape,L"TextFrame");auto range=object(frame.Get(),L"TextRange");return words(range.Get(),L"Text");}
+// Slides' pictures, kept by deck, slide and size; when the show began (for one that doesn't say).
+struct SlideCache{std::mutex m;std::map<std::wstring,std::vector<uint8_t>> pictures;std::wstring show;std::chrono::steady_clock::time_point since{};};
+SlideCache& slideCache(){static SlideCache c;return c;}
+// A slide as a JPEG `width` pixels wide (at most `limit` bytes), exported once.
+std::vector<uint8_t> slidePicture(IDispatch* slide,const std::wstring& deck,int width,double aspect,size_t limit){
+    const std::wstring key=deck+L"|"+std::to_wstring(whole(slide,L"SlideID"))+L"|"+std::to_wstring(whole(slide,L"SlideIndex"))+L"|"+std::to_wstring(width);auto& c=slideCache();
+    {std::lock_guard lock(c.m);if(auto it=c.pictures.find(key);it!=c.pictures.end())return it->second;}
+    wchar_t temp[MAX_PATH]{};GetTempPathW(MAX_PATH,temp);const std::wstring path=std::wstring(temp)+L"arnav-slide-"+std::to_wstring(GetCurrentThreadId())+L"-"+std::to_wstring(GetTickCount64())+L".jpg";
+    BSTR file=SysAllocString(path.c_str()),filter=SysAllocString(L"JPG");VARIANT f,k;VariantInit(&f);VariantInit(&k);f.vt=VT_BSTR;f.bstrVal=file;k.vt=VT_BSTR;k.bstrVal=filter;
+    Var done;const bool made=invoke(slide,L"Export",DISPATCH_METHOD,done,{f,k,number(width),number(std::max(1L,std::lround(width*aspect)))});SysFreeString(file);SysFreeString(filter);
+    std::vector<uint8_t> bytes;if(made){std::ifstream in(std::filesystem::path(path),std::ios::binary);bytes.assign(std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>());}DeleteFileW(path.c_str());
+    if(bytes.size()>limit){auto art=decodeCover(bytes,UINT(width));bytes.clear();if(art)for(auto [side,quality]:{std::pair{UINT(width),.7f},std::pair{UINT(width*3/4),.6f}})if(bytes.empty())bytes=encodeCover(*art,side,limit,quality);}
+    if(!bytes.empty()){std::lock_guard lock(c.m);if(c.pictures.size()>=48)c.pictures.clear();c.pictures[key]=bytes;}return bytes;}
+// What the running PowerPoint shows: its slideshow, or without one the slide its window shows (op 1 goes to `go` first).
+RemoteSlides readSlides(int op,int go,bool thumbs){
+    RemoteSlides r;CLSID clsid;if(FAILED(CLSIDFromProgID(L"PowerPoint.Application",&clsid)))return r;
+    Microsoft::WRL::ComPtr<IUnknown> unknown;if(FAILED(GetActiveObject(clsid,nullptr,&unknown))||!unknown)return r;
+    Microsoft::WRL::ComPtr<IDispatch> app;if(FAILED(unknown.As(&app)))return r;r.state=1;
+    Microsoft::WRL::ComPtr<IDispatch> deck,view,slide;bool show=false;
+    if(auto windows=object(app.Get(),L"SlideShowWindows");windows&&whole(windows.Get(),L"Count")>=1)
+        if(auto w=object(windows.Get(),L"Item",{number(1)})){view=object(w.Get(),L"View");deck=object(w.Get(),L"Presentation");show=view&&deck;}
+    if(!show){view.Reset();deck=object(app.Get(),L"ActivePresentation");if(!deck)return r;if(auto w=object(app.Get(),L"ActiveWindow"))view=object(w.Get(),L"View");}
+    auto slides=object(deck.Get(),L"Slides");r.count=std::max(0,whole(slides.Get(),L"Count"));
+    if(op==1&&go>=1&&go<=r.count&&view){Var done;invoke(view.Get(),L"GotoSlide",DISPATCH_METHOD,done,{number(go)});}
+    if(view)slide=object(view.Get(),L"Slide");if(!slide&&r.count>0)slide=object(slides.Get(),L"Item",{number(1)});
+    r.state=show?2:1;r.deck=words(deck.Get(),L"Name");if(const auto dot=r.deck.rfind(L'.');dot!=std::wstring::npos&&dot>0)r.deck.resize(dot);
+    const std::wstring full=words(deck.Get(),L"FullName");auto& c=slideCache();
+    {std::lock_guard lock(c.m);if(!show)c.show.clear();else if(c.show!=full){c.show=full;c.since=std::chrono::steady_clock::now();}
+        if(show){const double elapsed=real(view.Get(),L"PresentationElapsedTime");r.seconds=uint32_t(std::isfinite(elapsed)&&elapsed>=0&&elapsed<1e8?elapsed:std::chrono::duration<double>(std::chrono::steady_clock::now()-c.since).count());}}
+    if(!slide)return r;
+    r.index=whole(slide.Get(),L"SlideIndex");
+    if(auto shapes=object(slide.Get(),L"Shapes");shapes&&whole(shapes.Get(),L"HasTitle")!=0)if(auto title=object(shapes.Get(),L"Title"))r.title=shapeText(title.Get());
+    if(auto notes=object(slide.Get(),L"NotesPage"))if(auto shapes=object(notes.Get(),L"Shapes"))if(auto holders=object(shapes.Get(),L"Placeholders"))if(auto body=object(holders.Get(),L"Item",{number(2)}))r.notes=shapeText(body.Get());
+    if(thumbs){double aspect=.5625;if(auto setup=object(deck.Get(),L"PageSetup")){const double w=real(setup.Get(),L"SlideWidth"),h=real(setup.Get(),L"SlideHeight");if(w>0&&h>0&&h/w<4)aspect=h/w;}
+        r.current=slidePicture(slide.Get(),full,640,aspect,90*1024);
+        if(r.index>=1&&r.index<r.count)if(auto next=object(slides.Get(),L"Item",{number(r.index+1)}))r.next=slidePicture(next.Get(),full,480,aspect,60*1024);}
+    return r;}
+}
+// Slides: read (and go to a slide) on a worker of its own (PowerPoint can be slow to answer, and a stuck one mustn't hold
+// the island); the phone hears "failed" if it takes over 3 s.
+std::vector<uint8_t> IslandWindow::remoteSlides(const std::vector<uint8_t>& payload){
+    RemoteReader in(payload);const int op=in.u8();if(!in.ok())return {remoteFailed};if(op!=0&&op!=1)return {remoteUnsupported};
+    const bool thumbs=op==0&&payload.size()>=2&&payload[1]!=0;const int go=op==1?in.u16():0;if(!in.ok())return {remoteFailed};
+    auto answer=std::make_shared<std::promise<RemoteSlides>>();auto ready=answer->get_future();
+    std::thread([answer,op,go,thumbs]{const HRESULT com=CoInitializeEx(nullptr,COINIT_MULTITHREADED);RemoteSlides r;try{r=readSlides(op,go,thumbs);}catch(...){}if(SUCCEEDED(com))CoUninitialize();answer->set_value(std::move(r));}).detach();
+    if(ready.wait_for(std::chrono::milliseconds(3200))!=std::future_status::ready)return {remoteFailed};
+    if(op==1)store_.log("Info","phone_slide");return remoteSlidesAnswer(ready.get());
 }
 }

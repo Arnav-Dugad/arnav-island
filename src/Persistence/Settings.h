@@ -8,7 +8,7 @@
 #include "Design/Layout.h"
 namespace nexus {
 struct Settings {
-    static constexpr int currentVersion=20;
+    static constexpr int currentVersion=21;
     int version=currentVersion,uiMode=1,preset=1,monitor=0,verticalOffset=0,horizontalOffset=0,hoverDelay=180,mediaLayout=0;
     int scale=100,corner=22,edge=0,theme=0,compactWidth=196,collapseDelay=650,accent=0;
     int material=0,glassTint=50;
@@ -60,6 +60,8 @@ struct Settings {
     // v20: paired devices reach each other on other networks, through the relay; what you copy goes to your phones (off);
     // photos your phone takes for this PC go on the Shelf; this PC locks when your phone leaves (off) and welcomes it back.
     bool relay=true,universalClipboard=false,continuity=true,proximityLock=false,proximityWelcome=true;
+    // v21 (0.27): a phone's live activities (a delivery, a ride, a timer) show on the island, with its notifications.
+    bool phoneLive=true;
     // The tint of the material in use (0-100).
     int tintFor()const{return material==2?clearTint:glassTint;}
     // Every material meets the screen edge with the same concave shoulders; an
@@ -81,7 +83,7 @@ struct Settings {
         FLAG(compactVolume) FLAG(compactTimer) FLAG(compactClock) FLAG(shelfPeek) FLAG(collapseOnAppSwitch) FLAG(wheelVolume) FLAG(animatedIcons) FLAG(trackHandoff) FLAG(reduceMotion) FLAG(hideFullscreen) FLAG(hoverOpen) FLAG(startAtLogin) FLAG(albumAccents) FLAG(magnetic) FLAG(compactMedia) FLAG(compactBattery) FLAG(directAudio)
         FLAG(waveform) FLAG(appIcons) FLAG(hud) FLAG(followSession) FLAG(autoHide) FLAG(alertsReveal) FLAG(deviceCards) FLAG(powerCards) FLAG(batteryHistory) FLAG(clipboardHistory) FLAG(clipboardConfirm) FLAG(privacyDots) FLAG(privacyCards) FLAG(waveTimeline) FLAG(lyrics) FLAG(lyricsCompact) FLAG(headphoneCards) FLAG(captureShortcuts) FLAG(hideSecrets) FLAG(pinnedShelf) FLAG(currency) FLAG(commandHistory) FLAG(shadow) FLAG(compactGlance) FLAG(artPulse)
         FLAG(compactControls) FLAG(swipeSkip) FLAG(fullscreenPeek) FLAG(appAccents) FLAG(batteryWeekly) FLAG(weather) FLAG(richClips) FLAG(siteIcons) FLAG(edgeSplash) FLAG(adaptiveText) FLAG(sharing)
-        FLAG(clipboardKeep) FLAG(sounds) FLAG(handoff) FLAG(islandDj) FLAG(stackAlerts) FLAG(musicLibrary) FLAG(shelfOpen) FLAG(beatEdge) FLAG(restFrost) FLAG(weatherGlass) FLAG(autoUpdate) FLAG(phoneControl) FLAG(phoneNotices) FLAG(relay) FLAG(universalClipboard) FLAG(continuity) FLAG(proximityLock) FLAG(proximityWelcome)
+        FLAG(clipboardKeep) FLAG(sounds) FLAG(handoff) FLAG(islandDj) FLAG(stackAlerts) FLAG(musicLibrary) FLAG(shelfOpen) FLAG(beatEdge) FLAG(restFrost) FLAG(weatherGlass) FLAG(autoUpdate) FLAG(phoneControl) FLAG(phoneNotices) FLAG(relay) FLAG(universalClipboard) FLAG(continuity) FLAG(proximityLock) FLAG(proximityWelcome) FLAG(phoneLive)
 #undef FLAG
         }if(!in.eof())throw std::runtime_error("Malformed settings");
         // Before v14 there were seven pages: the saved order keeps its places and gains Controls after Stats.
@@ -95,7 +97,7 @@ struct Settings {
         WRITE(material) WRITE(glassTint) WRITE(reduceMotion) WRITE(hideFullscreen) WRITE(hoverOpen) WRITE(startAtLogin) WRITE(albumAccents) WRITE(magnetic) WRITE(compactMedia) WRITE(compactBattery) WRITE(directAudio)
         WRITE(waveform) WRITE(appIcons) WRITE(hud) WRITE(followSession) WRITE(autoHide) WRITE(alertsReveal) WRITE(deviceCards) WRITE(powerCards) WRITE(batteryHistory) WRITE(clipboardHistory) WRITE(clipboardConfirm) WRITE(privacyDots) WRITE(privacyCards) WRITE(springStiffness) WRITE(springDamping) WRITE(springMass) WRITE(commandShortcut) WRITE(waveTimeline) WRITE(lyrics) WRITE(lyricsCompact) WRITE(headphoneCards) WRITE(captureShortcuts) WRITE(hideSecrets) WRITE(pinnedShelf) WRITE(currency) WRITE(commandHistory) WRITE(shadow) WRITE(compactGlance) WRITE(artPulse)
         WRITE(compactControls) WRITE(swipeSkip) WRITE(fullscreenPeek) WRITE(appAccents) WRITE(batteryWeekly) WRITE(weather) WRITE(richClips) WRITE(siteIcons) WRITE(edgeSplash) WRITE(adaptiveText) WRITE(sharing) WRITE(waveformStyle) WRITE(notifyStyle) WRITE(weatherUnit)
-        WRITE(clipboardKeep) WRITE(sounds) WRITE(handoff) WRITE(islandDj) WRITE(stackAlerts) WRITE(musicLibrary) WRITE(shelfOpen) WRITE(crossfade) WRITE(clearTint) WRITE(beatEdge) WRITE(restFrost) WRITE(weatherGlass) WRITE(autoUpdate) WRITE(phoneControl) WRITE(phoneNotices) WRITE(relay) WRITE(universalClipboard) WRITE(continuity) WRITE(proximityLock) WRITE(proximityWelcome)
+        WRITE(clipboardKeep) WRITE(sounds) WRITE(handoff) WRITE(islandDj) WRITE(stackAlerts) WRITE(musicLibrary) WRITE(shelfOpen) WRITE(crossfade) WRITE(clearTint) WRITE(beatEdge) WRITE(restFrost) WRITE(weatherGlass) WRITE(autoUpdate) WRITE(phoneControl) WRITE(phoneNotices) WRITE(relay) WRITE(universalClipboard) WRITE(continuity) WRITE(proximityLock) WRITE(proximityWelcome) WRITE(phoneLive)
 #undef WRITE
     }
     bool operator==(const Settings&)const=default;

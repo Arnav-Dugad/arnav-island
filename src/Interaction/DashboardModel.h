@@ -35,7 +35,9 @@ enum class Action { None,Overview,Media,System,Focus,Settings,Pin,Close,Play,Pre
     // 0.24 (580): stop showing this screen on a phone.
     MirrorStop=580,
     // 0.25 (581-583): a photo just taken on a phone, pasted here or put on the Shelf; the page in the browser, on the phone.
-    PhotoPaste=581,PhotoShelf=582,PagePhone=583,ActionEnd=584 };
+    PhotoPaste=581,PhotoShelf=582,PagePhone=583,
+    // 0.27 (584-585): a phone's live activity, opened from the compact island, and the next of several.
+    LiveOpen=584,LiveNext=585,ActionEnd=586 };
 inline bool inRange(Action a,Action base,Action end){return int(a)>=int(base)&&int(a)<int(end);}
 // Command bar layout: input 42, then 40 per row, then the key hints.
 inline float commandFooterY(int rows){return 52+40.f*float(rows)+2;}

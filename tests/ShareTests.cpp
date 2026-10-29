@@ -8,7 +8,9 @@
 #include "Productivity/ShareRelay.h"
 #include "Productivity/ShareService.h"
 #include "Productivity/QrCode.h"
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -61,6 +63,29 @@ int main(){
         PcAdapter ad;const uint8_t mac[6]={1,2,3,4,5,6};std::memcpy(ad.mac,mac,6);ad.name=L"Wi-Fi";ad.ipv4="192.168.1.20";ad.prefix=24;
         const auto w=remoteMachineAnswer({ad});CHECK(w[0]==remoteOk&&w[1]==1&&w[2]==1&&std::memcmp(w.data()+3,mac,6)==0&&u32(w,9)==5&&u32(w,18)==12&&std::string(w.begin()+22,w.begin()+34)=="192.168.1.20"&&w[34]==24&&w.size()==35);
         CHECK(remoteMachineAnswer({}).size()==3);}
+    // Revision 10: temperatures (NaN unknown), the clipboard history (thumbnails up to 6 KB) and one copy brought over, the
+    // running show, and the speed test's answers.
+    {auto u32=[](const std::vector<uint8_t>& b,size_t at){return uint32_t(b[at]|b[at+1]<<8|b[at+2]<<16|uint32_t(b[at+3])<<24);};
+        auto f32=[&](const std::vector<uint8_t>& b,size_t at){const uint32_t u=u32(b,at);float f=0;std::memcpy(&f,&u,4);return f;};
+        PcSensors t;t.cpu=52.5;t.zones={{L"CPU",52.5},{L"GPU",41}};t.fans={{L"GPU fan",1800}};
+        const auto a=remoteSensorsAnswer(t);CHECK(a[0]==remoteOk&&a[1]==1&&f32(a,2)==52.5f&&std::isnan(f32(a,6))&&a[10]==2);
+        CHECK(u32(a,11)==3&&std::string(a.begin()+15,a.begin()+18)=="CPU"&&f32(a,18)==52.5f&&u32(a,22)==3&&f32(a,29)==41.f&&a[33]==1);
+        CHECK(u32(a,34)==7&&std::string(a.begin()+38,a.begin()+45)=="GPU fan"&&(a[45]|a[46]<<8)==1800&&a.size()==47);
+        CHECK((remoteSensorsAnswer({}).size()==12)&&std::isnan(f32(remoteSensorsAnswer({}),2)));
+        std::vector<RemoteClip> clips{{7,0,L"hello",1700000000000ull,true,{}},{8,1,L"",5,false,std::vector<uint8_t>(10,3)},{9,2,L"a\nb",6,false,std::vector<uint8_t>(7000,1)}};
+        const auto c=remoteClipsAnswer(clips);CHECK(c[0]==remoteOk&&c[1]==1&&c[2]==3&&u32(c,3)==7&&c[7]==0&&u32(c,8)==5&&std::string(c.begin()+12,c.begin()+17)=="hello");
+        uint64_t at=0;std::memcpy(&at,c.data()+17,8);CHECK(at==1700000000000ull&&c[25]==1&&u32(c,26)==0);
+        CHECK(u32(c,30)==8&&c[34]==1&&u32(c,35)==0&&c[47]==0&&u32(c,48)==10&&c[52]==3);
+        CHECK(u32(c,62)==9&&c[66]==2&&u32(c,67)==3&&u32(c,83)==0&&c.size()==87);
+        const auto one=remoteClipAnswer(1,L"x",std::vector<uint8_t>(100,9));CHECK(one[0]==remoteOk&&one[1]==1&&one[2]==1&&u32(one,3)==1&&one[7]=='x'&&u32(one,8)==100&&one.size()==112);
+        const auto lng=remoteClipAnswer(0,std::wstring(70000,L'a'),{});CHECK(u32(lng,3)==60000&&lng.size()==3+4+60000+4);
+        RemoteSlides sl;sl.state=2;sl.index=3;sl.count=12;sl.deck=L"Deck";sl.title=L"Title";sl.notes=L"Notes";sl.current.assign(50,7);sl.next.assign(70000,8);sl.seconds=95;
+        const auto d=remoteSlidesAnswer(sl);CHECK(d[0]==remoteOk&&d[1]==1&&d[2]==2&&(d[3]|d[4]<<8)==3&&(d[5]|d[6]<<8)==12&&u32(d,7)==4&&std::string(d.begin()+11,d.begin()+15)=="Deck");
+        CHECK(u32(d,15)==5&&u32(d,24)==5&&std::string(d.begin()+28,d.begin()+33)=="Notes"&&u32(d,33)==50&&d[37]==7&&u32(d,87)==0&&u32(d,91)==95&&d.size()==95);
+        {const auto z=remoteSlidesAnswer({});CHECK(z.size()==31&&z[0]==remoteOk&&z[1]==1&&std::all_of(z.begin()+2,z.end(),[](uint8_t v){return v==0;}));}
+        CHECK(remoteSpeedAnswer({0,0xe8,3,0,0}).size()==1002&&remoteSpeedAnswer({0,0xe0,0x93,4,0}).size()==200002);
+        std::vector<uint8_t> up{1};up.resize(501,0x77);CHECK((remoteSpeedAnswer(up)==std::vector<uint8_t>{remoteOk,1,0xf4,1,0,0}));
+        CHECK((remoteSpeedAnswer({})==std::vector<uint8_t>{remoteFailed}&&remoteSpeedAnswer({0,1})==std::vector<uint8_t>{remoteFailed}&&remoteSpeedAnswer({7})==std::vector<uint8_t>{remoteUnsupported}));}
     // 0.20.1: the pairing link's QR code. The modules are those of the reference encoder (Nayuki's qrcodegen) for the same
     // text, version 3 at level M, and decode (zxing-cpp; and ZXing in the phone's own tests) to the link.
     {const auto q=qrEncode("arnavisland://pair/7K2PMX4Q");CHECK(q.size==29&&q.modules.size()==29u*29u);
@@ -166,6 +191,27 @@ int main(){
         // A PC that forgot the other refuses its files.
         b.forget(a->id());a->send(b.id(),{file.wstring()});CHECK(waitFor(*a,pa,ShareEvent::Kind::Failed,e));CHECK(e.detail.find(L"doesn't have this PC paired")!=std::wstring::npos);
     }
+    // 0.27 (revision 10): a transfer that breaks halfway (the receiving PC goes away) is kept there, and the sender offers it
+    // again when that PC is back: it goes on from where it stopped, without asking again, and arrives whole.
+    {auto c=std::make_unique<ShareService>(nullptr,options(L"C",47940));auto d=std::make_unique<ShareService>(nullptr,options(L"D",47950));std::vector<ShareEvent> pc,pd;ShareEvent e,f;
+        c->addPeer(d->id(),L"PC D","127.0.0.1",47950);d->addPeer(c->id(),L"PC C","127.0.0.1",47940);
+        c->pair(d->id());CHECK(waitFor(*c,pc,ShareEvent::Kind::PairCode,e));CHECK(waitFor(*d,pd,ShareEvent::Kind::PairCode,f));c->confirmPair(true);d->confirmPair(true);
+        CHECK(waitFor(*c,pc,ShareEvent::Kind::Paired,e));CHECK(waitFor(*d,pd,ShareEvent::Kind::Paired,f));
+        const fs::path big=root/L"resume.bin";{std::ofstream out(big,std::ios::binary);std::mt19937 random(11);std::string chunk(1<<20,'r');for(int i=0;i<48;++i){for(auto& ch:chunk)ch=char(random()&255);out<<chunk;}}
+        const uint32_t t=c->send(d->id(),{big.wstring()});CHECK(waitFor(*d,pd,ShareEvent::Kind::Offer,f));d->answer(f.transfer,true);CHECK(waitFor(*d,pd,ShareEvent::Kind::Progress,f));
+        d.reset();CHECK(waitFor(*c,pc,ShareEvent::Kind::Failed,e,30000));CHECK(e.transfer==t);CHECK(e.detail.find(L"dropped")!=std::wstring::npos);
+        std::this_thread::sleep_for(std::chrono::milliseconds(800));
+        bool kept=false;for(auto& x:fs::directory_iterator(root/L"D-downloads"))if(x.path().extension()==L".arnavpart")kept=true;CHECK(kept);CHECK(!fs::is_empty(root/L"D"/L"Resume"));
+        pd.clear();d=std::make_unique<ShareService>(nullptr,options(L"D",47950));
+        CHECK(waitFor(*d,pd,ShareEvent::Kind::Progress,f,30000));CHECK(f.done>0);
+        CHECK(waitFor(*d,pd,ShareEvent::Kind::Received,f,60000));CHECK(read(f.detail)==read(big));CHECK(fs::path(f.detail).filename()==L"resume.bin");
+        CHECK(waitFor(*c,pc,ShareEvent::Kind::Sent,e,30000));CHECK(e.transfer==t);
+        {bool offered=false;for(auto& x:pd)offered=offered||x.kind==ShareEvent::Kind::Offer;for(auto& x:d->take())offered=offered||x.kind==ShareEvent::Kind::Offer;CHECK(!offered);}
+        CHECK(fs::is_empty(root/L"D"/L"Resume"));bool parts=false;for(auto& x:fs::directory_iterator(root/L"D-downloads"))if(x.path().extension()==L".arnavpart")parts=true;CHECK(!parts);
+        // To a PC of revision 9 it goes as before (no token), and a stop there isn't tried again.
+        c->addPeer(d->id(),L"PC D","127.0.0.1",47950,shareProtocol,9);pc.clear();pd.clear();
+        c->send(d->id(),{big.wstring()});CHECK(waitFor(*d,pd,ShareEvent::Kind::Offer,f));d->answer(f.transfer,true);CHECK(waitFor(*d,pd,ShareEvent::Kind::Progress,f));d->cancel(f.transfer);
+        CHECK(waitFor(*c,pc,ShareEvent::Kind::Failed,e,30000));CHECK(e.detail.find(L"dropped")==std::wstring::npos);CHECK(fs::is_empty(root/L"D"/L"Resume"));}
     std::error_code error;fs::remove_all(root,error);
     std::printf("share tests: %d checks, %d failures\n",checks,failures);return failures?1:0;
 }

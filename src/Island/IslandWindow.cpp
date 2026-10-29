@@ -1,6 +1,7 @@
 #include "Productivity/QrCode.h"
 #include "Common/Capture.h"
 #include "IslandWindow.h"
+#include "Mirror/PhoneCamera.h"
 #include "Media/CoverCodec.h"
 #include "Design/Wallpaper.h"
 #include <windowsx.h>
@@ -269,6 +270,10 @@ int IslandWindow::run(HINSTANCE instance,const std::wstring& cmd){
     if(auto at=cmd.find(L"--qa-verify=");testing_&&at!=std::wstring::npos){std::wstring file=cmd.substr(at+12);if(auto space=file.find(L" --");space!=std::wstring::npos)file.resize(space);if(file.size()>1&&file.front()==L'"')file=file.substr(1,file.find(L'"',1)-1);
         std::ofstream(store_.directory/L"verify-qa.txt")<<"signer="<<signerSha256(file)<<"\npublisher="<<(signedByPublisher(file)?1:0)<<"\n";}
     for(auto pair:{std::pair{L"--qa-battery",1},std::pair{L"--qa-devices",2}})if(testing_&&cmd.find(pair.first)!=std::wstring::npos){content_.page=Page::System;content_.statsTab=pair.second;content_.pinned=true;if(bluetooth_||sample)content_.devices=qaDevices();if(battery_){battery_->setFast(true);updateBattery();}transition(IslandState::Expanded);refresh();}
+    // 0.27: a phone's camera can be a camera any app picks (IslandCamera.cpp).
+    cameraSetup();
+    // --qa-activity[=compact|delivered|several|snapshot]: a made-up delivery from a phone, as a live activity (IslandLive.cpp).
+    if(testing_&&cmd.find(L"--qa-activity")!=std::wstring::npos)qaActivity(cmd);
     if(testing_&&cmd.find(L"--qa-hud")!=std::wstring::npos){content_.volume=audio_?audio_->value.load():40;events_.publish({ActivityKind::Volume,"volume",40,double(content_.volume),.5,30},seconds());presentActivity();}
     if(testing_&&cmd.find(L"--qa-brightness")!=std::wstring::npos){content_.brightness=64;events_.publish({ActivityKind::Brightness,"brightness",40,64,.5,30},seconds());presentActivity();}
     if(cmd.find(L"--capture")!=std::wstring::npos&&!benchmark_&&cmd.find(L"--ui-test")==std::wstring::npos&&cmd.find(L"--qa-overlay")==std::wstring::npos){UINT after=cmd.find(L"--qa-command")!=std::wstring::npos?4200:2800;if(const auto k=cmd.find(L"--capture-after=");testing_&&k!=std::wstring::npos)after=UINT(std::clamp(_wtoi(cmd.c_str()+k+16),100,20000));SetTimer(window_,5,after,nullptr);}if(testing_&&cmd.find(L"--qa-entrance")!=std::wstring::npos)SetTimer(window_,34,2700,nullptr); store_.log("Info","application_started_directcomposition");
@@ -326,8 +331,8 @@ void IslandWindow::updateRegion(bool envelope){
     if(!SetWindowRgn(window_,region,FALSE))DeleteObject(region);
 }
 void IslandWindow::animate(){
-    double now=seconds();bool expanded=state_!=IslandState::Compact;motion_.live=content_.live;motion_.card=content_.card;motion_.target(state_,now,interaction_==InteractionState::Hover,interaction_==InteractionState::Pressed);
-    bool artwork=content_.playback.artwork&&!content_.card&&(expanded?(content_.live||content_.mediaPage()||content_.page==Page::Overview):settings_.compactMedia&&!content_.hud);
+    liveLayout();double now=seconds();bool expanded=state_!=IslandState::Compact;motion_.live=content_.live;motion_.card=content_.card;motion_.target(state_,now,interaction_==InteractionState::Hover,interaction_==InteractionState::Pressed);
+    bool artwork=content_.playback.artwork&&!content_.card&&(expanded?(content_.live||content_.mediaPage()||content_.page==Page::Overview):settings_.compactMedia&&!content_.hud&&!content_.liveCompact());
     auto move=[&](Spring& spring,double target,SpringSpec spec){if(spring.target()!=target){if(motion_.reduced)spring.reset(target,now);else spring.retarget(target,now,spec);}};
     move(motion_.artX,expanded?20:settings_.edge?21:12,MotionTokens::artwork);move(motion_.artY,content_.live?20:expanded?(content_.page==Page::Media?(settings_.mediaLayout==2||(settings_.mediaLayout==0&&content_.playback.kind==MediaKind::Video)?68:82):81):settings_.edge?18:6,MotionTokens::artwork);move(motion_.artSize,content_.live?52:expanded?(content_.page==Page::Media?(settings_.mediaLayout==2||(settings_.mediaLayout==0&&content_.playback.kind==MediaKind::Video)?148:100):64):22,MotionTokens::artwork);move(motion_.artOpacity,artwork?1:0,MotionTokens::artworkOpacity);
     renderer_->animate(motion_,now);lastMotion_=now;updateRegion(true);SetTimer(window_,SettleTimer,30,nullptr);
@@ -410,7 +415,7 @@ LRESULT CALLBACK IslandWindow::procedure(HWND h,UINT m,WPARAM w,LPARAM l){
     return DefWindowProcW(h,m,w,l);
 }
 LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
-    if(musicMessage(m,w,l)||accessMessage(m,w,l))return 0;
+    if(musicMessage(m,w,l)||accessMessage(m,w,l)||liveMessage(m,w,l))return 0;
     if(m==WM_GETOBJECT)return accessObject(w,l);
     {LRESULT handled=0;if(clipMessage(m,w,l,handled)||captureMessage(m,w,l,handled)||productivityMessage(m,w,l,handled))return handled;}
     switch(m){
@@ -537,6 +542,7 @@ LRESULT IslandWindow::message(UINT m,WPARAM w,LPARAM l){
     case HotspotMessage:hotspotMessage(w,l);return 0;
     case MirrorMessage:mirrorMessage(w,l);return 0;
     case PageMessage:pageMessage(w,l);return 0;
+    case mirror::PhoneCamera::message:cameraMessage(w,l);return 0;
     case WallpaperLumaMessage:{std::unique_ptr<std::shared_ptr<WallpaperLuma>> map(reinterpret_cast<std::shared_ptr<WallpaperLuma>*>(l));wallLoading_=false;if(map&&*map)wallLuma_=*map;adaptBackdrop();return 0;}
     case FullscreenMessage:adaptBackdrop();if(w){SetTimer(window_,17,120,nullptr);}else{DWORD pid=0;auto fg=GetForegroundWindow();if(fg)GetWindowThreadProcessId(fg,&pid);if(!testing_&&pid&&pid!=GetCurrentProcessId())yieldToApp();fullscreen();}return 0;
     case WM_DISPLAYCHANGE:if(renderer_)applySettings(true);return 0;
@@ -1080,7 +1086,7 @@ void IslandWindow::setVolumeAt(LPARAM point){if(!audio_||!audio_->available)retu
 void IslandWindow::perform(Action a){
     double now=seconds();bool save=false,rebuild=false;
     if(a==Action::Settings){openSettings();return;}
-    if(shareAction(a)||libraryAction(a)||upNextAction(a))return;
+    if(shareAction(a)||libraryAction(a)||upNextAction(a)||liveAction(a))return;
     if(a==Action::BudPromote){promoteCard(true);return;}
     if(a>=Action::Overview&&a<=Action::Focus){if(Page next=Page(int(a)-int(Action::Overview));content_.page!=next&&state_==IslandState::Expanded&&!motion_.reduced){auto slot=[&](Page p){return int(std::find(settings_.navigation.begin(),settings_.navigation.end(),int(p))-settings_.navigation.begin());};motion_.swipe.reset(slot(next)>slot(content_.page)?22.:-22.,now);motion_.swipe.retarget(0,now,MotionTokens::content);}content_.page=Page(int(a)-int(Action::Overview));transition(IslandState::Expanded);}
         if(a==Action::Shelf||a==Action::Audio||a==Action::Control){content_.page=a==Action::Shelf?Page::Shelf:a==Action::Audio?Page::Audio:Page::Control;transition(IslandState::Expanded);if(a==Action::Control)controlJob(0,0);}

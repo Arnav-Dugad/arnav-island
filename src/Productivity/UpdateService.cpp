@@ -91,7 +91,7 @@ bool UpdateService::install(const std::wstring& args){
     // A running program can be renamed, not overwritten: this one steps aside, the new one takes its name.
     if(!MoveFileExW(exe.c_str(),old.c_str(),MOVEFILE_REPLACE_EXISTING)){set(State::Failed,L"The island’s folder can’t be changed, so "+versionText(version)+L" can’t install. Download it from GitHub");return false;}
     if(!CopyFileW((staged/L"ArnavIsland.exe").c_str(),exe.c_str(),FALSE)){MoveFileExW(old.c_str(),exe.c_str(),MOVEFILE_REPLACE_EXISTING);set(State::Failed,L"Couldn’t install "+versionText(version));return false;}
-    for(auto* name:{L"LICENSE",L"THIRD_PARTY_NOTICES.md",L"QUICK_START.md"})if(std::filesystem::exists(staged/name))CopyFileW((staged/name).c_str(),(dir/name).c_str(),FALSE);
+    for(auto* name:{L"LICENSE",L"THIRD_PARTY_NOTICES.md",L"QUICK_START.md",L"ArnavIslandCamera.dll"})if(std::filesystem::exists(staged/name))CopyFileW((staged/name).c_str(),(dir/name).c_str(),FALSE);
     // The release's notes, for the new version's What's new.
     CopyFileW((folder_/L"notes.md").c_str(),(folder_.parent_path()/L"whats-new.md").c_str(),FALSE);
     pendingLaunch=L"\""+exe.wstring()+L"\" "+args+L" --after="+std::to_wstring(GetCurrentProcessId())+L" --updated="+versionText(current_);

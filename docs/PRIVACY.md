@@ -239,3 +239,11 @@ Shelf thumbnail extraction reads only user-dropped file references, locally thro
 - **Waking from the phone:** this PC tells your paired phones its network adapters' hardware addresses and IPv4 addresses, sealed, so they can wake it. Nothing else about the network is sent.
 - **The phone's camera** is shown in its window and nowhere else: never recorded, kept or sent on.
 - **The phone's microphone** is played into the chosen output as it arrives: never recorded, kept or sent on. It stops when the phone stops, or after ten seconds of silence from it.
+
+## v0.27 on its way
+- **Live activities from the phone** (deliveries, rides, timers) are shown on the island and kept in memory only while they last. They come only while *My phone's notifications* and *Live activities from my phone* are on, and never for notifications the phone hides on its lock screen.
+- **Temperatures** are read on this PC (Windows' thermal zones and the graphics driver's own figures) and go only to your paired phone when it asks.
+- **The clipboard history** goes to your paired phone only when it asks, sealed; password-like copies are listed as hidden and never sent.
+- **Slides:** the running PowerPoint is read (the slide, its notes and its picture) only while the phone's presenter asks. PowerPoint is never started by it.
+- **Transfers that carry on** keep what arrived of an unfinished transfer for a day, then delete it.
+- **The phone's camera as a Windows camera** is set up only when you run `--set-up-camera`; its frames go straight from the phone to the apps that use the camera, never recorded or kept.

@@ -602,6 +602,11 @@ int main(){try{
         for(auto it=std::sregex_iterator(src.begin(),src.end(),started);it!=std::sregex_iterator();++it)used.insert((*it)[1]);
         std::string missing;for(auto& u:used)if(!known.count(u))missing+=u+" ";
         test(used.size()>=15&&missing.empty(),("the glass's properties all exist before its expressions and springs start (missing: "+missing+")").c_str());}
+    // ---- 0.27: a phone's live activities (settings v21) -------------------------------------------------------------
+    {std::stringstream v20("version 20\nproximityLock 1\n");auto s=Settings::parse(v20);test(s.version==Settings::currentVersion&&s.proximityLock&&s.phoneLive,"v20 settings gain the v21 feature (live activities from a phone, on)");
+        Settings off;off.phoneLive=false;std::stringstream io;off.write(io);auto back=Settings::parse(io);test(!back.phoneLive&&back==off&&back.version==Settings::currentVersion,"v21 settings round-trip");
+        const auto items=settingItems();auto at=[&](const char* key){return std::find_if(items.begin(),items.end(),[&](auto& i){return i.key==key;});};
+        test(at("phoneLive")!=items.end()&&at("phoneLive")->section==8&&at("phoneLive")==at("phoneNotices")+1,"Settings has live activities from a phone, next to its notifications");}
     // ---- 0.20: any network (settings v20) ---------------------------------------------------------------------------
     {std::stringstream v19("version 19\nphoneNotices 0\n");auto s=Settings::parse(v19);test(s.version==Settings::currentVersion&&!s.phoneNotices&&s.relay&&!s.universalClipboard&&s.continuity&&!s.proximityLock&&s.proximityWelcome,"v19 settings gain the v20 features (any network, universal clipboard, the Shelf camera, proximity)");
         Settings flipped;flipped.relay=false;flipped.universalClipboard=true;flipped.continuity=false;flipped.proximityLock=true;flipped.proximityWelcome=false;std::stringstream io;flipped.write(io);auto back=Settings::parse(io);

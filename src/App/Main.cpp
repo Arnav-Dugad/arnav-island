@@ -1,4 +1,5 @@
 #include "Island/IslandWindow.h"
+#include "Mirror/PhoneCamera.h"
 // A crash leaves crash.txt next to the logs: the exception, and each stack frame as a module
 // and offset (no memory contents, file names or user data), so it can be mapped to source.
 static LONG WINAPI crashReport(EXCEPTION_POINTERS* info){
@@ -21,7 +22,10 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR command,int){
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     // 0.18: started by an update (--after=<pid>): wait (up to 15 s) for the version it replaces to close first.
     if(command){const wchar_t* at=wcsstr(command,L"--after=");if(at){const DWORD pid=DWORD(_wtoi(at+8));if(HANDLE old=pid?OpenProcess(SYNCHRONIZE,FALSE,pid):nullptr){WaitForSingleObject(old,15000);CloseHandle(old);}}}
-    HANDLE single=CreateMutexW(nullptr,TRUE,L"Local\\ArnavIsland.App");
+    // 0.27: --set-up-camera (as administrator): "Arnav Island Phone Camera" set up once for this PC, then done.
+    if(command&&wcsstr(command,L"--set-up-camera")){std::wstring said;const bool ok=nexus::mirror::PhoneCamera::setUp(said);MessageBoxW(nullptr,said.c_str(),L"Arnav Island",ok?MB_ICONINFORMATION:MB_ICONERROR);return ok?0:1;}
+    // 0.27: a capture run (tests only) has a lock of its own, so it can be taken beside the island in use.
+    HANDLE single=CreateMutexW(nullptr,TRUE,command&&wcsstr(command,L"--capture")?L"Local\\ArnavIsland.Capture":L"Local\\ArnavIsland.App");
     if(GetLastError()==ERROR_ALREADY_EXISTS){
         std::wstring args=command?command:L"";HWND existing=FindWindowW(L"ArnavIsland.Surface",nullptr);
         if(existing&&args.find(L"--lab")!=std::wstring::npos)PostMessageW(existing,WM_APP+50,1,0);

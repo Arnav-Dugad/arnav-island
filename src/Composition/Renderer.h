@@ -34,6 +34,7 @@
 #include "Animation/GlassDrops.h"
 #include "Design/Backdrop.h"
 #include "Productivity/ShareService.h"
+#include "Productivity/ShareLive.h"
 #include "Media/Library.h"
 namespace nexus {
 struct ContentSnapshot {
@@ -96,6 +97,14 @@ struct ContentSnapshot {
     // this PC offers (app the code).
     struct Notice{int kind=0;BluetoothDevice device;std::wstring app;std::shared_ptr<const Artwork> icon;bool switchBack=false;std::wstring detail;uint32_t colour=0;std::wstring path;double progress=-1;bool phone=false;std::wstring source;
         std::string peer,key;std::vector<std::pair<std::wstring,bool>> actions;} notice;
+    // 0.27: a phone's live activities (kind 25 is the open one's card). Each: what the phone last said, its pictures, when it
+    // came and last changed (island seconds), and once it went: whether it reached its end (done shows a check a moment).
+    // liveShown: the one on the island. While any is live the compact island shows it (liveWidth wide, the top dock only).
+    struct Live{std::string peer;std::wstring phone;LiveActivity a;std::shared_ptr<const Artwork> icon,tracker,start,end,large,snapshot;double at=0,changedAt=0,endedAt=0;bool ended=false,done=false;};
+    std::vector<Live> lives;int liveShown=0;
+    const Live* liveNow()const{return lives.empty()?nullptr:&lives[size_t(std::clamp(liveShown,0,int(lives.size())-1))];}
+    bool liveCompact()const{return !lives.empty()&&settings.edge==0;}
+    float liveWidth()const{return std::max(settings.uiMode==0?72.f:float(settings.compactWidth),276.f);}
     // Phase 4: clipboard history on the Shelf, privacy indicators and the command bar.
     int shelfTab=0,clipOffset=0;bool clipsPaused=false;std::wstring clipStatus;double clipStatusUntil=0;struct Clip{uint64_t id=0;int kind=0;std::wstring preview,meta;std::shared_ptr<const Artwork> thumbnail,icon;bool pinned=false,secret=false;
         // Phase 5F, rich rows: a colour code's colour, code (preview is then its first line), a link's host and path and its site icon.
@@ -129,6 +138,11 @@ struct ContentSnapshot {
         // 0.21: pairCode, the bar takes another PC's pairing code (eight letters and digits, in glass cells).
         bool pairCode=false;} command;
 };
+// 0.27 (Live.cpp): a live activity's card height (it grows for the tracking line or a snapshot), and the colour it is drawn in
+// (its own, else its icon's, else the island's), kept readable on the island.
+float liveCardHeight(const ContentSnapshot::Live&);UINT32 liveAccent(const ContentSnapshot::Live&,UINT32 fallback,bool light);
+// What the card's title says: a finished delivery says so.
+std::wstring liveTitle(const ContentSnapshot::Live&);
 
 class Renderer {
     ComPtr<ID3D11Device> d3d_;
@@ -231,7 +245,8 @@ public:bool queueGliding()const{return queueGliding_;}private:
         float size=0,cell=0,top=0,line=0;int weight=0;UINT32 ink=1;float halo=-1;std::wstring shown;float x=0,y=0,box=0;bool trailing=false;
         // Adaptive text: the same figures in the ink for a bright backdrop, used by the columns over one.
         ComPtr<IDCompositionSurface> altDigits,altBlur;std::map<wchar_t,ComPtr<IDCompositionSurface>> altGlyphs;UINT32 altInk=0;int serial=-1;};
-    std::array<Odometer,13> odometers_;std::vector<OdometerSpot> contentSpots_,headerSpots_;float answerY_=-1;std::wstring answerText_;double cascadeStart_=-10;
+    // 0.27: 13 the compact island's live ETA, 14 the live card's.
+    std::array<Odometer,15> odometers_;std::vector<OdometerSpot> contentSpots_,headerSpots_;float answerY_=-1;std::wstring answerText_;double cascadeStart_=-10;
     void odometer(Odometer&,IDCompositionVisual* parent,const OdometerSpot*,bool reduced);void placeOdometers(const std::vector<OdometerSpot>&,std::initializer_list<int> ids,IDCompositionVisual* parent,bool reduced);
     // The fade and rise of content band k in a cascade that began at `start`.
     void bandCascade(double start,size_t k,ComPtr<IDCompositionAnimation>& fade,ComPtr<IDCompositionAnimation>& rise);
@@ -306,6 +321,16 @@ private:
     static constexpr int splashSteps=6;ComPtr<IDCompositionVisual> splash_;std::array<ComPtr<IDCompositionVisual>,4*splashSteps> splashBands_;std::array<ComPtr<IDCompositionRectangleClip>,4*splashSteps> splashClips_;std::array<ComPtr<IDCompositionEffectGroup>,4*splashSteps> splashBandEffects_;ComPtr<IDCompositionEffectGroup> splashEffect_;std::array<ComPtr<IDCompositionSurface>,2> splashSurfaces_;void updateRing(const ContentSnapshot&,UINT32 accent);
     // Ease-out cubic from `from` to `to` over `duration`, beginning at `start`.
     ComPtr<IDCompositionAnimation> ease(double start,float from,float to,double duration);
+    // 0.27 (Live.cpp): a phone's live activity. The compact island (its icon, what it says, the ETA rolling, a hairline of its
+    // progress along the foot) and its card: the tracking line is retained — the track (segments dimmed, points, the ends'
+    // icons), its fill clipped at the progress with a soft glow at the head and the tracker riding there, all gliding on
+    // one spring; the tracker bobs, and a shimmer runs along a track that can't say how far (both on the compositor).
+    ComPtr<IDCompositionVisual> actLayer_,actBase_,actFill_,actHead_,actTracker_,actShimmerHost_,actShimmer_;ComPtr<IDCompositionRectangleClip> actFillClip_,actShimmerClip_;
+    ComPtr<IDCompositionEffectGroup> actEffect_,actShimmerEffect_;ComPtr<IDCompositionSurface> actBaseSurface_,actFillSurface_,actHeadSurface_,actTrackerSurface_,actShimmerSurface_;ComPtr<IDCompositionTranslateTransform> actBob_;
+    Spring actProgress_{0};std::string actKey_,actDrawn_;double actGlow_=-1;bool actMoving_=false;
+    void activityCompact(ID2D1RenderTarget*,const ContentSnapshot&,UINT32 ink,UINT32 muted,UINT32 track,UINT32 accent,UINT32 raised);
+    void activityCard(ID2D1RenderTarget*,const ContentSnapshot&,UINT32 ink,UINT32 muted,UINT32 track,UINT32 accent,UINT32 raised,float raisedAlpha);
+    void activityIcon(ID2D1RenderTarget*,const ContentSnapshot&,UINT32 raised,UINT32 accent);void updateActivity(const ContentSnapshot&,UINT32 ink,UINT32 track,UINT32 accent,UINT32 raised);
     void ensureNowPlaying();void updateLyrics(const ContentSnapshot&,UINT32 ink,UINT32 muted,UINT32 accent);void updateBubble(const ContentSnapshot&);
     // Word-wrapped text, at most `lines` lines (shrinking once if needed), with an optional soft glow.
     void wrappedText(ID2D1RenderTarget*,const std::wstring&,float x,float y,float w,float h,float size,UINT32 color,DWRITE_FONT_WEIGHT,UINT32 glow=0,int lines=2);

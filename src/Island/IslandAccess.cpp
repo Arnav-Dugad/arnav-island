@@ -1,3 +1,4 @@
+#include <chrono>
 #include "IslandWindow.h"
 #include <uiautomation.h>
 #include <windowsx.h>
@@ -199,6 +200,9 @@ std::wstring IslandWindow::accessibleName(Action a)const{
     // Cards.
     case Action::SwitchBack:return L"Switch back";case Action::PrivacyShow:return L"Who is using the camera, microphone or location";case Action::PrivacySettings:return L"Privacy settings";case Action::NoticeDismiss:return L"Dismiss";
     case Action::BudPromote:return L"Show the waiting alert: "+content_.bud.title;
+    // 0.27: a phone's live activity, and the next of several.
+    case Action::LiveOpen:{const auto* l=content_.liveNow();if(!l)return L"Live activity";const auto eta=liveEta(l->a,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());return L"Live activity from "+l->a.app+L": "+liveTitle(*l)+(eta.empty()?L"":L", "+eta)+L". Open";}
+    case Action::LiveNext:return L"Next live activity, "+std::to_wstring(content_.liveShown+1)+L" of "+std::to_wstring(content_.lives.size());
     case Action::BatteryDetails:return content_.batteryDetails?L"Battery overview":L"All battery details";
     case Action::WeatherOpen:return L"Weather details";case Action::WeatherBack:return L"Back to Home";case Action::UpdateRestart:return L"Restart to update";
     case Action::BatteryChart:return content_.batteryHealthChart?L"Show the last 24 hours":L"Show health over time";case Action::WhatsNewOpen:return L"What\u2019s new";case Action::WhatsNewBack:return L"Close What\u2019s new";
@@ -218,7 +222,7 @@ std::wstring IslandWindow::accessibleName(Action a)const{
     if(inRange(a,Action::NearbyForgetBase,Action::NearbyForgetEnd))return L"Forget "+peer(Action::NearbyForgetBase);
     if(inRange(a,Action::NearbySendBase,Action::NearbySendEnd))return L"Send the Shelf to "+peer(Action::NearbySendBase);
     if(inRange(a,Action::NearbyCancelBase,Action::NearbyCancelEnd))return L"Stop the transfer with "+peer(Action::NearbyCancelBase);
-    if(inRange(a,Action::NearbyBrowseBase,Action::NearbyBrowseEnd))return peer(Action::NearbyBrowseBase)+L"’s Shelf";
+    if(inRange(a,Action::NearbyBrowseBase,Action::NearbyBrowseEnd))return peer(Action::NearbyBrowseBase)+L"\u2019s Shelf";
     if(inRange(a,Action::NearbyRingBase,Action::NearbyRingEnd))return L"Ring "+peer(Action::NearbyRingBase);
     if(inRange(a,Action::NoticeActionBase,Action::NoticeActionEnd)){const size_t i=size_t(int(a)-int(Action::NoticeActionBase));return i<content_.notice.actions.size()?content_.notice.actions[i].first:std::wstring(L"Action");}
     switch(a){case Action::PairAnywhere:return L"Pair with a code";case Action::PairingStop:return L"Stop offering the code";case Action::PairingShow:return L"Show the QR code";case Action::PairTypeCode:return L"Type another PC\u2019s pairing code";case Action::HotspotJoin:return L"Join the hotspot";case Action::HotspotLater:return L"Not now";case Action::PhoneHotspot:return L"Join its hotspot";case Action::PhoneBack:return L"Back to Nearby";
@@ -231,7 +235,7 @@ std::wstring IslandWindow::accessibleName(Action a)const{
 }
 namespace {
 // Text as it should sound: the middle dots that separate details read as pauses.
-std::wstring spoken(std::wstring t){for(const wchar_t* dot:{L"  ·  ",L" · ",L"·"})for(size_t at;(at=t.find(dot))!=std::wstring::npos;)t.replace(at,wcslen(dot),L", ");return t;}
+std::wstring spoken(std::wstring t){for(const wchar_t* dot:{L"  \u00b7  ",L" \u00b7 ",L"\u00b7"})for(size_t at;(at=t.find(dot))!=std::wstring::npos;)t.replace(at,wcslen(dot),L", ");return t;}
 }
 // An alert as a sentence, with what can be done about it.
 std::wstring IslandWindow::accessAlert(const ContentSnapshot::Notice& n)const{
@@ -246,6 +250,9 @@ std::wstring IslandWindow::accessAlert(const ContentSnapshot::Notice& n)const{
     case 22:return spoken(n.app+L". "+n.detail+L". Stop");
     case 23:return spoken(n.app+L". "+n.detail);
     case 24:return spoken(n.app+L". "+n.detail+L". Paste, or put it on the Shelf");
+    // 0.27: a live activity: what it says, how long, how far, where from (and how many there are).
+    case 25:{const auto* l=content_.liveNow();if(!l)return spoken(n.app);const auto eta=liveEta(l->a,std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());const double f=l->done?1.:l->a.fraction();
+        return spoken(L"Live activity. "+n.app+(eta.empty()?L"":L", "+eta)+(n.detail.empty()?L"":L". "+n.detail)+(f>=0&&!l->done?L". "+std::to_wstring(int(f*100+.5))+L" percent of the way":L"")+L". From "+n.source+(content_.lives.size()>1?L". "+std::to_wstring(content_.lives.size())+L" live activities":L""));}
     default:return spoken(budTitle(n)+(n.detail.empty()?L"":L". "+n.detail));}
 }
 // The island in a sentence, for the pane's status.
@@ -255,6 +262,7 @@ std::wstring IslandWindow::accessSummary()const{
     if(content_.command.active)return L"Command bar";
     std::wstring s=state_==IslandState::Compact?std::wstring(L"Closed"):L"Open on "+std::wstring(pageNames()[size_t(std::clamp(int(content_.page),0,pageCount-1))]);
     if(p.available)s+=L". "+std::wstring(p.playing?L"Playing ":L"Paused: ")+p.title+(p.artist.empty()?L"":L" by "+p.artist);
+    if(const auto* l=content_.liveNow())s+=L". Live: "+l->a.app+L", "+liveTitle(*l);
     return s;
 }
 LRESULT IslandWindow::accessObject(WPARAM w,LPARAM l){

@@ -1,4 +1,4 @@
-param([string]$Version='0.26.0-preview.1')
+param([string]$Version='0.27.0-preview.1')
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
 $exe=Join-Path $projectRoot 'build\ArnavIsland.exe'
@@ -18,6 +18,9 @@ if((($sha.ComputeHash($check.SignerCertificate.RawData) | ForEach-Object { $_.To
 $staging=Join-Path $projectRoot "out\Arnav-Island-$Version-win-x64"
 New-Item -ItemType Directory -Path $staging -Force | Out-Null
 Copy-Item -LiteralPath $exe -Destination $staging -Force
+# 0.27: the phone's camera as a Windows camera: its media source ships beside the exe (signed the same way).
+$camera=Join-Path $projectRoot 'build\ArnavIslandCamera.dll'
+if(Test-Path $camera){Set-AuthenticodeSignature -FilePath $camera -Certificate $certificate -HashAlgorithm SHA256 -TimestampServer 'http://timestamp.digicert.com' | Out-Null; Copy-Item -LiteralPath $camera -Destination $staging -Force}
 Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE'),(Join-Path $projectRoot 'THIRD_PARTY_NOTICES.md'),(Join-Path $projectRoot 'docs\QUICK_START.md') -Destination $staging -Force
 $archive="$staging.zip"
 Compress-Archive -Path "$staging\*" -DestinationPath $archive -Force

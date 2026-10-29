@@ -28,7 +28,8 @@ std::wstring bytesText(uint64_t b){wchar_t t[32];if(b<1024)swprintf(t,32,L"%llu 
 std::wstring folderOf(const KNOWNFOLDERID& id){PWSTR p=nullptr;std::wstring out;if(SUCCEEDED(SHGetKnownFolderPath(id,KF_FLAG_CREATE,nullptr,&p))&&p)out=p;CoTaskMemFree(p);return out;}
 std::wstring filesText(uint32_t count){return count==1?L"1 file":std::to_wstring(count)+L" files";}
 // A phone's remote command on its way to the island's thread; the network thread waits for the answer.
-struct RemoteCall{std::string peer;RemoteCommand command=RemoteCommand::Status;std::vector<uint8_t> payload;std::promise<std::vector<uint8_t>> answer;};
+// 0.27: live, a phone's live activity (payload: notice 7's bytes from its op on) for phoneLiveNotice; nothing waits for it.
+struct RemoteCall{std::string peer;RemoteCommand command=RemoteCommand::Status;std::vector<uint8_t> payload;std::promise<std::vector<uint8_t>> answer;bool live=false;std::wstring phone;};
 std::wstring fromUtf8Bytes(const std::vector<uint8_t>& b,size_t limit){if(b.empty())return {};const int n=MultiByteToWideChar(CP_UTF8,0,reinterpret_cast<const char*>(b.data()),int(std::min(b.size(),limit)),nullptr,0);
     std::wstring w(size_t(std::max(n,0)),L'\0');if(n>0)MultiByteToWideChar(CP_UTF8,0,reinterpret_cast<const char*>(b.data()),int(std::min(b.size(),limit)),w.data(),n);return w;}
 std::string utf8Of(const std::wstring& w){if(w.empty())return {};const int n=WideCharToMultiByte(CP_UTF8,0,w.data(),int(w.size()),nullptr,0,nullptr,nullptr);std::string s(size_t(std::max(n,0)),'\0');if(n>0)WideCharToMultiByte(CP_UTF8,0,w.data(),int(w.size()),s.data(),n,nullptr,nullptr);return s;}
@@ -45,7 +46,13 @@ void IslandWindow::syncSharing(){
         ShareOptions o;std::filesystem::path data=std::filesystem::path(settingsFile_).parent_path();if(data.empty())data=std::filesystem::path(folderOf(FOLDERID_LocalAppData))/L"ArnavIsland";
         o.folder=data.wstring();o.downloads=folderOf(FOLDERID_Downloads);if(o.downloads.empty())o.downloads=(data/L"Received").wstring();o.handoff=(data/L"Handoff").wstring();
         // 0.19: a phone's remote, answered on this thread (a phone gives up on an answer that takes over 4 s).
-        o.remote=[window=window_](const std::string& peer,RemoteCommand command,const std::vector<uint8_t>& payload){return remoteFromNetwork(window,peer,command,payload);};
+        // 0.27: the speed test is answered right here (it measures the network, not the island's thread).
+        o.remote=[window=window_,allowed=inputAllowed_](const std::string& peer,RemoteCommand command,const std::vector<uint8_t>& payload){
+            if(command==RemoteCommand::Speed)return allowed->load()?remoteSpeedAnswer(payload):std::vector<uint8_t>{remoteNotAllowed};return remoteFromNetwork(window,peer,command,payload);};
+        // 0.27: a phone's live activities go to the island's thread as they come (it decides whether they show).
+        o.live=[window=window_](const std::string& peer,const std::wstring& phone,const std::vector<uint8_t>& notice){
+            auto call=std::make_shared<RemoteCall>();call->peer=peer;call->phone=phone;call->payload=notice;call->live=true;
+            auto* held=new std::shared_ptr<RemoteCall>(call);if(!PostMessageW(window,RemoteMessage,0,reinterpret_cast<LPARAM>(held)))delete held;};
         // 0.20: other networks through the relay; a phone's trackpad and keyboard, straight from the network thread.
         o.relay=settings_.relay;relayOn_=settings_.relay;
         o.input=[allowed=inputAllowed_](const std::string&,const std::vector<uint8_t>& frame){if(allowed->load())phoneInput(frame);};
@@ -343,6 +350,7 @@ void IslandWindow::phoneCard(const std::wstring& title,const std::wstring& detai
 }
 void IslandWindow::remoteCall(LPARAM l){
     std::unique_ptr<std::shared_ptr<RemoteCall>> held(reinterpret_cast<std::shared_ptr<RemoteCall>*>(l));if(!held||!*held)return;auto& c=**held;
+    if(c.live){try{phoneLiveNotice(c.peer,c.phone,c.payload);}catch(...){}return;}
     std::vector<uint8_t> answer;try{answer=remoteAnswer(c.peer,c.command,c.payload);}catch(...){answer={remoteFailed};}
     try{c.answer.set_value(std::move(answer));}catch(...){}
 }
@@ -407,6 +415,12 @@ std::vector<uint8_t> IslandWindow::remoteAnswer(const std::string& peer,RemoteCo
     case RemoteCommand::Mixer:return remoteMixer(payload);
     case RemoteCommand::Levels:return remoteLevels();
     case RemoteCommand::Machine:return remoteMachine();
+    // 0.27 (revision 10): temperatures, the clipboard history, the running show (IslandRemote.cpp) and the speed test (the
+    // network thread answers it first; this is the same answer). Top apps, files and screenshots aren't answered yet.
+    case RemoteCommand::Sensors:return remoteSensors();
+    case RemoteCommand::Clips:return remoteClips(payload);
+    case RemoteCommand::Slides:return remoteSlides(payload);
+    case RemoteCommand::Speed:return remoteSpeedAnswer(payload);
     case RemoteCommand::RingPC:{ringChimes_=8;playSound(Sound::Chime);SetTimer(window_,RingPCTimer,1400,nullptr);phoneCard(L"Here I am",from+L" is looking for this PC",from,nullptr,12);store_.log("Info","phone_find_pc");return {remoteOk};}
     // The song's lyrics, as the island has them (the phone shows them in time with the song).
     case RemoteCommand::Lyrics:{const std::wstring key=p.available?p.title+L"\t"+p.artist:std::wstring();int state=0;std::vector<ShareLyricLine> lines;

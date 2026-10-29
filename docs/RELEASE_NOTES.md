@@ -1,3 +1,42 @@
+# Arnav Island 0.27.0-preview.1 — on its way
+
+Made for Arnav Island for Android 1.9. With an older phone app, everything works as in 0.26.
+
+## What's on its way, on the island
+**Your food, your ride, your timer: live on the island.** When the phone shows something on its way (Swiggy, Zomato, Blinkit, Zepto, a ride, Maps, a timer, a download, Android 16 live updates), the island shows it as a live activity:
+- **At rest:** the app's icon, what's happening and the time left, with a thin line of how far it has got.
+- **Opened** (hover or click, and for a moment whenever it moves on): the tracking line in the app's own colours, with its stops as dots and the rider gliding along it, the start and the end at either side, and the time left large on the right. A picture of the app's own card when it doesn't say how far it has got.
+- **Several at once:** a count; scroll or click for the next.
+- **Delivered:** a green tick for a few seconds, then it goes.
+
+It needs *My phone's notifications* on, and a new setting next to it, **Live activities from my phone** (on).
+
+## Transfers that carry on
+**When the connection drops part way, nothing is lost.** What arrived is kept for a day, and the transfer carries on from where it stopped as soon as the phone is back, both ways (sends, Shelf takes). A transfer you stopped stays stopped.
+
+## More of this PC on the phone
+- **Temperatures:** the processor's and the graphics card's, read from Windows (no driver, no administrator). The phone can warn when they run hot.
+- **Clipboard history:** the island's own history, on the phone: copy any of it here or there, pin it, or let it go. Passwords stay hidden.
+- **Slides:** with a PowerPoint slideshow running, the phone's presenter shows the slide, the next one and your speaker notes, and jumps to any slide.
+- **Speed:** the phone measures the connection both ways.
+
+## The phone's camera, as a real camera
+**On Windows 11, the phone's camera can be a camera any app picks: "Arnav Island Phone Camera".** Windows' camera service only sees cameras set up for the whole PC, so it needs one step, once, as administrator: `ArnavIsland.exe --set-up-camera`. Until then, the camera shows in its window as before, and the island says how to set it up.
+
+## The phone's microphone, lighter
+**The phone's microphone now comes over compressed** (Opus, else AAC), so it works smoothly through the relay too. Older phone apps still send it as before.
+
+## Also
+- **Sharper edges** at display scales that aren't whole numbers: a stray hairline at some surfaces' edges is gone.
+- **Screenshots for these notes** can be taken while your installed island runs.
+
+## Checks
+- **Unit suites:** core, provider lifecycle, dashboard models, share loopback, phase models, and the new live activity and microphone suite, all passing; share tests 253 checks, 0 failures, among them a transfer whose receiver is shut down part way and carries on byte for byte after it starts again.
+- **The phone 1.9 against this PC's engine** over the network: all passing. On the Android emulator, against it: temperatures, the clipboard history, the speed test and the apps' icons.
+- **Temperatures read on a real PC:** a thermal zone, the graphics card through NVML and through Windows' own adapter data, within a degree of each other.
+- **The microphone:** Windows' own AAC encoder's output decoded back to its tone; the Opus decoder found on this PC.
+- **Not yet tried:** the camera as a Windows camera (it needs the administrator step), and live activities from real delivery apps (shown with made-up ones).
+
 # Arnav Island 0.26.0-preview.1 — the phone, all the way
 
 Made for Arnav Island for Android 1.8. With an older phone app, everything works as in 0.25.
